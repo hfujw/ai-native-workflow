@@ -357,12 +357,18 @@ async def _execute_tool(tool_name: str, params: dict, ctx: dict) -> dict:
         return result
 
     elif tool_name == "design" or tool_name == "compose":
-        # DesignerAgent 合并 design+compose——内部自循环（设计→试写→不满意换形式）
+        # DesignerAgent 合并 design+compose——素材不够时向 ResearcherAgent 求助
         from app.agents.designer_agent import DesignerAgent
+        from app.agents.message_bus import MessageBus
+        bus = ctx.get("_bus")
+        if bus is None:
+            bus = MessageBus()
+            ctx["_bus"] = bus
         result = await DesignerAgent().run(
             ctx["material"], ctx["user_input"],
             push=ctx.get("_push"),
             session_records=ctx.get("cost_records"),
+            bus=bus,
         )
         ctx["design"] = result.get("design")
         ctx["content"] = result.get("content")
