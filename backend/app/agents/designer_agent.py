@@ -34,21 +34,33 @@ class DesignerAgent:
 
             # 素材不够？
             if not self._check_design_fit(design, mat_count):
-                # 有消息总线 → 请 ResearcherAgent 帮忙搜
+                # 有消息总线 → 通过 bus 请 ResearcherAgent 帮忙（不是直接调函数）
                 if bus:
                     logger.info("DesignerAgent=ask_help | need=%s | have=%d条",
                                 design.get("components", []), mat_count)
+                    bus.register("designer")
+                    bus.register("researcher")
+                    # 启动 ResearcherAgent 监听 + 发搜索请求
                     from app.agents.researcher_agent import ResearcherAgent
-                    result = await ResearcherAgent().run(
-                        topic=user_input,
-                        existing_material=material,
-                        session_records=session_records,
-                    )
-                    material = result.get("results", material)
-                    mat_count = len(material)
-                    logger.info("DesignerAgent=got_help | +%d条 → 共%d条",
-                                result.get("count", 0), mat_count)
-                    continue  # 重新设计
+                    import asyncio
+                    listener = asyncio.create_task(ResearcherAgent().listen(bus))
+                    await bus.send("researcher", {
+                        "type": "search_request",
+                        "topic": user_input,
+                        "existing_material": material,
+                        "session_records": session_records,
+                        "reply_to": "designer",
+                    })
+                    # 等 ResearcherAgent 搜完返回
+                    reply = await bus.recv("designer", timeout=45.0)
+                    listener.cancel()
+                    if reply and reply.get("type") == "search_result":
+                        new_results = reply.get("results", [])
+                        material.extend(new_results)
+                        mat_count = len(material)
+                        logger.info("DesignerAgent=got_help | +%d条 → 共%d条",
+                                    reply.get("count", 0), mat_count)
+                        continue  # 重新设计
 
                 # 没有 bus → 旧降级行为
                 design = self._downgrade_design(design, mat_count)

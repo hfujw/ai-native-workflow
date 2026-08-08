@@ -99,3 +99,24 @@ class ResearcherAgent:
         except Exception as e:
             logger.debug("向量检索不可用: %s", e)
             return []
+
+    async def listen(self, bus):
+        """Phase 4：通过消息总线监听搜索请求。收到消息 → 执行搜索 → 返回结果。"""
+        bus.register("researcher")
+        while True:
+            msg = await bus.recv("researcher", timeout=60.0)
+            if msg is None:
+                continue
+            if msg.get("type") == "search_request":
+                result = await self.run(
+                    topic=msg.get("topic", ""),
+                    existing_material=msg.get("existing_material"),
+                    session_records=msg.get("session_records"),
+                )
+                await bus.send(msg.get("reply_to", "designer"), {
+                    "type": "search_result",
+                    "results": result.get("results", []),
+                    "count": result.get("count", 0),
+                    "level": result.get("level", "unknown"),
+                })
+                return  # 一次性服务，搜完就停
