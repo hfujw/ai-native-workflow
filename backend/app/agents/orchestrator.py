@@ -317,8 +317,7 @@ HTML长度：{len(ctx.get('html',''))}字符 | 上次验证：{'通过' if ctx['
         summary += f"\n⚠️ 已调用 {search_rounds} 轮搜索（最近2轮无结果），禁止再搜！基于现有素材做设计，或诚实说素材不足。"
 
     try:
-        # 流式思考——前端 DecisionLog 逐字显示
-        push = ctx.get("_push")
+        # 流式收集 LLM 输出（不推原始 JSON，等解析完推干净的 thought）
         accumulated = ""
         async for chunk in chat_stream(
             summary,
@@ -328,9 +327,6 @@ HTML长度：{len(ctx.get('html',''))}字符 | 上次验证：{'通过' if ctx['
             label="decide",
         ):
             accumulated += chunk
-            if push:
-                await push({"type": "thinking_stream", "step": ctx["steps"] + 1,
-                            "chunk": chunk, "tool": "decide", "budget": ctx["budget_spent"]})
 
         result = strip_fence(accumulated)
         decision = json.loads(result)
