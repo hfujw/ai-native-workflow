@@ -13,7 +13,7 @@ import logging
 from app.core.config import settings
 from app.llm.client import chat_stream
 from app.llm.parser import strip_fence, clean_thought
-from app.tools import tool_verify, TOOL_COST
+from app.tools import TOOL_COST
 from app.knowledge.kb import get_event_by_keyword, event_to_search_results, _name
 from app.agents.evaluate import evaluate_material
 
@@ -342,56 +342,24 @@ HTML长度：{len(ctx.get('html',''))}字符 | 上次验证：{'通过' if ctx['
 
 
 async def _execute_tool(tool_name: str, params: dict, ctx: dict) -> dict:
-    """执行工具调用，更新ctx。"""
+    """执行工具调用——Supervisor 分发 + ctx 更新。"""
     cost = TOOL_COST.get(tool_name, 0.05)
     ctx["budget_spent"] += cost
 
-    if tool_name == "search":
-        from app.agents.researcher_agent import ResearcherAgent
-        result = await ResearcherAgent().run(
-            topic=params.get("query", ctx["user_input"]),
-            existing_material=ctx["material"],
-            session_records=ctx.get("cost_records"),
-        )
-        ctx["material"] = result.get("results", ctx["material"])
-        return result
+    from app.agents.supervisor import dispatch
+    result = await dispatch(ctx, tool_name)
 
-    elif tool_name == "design" or tool_name == "compose":
-        # DesignerAgent 合并 design+compose——素材不够时向 ResearcherAgent 求助
-        from app.agents.designer_agent import DesignerAgent
-        from app.agents.message_bus import MessageBus
-        bus = ctx.get("_bus")
-        if bus is None:
-            bus = MessageBus()
-            ctx["_bus"] = bus
-        result = await DesignerAgent().run(
-            ctx["material"], ctx["user_input"],
-            push=ctx.get("_push"),
-            session_records=ctx.get("cost_records"),
-            bus=bus,
-        )
+    # ctx 更新（每种工具的副作用，Supervisor 不处理）
+    if tool_name == "search":
+        ctx["material"] = result.get("results", ctx["material"])
+    elif tool_name in ("design", "compose"):
         ctx["design"] = result.get("design")
         ctx["content"] = result.get("content")
-        return result
-
     elif tool_name == "render":
-        from app.agents.render_agent import RenderAgent
-        result = await RenderAgent().run(
-            ctx["design"] or {},
-            ctx["content"] or {},
-            push=ctx.get("_push"),
-            session_records=ctx.get("cost_records"),
-        )
-        # 始终写 HTML（有内容就写）——verify 需要审实际内容而非空字符串
         if result.get("html"):
             ctx["html"] = result["html"]
-        return result
 
-    elif tool_name == "verify":
-        result = await tool_verify(ctx.get("html", ""), ctx.get("content") or {})
-        return result
-
-    return {"error": f"未知工具: {tool_name}"}
+    return result
 
 
 def _summarize(result: dict) -> str:
