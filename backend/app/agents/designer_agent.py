@@ -34,13 +34,16 @@ class DesignerAgent:
 
             # 素材不够？
             if not self._check_design_fit(design, mat_count):
-                # 有消息总线 → 通过 bus 请 ResearcherAgent 帮忙（不是直接调函数）
+                # 有消息总线 → 通过 bus 请 ResearcherAgent 帮忙
                 if bus:
                     logger.info("DesignerAgent=ask_help | need=%s | have=%d条",
                                 design.get("components", []), mat_count)
+                    if push:
+                        await push({"type": "thinking", "step": 0,
+                                    "thought": f"🤝 DesignerAgent：素材仅 {mat_count} 条，向 ResearcherAgent 求助搜索「{user_input}」…",
+                                    "tool": "design", "budget": 0})
                     bus.register("designer")
                     bus.register("researcher")
-                    # 启动 ResearcherAgent 监听 + 发搜索请求
                     from app.agents.researcher_agent import ResearcherAgent
                     import asyncio
                     listener = asyncio.create_task(ResearcherAgent().listen(bus))
@@ -50,8 +53,8 @@ class DesignerAgent:
                         "existing_material": material,
                         "session_records": session_records,
                         "reply_to": "designer",
+                        "push": push,  # 传 push 回调，让 ResearcherAgent 能推消息
                     })
-                    # 等 ResearcherAgent 搜完返回
                     reply = await bus.recv("designer", timeout=45.0)
                     listener.cancel()
                     if reply and reply.get("type") == "search_result":
@@ -60,6 +63,10 @@ class DesignerAgent:
                         mat_count = len(material)
                         logger.info("DesignerAgent=got_help | +%d条 → 共%d条",
                                     reply.get("count", 0), mat_count)
+                        if push:
+                            await push({"type": "thinking", "step": 0,
+                                        "thought": f"✅ DesignerAgent：收到 {reply.get('count', 0)} 条新素材（共 {mat_count} 条），重新设计…",
+                                        "tool": "design", "budget": 0})
                         continue  # 重新设计
 
                 # 没有 bus → 旧降级行为

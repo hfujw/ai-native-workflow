@@ -142,13 +142,22 @@ async def orchestrator_node(state: dict) -> dict:
                             "thought": f"已调用 {search_rounds} 轮搜索，达到上限。orchestrator 强制切换为 design——LLM 请基于现有素材或自身知识继续。",
                             "tool": "system", "budget": ctx["budget_spent"]})
 
-        # 2. ⚡ 思考先推到前端（只 push 一次，且确保是纯文本）
+        # 2. ⚡ 思考先推到前端（空 thought 自动补上含义）
         thought = decision.get("thought", "")
         if isinstance(thought, dict):
             thought = thought.get("thought", str(thought))
         if not isinstance(thought, str):
             thought = str(thought)
         tool_name = decision.get("tool", "search")
+        if not thought.strip():
+            defaults = {
+                "search": "搜索更多素材以补充信息…",
+                "design": "分析素材，决定叙事形式和文案…",
+                "compose": "优化设计方案和文案…",
+                "render": "生成交互式 HTML 页面…",
+                "verify": "审查生成结果…",
+            }
+            thought = defaults.get(tool_name, f"执行 {tool_name}…")
         if push:
             await push({"type": "thinking", "step": ctx["steps"] + 1, "thought": thought,
                         "tool": tool_name, "budget": ctx["budget_spent"]})

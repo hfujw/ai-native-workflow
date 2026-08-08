@@ -31,12 +31,17 @@ class ResearcherAgent:
         topic: str,
         existing_material: list[dict] | None = None,
         session_records=None,
+        push=None,  # 推给前端的回调（可选）
     ) -> dict:
-        """对外接口——返回 {results, count, level}，orchestrator 无感。"""
+        """对外接口——返回 {results, count, level}。"""
         material = list(existing_material) if existing_material else []
         search_count = 0
 
         # 先试原始词
+        if push:
+            await push({"type": "thinking", "step": 0,
+                        "thought": f"🔍 ResearcherAgent：搜索「{topic}」…",
+                        "tool": "search", "budget": 0})
         result = await tool_search(topic, reason="初始搜索", depth="quick",
                                    existing_material=material)
         material.extend(result.get("results", []))
@@ -44,11 +49,19 @@ class ResearcherAgent:
 
         evaluation = evaluate_material(material, topic)
         if evaluation["level"] == "high":
+            if push:
+                await push({"type": "thinking", "step": 0,
+                            "thought": f"✅ ResearcherAgent：搜索完成，{evaluation['reason']}",
+                            "tool": "search", "budget": 0})
             return self._done(material, evaluation, search_count)
 
         # 换角度重搜（最多 2 次）
         for angle in _ALT_ANGLES[:2]:
             alt_query = f"{topic} {angle}"
+            if push:
+                await push({"type": "thinking", "step": 0,
+                            "thought": f"🔍 ResearcherAgent：换个角度搜「{alt_query}」…",
+                            "tool": "search", "budget": 0})
             result = await tool_search(alt_query, reason=f"换角度: {angle}", depth="quick",
                                        existing_material=material)
             new_count = len(result.get("results", []))
@@ -57,11 +70,18 @@ class ResearcherAgent:
 
             evaluation = evaluate_material(material, topic)
             if evaluation["level"] == "high":
+                if push:
+                    await push({"type": "thinking", "step": 0,
+                                "thought": f"✅ ResearcherAgent：搜索完成，{evaluation['reason']}",
+                                "tool": "search", "budget": 0})
                 return self._done(material, evaluation, search_count)
 
-            # 连续搜空 → 不继续了
             if new_count == 0 and search_count >= 2:
                 break
+        if push:
+            await push({"type": "thinking", "step": 0,
+                        "thought": f"⚠️ ResearcherAgent：搜了 {search_count} 轮，{evaluation['reason']}",
+                        "tool": "search", "budget": 0})
 
         # 向量兜底
         kb_material = await self._vector_fallback(topic)
@@ -112,6 +132,7 @@ class ResearcherAgent:
                     topic=msg.get("topic", ""),
                     existing_material=msg.get("existing_material"),
                     session_records=msg.get("session_records"),
+                    push=msg.get("push"),  # 推消息给前端
                 )
                 await bus.send(msg.get("reply_to", "designer"), {
                     "type": "search_result",
