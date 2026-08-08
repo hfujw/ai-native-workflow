@@ -41,6 +41,8 @@ async def test_daily_budget_cap(limiter):
 
 @pytest.mark.asyncio
 async def test_cost_tracking(limiter):
+    from app.state import state
     await limiter.record_cost(0.10)
     await limiter.record_cost(0.15)
-    assert limiter.stats["daily_spent"] == 0.25
+    spent = float(await state.get("rate:daily_spent") or 0)
+    assert spent == 0.25
