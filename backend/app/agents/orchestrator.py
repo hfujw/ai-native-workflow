@@ -203,9 +203,13 @@ async def orchestrator_node(state: dict) -> dict:
             if not result.get("complete"):
                 ctx["issues"].append("render自动失败：HTML截断")
                 ctx["render_fail_count"] = ctx.get("render_fail_count", 0) + 1
-            # 诚实模式：render 后强制 verify，不让 LLM 再决定
-            if ctx.get("honest_mode") and result.get("complete"):
+                ctx["render_success_streak"] = 0
+            elif result.get("complete"):
+                ctx["render_success_streak"] = ctx.get("render_success_streak", 0) + 1
+            # 诚实模式 或 连续2次render成功还没verify → 强制verify
+            if (ctx.get("honest_mode") or ctx.get("render_success_streak", 0) >= 2) and result.get("complete"):
                 ctx["force_verify"] = True
+                ctx["render_success_streak"] = 0
 
         if tool_name == "verify":
             ctx["passed"] = result.get("passed", False)
