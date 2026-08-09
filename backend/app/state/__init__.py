@@ -10,13 +10,11 @@ from .memory import MemoryBackend
 
 
 def _create_state():
-    """根据 STATE_BACKEND 配置创建对应实例。当前只有 memory，Redis 是未来扩展。"""
+    """根据 STATE_BACKEND 配置创建对应实例。"""
     backend = settings.state_backend
     if backend == "redis":
-        raise NotImplementedError(
-            "RedisBackend 尚未实现（计划在 CUTS.md #7）。"
-            "当前请使用 STATE_BACKEND=memory。"
-        )
+        from .redis import RedisBackend
+        return RedisBackend(url=settings.redis_url)
     return MemoryBackend()
 
 

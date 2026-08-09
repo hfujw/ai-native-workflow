@@ -37,15 +37,15 @@ services:
       retries: 3
       start_period: 30s
 
-  # ── Redis（Phase 2 启用）──
-  # redis:
-  #   image: redis:7-alpine
-  #   restart: unless-stopped
-  #   volumes:
-  #     - redis_data:/data
+  # ── Redis ──
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
 
 volumes:
   caddy_data:
   caddy_config:
   caddy_logs:
-  # redis_data:
+  redis_data:
