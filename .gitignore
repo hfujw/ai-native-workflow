@@ -54,3 +54,6 @@ BRIEFING.md
 STRUCTURE.md
 docs/source-batches/
 gen_kb.py
+*.pdf
+.coverage
+CODE_MAP.md
