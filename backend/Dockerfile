@@ -15,7 +15,8 @@ RUN playwright install chromium
 COPY . .
 
 # 非 root 运行（安全合规，面试加分细节）
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# 注意：Playwright 基础镜像已占用 UID 1000，不能指定 -u 1000（会报 useradd exit 4）
+RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000
