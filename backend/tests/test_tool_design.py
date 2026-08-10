@@ -1,6 +1,9 @@
 """测试 tool_design——用 mock LLM 响应，不调真实 API。"""
-import json, pytest
-from unittest.mock import patch, AsyncMock
+import json
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from app.tools.design import tool_design
 
 

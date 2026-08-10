@@ -4,8 +4,9 @@
 """
 
 import asyncio
-from datetime import date
 import logging
+from datetime import date
+
 from app.state import state
 
 logger = logging.getLogger(__name__)
@@ -31,16 +32,21 @@ class RateLimiter:
         today = str(date.today())
         return int(await state.get(f"rate:{ip}:{today}") or 0)
 
-    @property
-    def stats(self) -> dict:
-        # 同步只读快照——rate_limiter 测试用
-        return {"daily_budget": DAILY_BUDGET, "daily_spent": 0.0, "trials_per_ip": TRIALS_PER_IP}
+    async def stats(self) -> dict:
+        """当前限流状态快照——从 StateBackend 读真实值（P2-7 修复假数据）。"""
+        spent = float(await state.get("rate:daily_spent") or 0)
+        return {"daily_budget": DAILY_BUDGET, "daily_spent": round(spent, 4), "trials_per_ip": TRIALS_PER_IP}
 
     # ── 准入 ──
 
     async def can_generate(self, ip: str) -> tuple[bool, str]:
         if ip in LOCALHOST_IPS:
             return True, ""
+
+        # P2-8: 状态后端不可用（Redis 宕机）→ fail-closed，防限流静默失效烧预算
+        if getattr(state, "available", True) is False:
+            logger.error("状态后端不可用，拒绝放行（fail-closed）")
+            return False, "服务状态存储不可用，请稍后再试"
 
         async with self._lock:
             spent = float(await state.get("rate:daily_spent") or 0)
@@ -66,9 +72,11 @@ class RateLimiter:
         logger.info("IP %s 试用成功 %d/%d", ip, count, TRIALS_PER_IP)
 
     async def record_cost(self, amount: float):
-        spent = float(await state.get("rate:daily_spent") or 0)
-        new_spent = spent + amount
-        await state.set("rate:daily_spent", str(new_spent), ttl=86400)
+        # P2-6: get-then-set 加锁，防并发生成丢花费记录
+        async with self._lock:
+            spent = float(await state.get("rate:daily_spent") or 0)
+            new_spent = spent + amount
+            await state.set("rate:daily_spent", str(new_spent), ttl=86400)
         logger.info("花费 ¥%.4f | 累计 ¥%.4f / ¥%.0f（剩余 ¥%.2f）",
                     amount, new_spent, DAILY_BUDGET, max(0.0, DAILY_BUDGET - new_spent))
 

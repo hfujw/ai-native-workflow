@@ -25,46 +25,29 @@ try:
 except Exception:
     EVENTS = []
 
-_BAGU_PATH = os.path.join(_KB_DIR, "verified_bagu.json")
-BAGU_EVENTS = []
-if os.path.exists(_BAGU_PATH):
-    try:
-        with open(_BAGU_PATH, "r", encoding="utf-8") as f:
-            bagu_data = json.load(f)
-            BAGU_EVENTS = bagu_data.get("events", [])
-        for e in BAGU_EVENTS:
-            _prep_keywords(e)
-    except Exception:
-        pass
+ALL_EVENTS = EVENTS  # 统一话题池——verified_events.json 一个文件，169 条
 
-ALL_EVENTS = EVENTS + BAGU_EVENTS
+
+def _category_match(category: str | None, event: dict) -> bool:
+    """category 过滤——按事件自身的 category 字段；缺失默认 computer_history。"""
+    if category is None:
+        return True
+    return event.get("category", "computer_history") == category
 
 
 def get_all_events(category: str = None) -> list[dict]:
-    """返回示例话题列表。category 可选过滤：'computer_history' / 'bagu' / None(全部)。"""
-    if category == "bagu":
-        return BAGU_EVENTS
-    if category == "computer_history":
-        return EVENTS
-    return ALL_EVENTS
+    """返回示例话题列表（统一池）。category 可选：'computer_history' / 'bagu' / None(全部)。"""
+    return [e for e in ALL_EVENTS if _category_match(category, e)]
 
 
 def get_event_names(category: str = None) -> list[str]:
     """返回话题名列表。"""
-    if category == "bagu":
-        return [_name(e) for e in BAGU_EVENTS]
-    if category == "computer_history":
-        return [_name(e) for e in EVENTS]
-    return [_name(e) for e in ALL_EVENTS]
+    return [_name(e) for e in get_all_events(category)]
 
 
 def get_event_by_keyword(text: str, category: str = None) -> dict | None:
     """关键词匹配。先精确(别名/全名)→再子串(keywords/name)。"""
-    pools = []
-    if category in (None, "computer_history"):
-        pools.extend(EVENTS)
-    if category in (None, "bagu"):
-        pools.extend(BAGU_EVENTS)
+    pools = [e for e in ALL_EVENTS if _category_match(category, e)]
 
     query = text.lower().strip()
     best = None

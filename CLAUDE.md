@@ -1,7 +1,7 @@
 # AI-Native Workflow · 时光像素
 
-> 最后更新：2026-08-08
-> 当前阶段：Phase 1-4 完成（3 Agent + 消息总线），28 tests，架构分层完毕
+> 最后更新：2026-08-11
+> 当前阶段：Phase 1-5 完成（3 Agent + 消息总线 + Redis 状态后端），62 tests，架构分层完毕
 
 ## 项目是什么
 
@@ -22,7 +22,7 @@
 | 搜索 | Tavily（零配置） | 国内可直连，不配 Key 也能跑 |
 | 验证 | Playwright 无头浏览器 | 真执行，不靠猜 |
 | 向量 | ChromaDB + text2vec-base-chinese | "嬴政"→"秦始皇"语义匹配 |
-| 指标 | Prometheus（10 个指标） | /metrics 端点 |
+| 指标 | Prometheus（9 个指标） | /metrics 端点 |
 | 部署 | Docker Compose + Caddy | 自动 HTTPS |
 | Python | venv Python 3.13 | 系统 3.8 不兼容 |
 
@@ -50,14 +50,13 @@
 backend/app/
 ├── main.py                     🚪 FastAPI + WebSocket 入口
 ├── demo.py                     📦 Demo 页面管理
-├── core/                       🧱 config / exceptions / metrics / idempotency
+├── core/                       🧱 config / metrics
 ├── llm/                        🤖 client / parser / circuit_breaker
 ├── network/                    🌐 ws_manager / rate_limiter
 ├── tools/                      🔧 search / design / compose / render / verify
-├── agents/                     🧠 orchestrator / render_agent / evaluate / context
+├── agents/                     🧠 orchestrator / supervisor / message_bus / researcher / designer / render / evaluate
 ├── knowledge/                  📚 kb / vector_store
-├── state/                      💾 base / memory（预留 Redis）
-└── schemas/                    📋 WebSocket Pydantic 模型
+└── state/                      💾 base / memory / redis（STATE_BACKEND 一行切换）
 
 frontend/src/
 ├── App.jsx                     主布局（液态玻璃 + 光标聚光灯）
@@ -66,7 +65,7 @@ frontend/src/
 │   ├── StoryPanel.tsx          生成页面（流式渲染 + 显影动画）
 │   ├── RevealLayer.tsx         光标聚光灯 Canvas mask
 │   ├── SearchBubble.tsx        搜索输入框
-│   ├── EventTags.tsx           33 个示例话题标签云
+│   ├── EventTags.tsx           169 个示例话题标签云
 │   ├── FailureNotice.tsx       失败提示 + demo 引导
 │   └── ErrorBoundary.tsx       React 错误边界
 └── hooks/useWebSocket.js       WebSocket + 断线重连 + 流式接收
@@ -83,16 +82,16 @@ frontend/src/
 7. 预算双控——虚拟 ¥1/次 + 真实 ¥5/天，公网不破产
 8. DecisionLog 是核心产品——AI 思考过程全透明
 9. 流式渲染——contentDocument.write 不频闪
-10. 消息总线——asyncio.Queue 基础设施，Phase 5 换 Redis Stream
+10. 消息总线——asyncio.Queue 基础设施；状态后端 memory/redis 可切换（RedisBackend 已实现）
 
 ## 当前状态
 
 - ✅ 架构分层完毕（7 目录，单向依赖，无循环）
-- ✅ Phase 1-4 完成：ResearcherAgent + DesignerAgent + RenderAgent + MessageBus
-- ✅ 安全加固（输入长度限制 + IP 连接限制 + 日志 30 天 + WS断开取消任务）
+- ✅ Phase 1-5 完成：ResearcherAgent + DesignerAgent + RenderAgent + MessageBus + RedisBackend
+- ✅ 安全加固（输入长度限制 + IP 连接限制 + 日志 30 天 + WS断开取消任务 + XFF 防伪造）
 - ✅ 合规补全（LICENSE MIT + PRIVACY GDPR + SECURITY STRIDE）
-- ✅ 28 tests 全绿
-- 📋 下一步：Phase 5 Redis（StateBackend 已就位，改一行配置即可）
+- ✅ 62 tests 全绿
+- 📋 下一步：Phase 6 面试竞争力（结构化输出 + trace + eval，见 `docs/plans/phase6-interview-plan.md`）
 
 ## 运行
 
@@ -122,7 +121,7 @@ https://github.com/hfujw/ai-native-workflow
 - 没读过的文件，必须先读再改
 
 **改代码后：**
-- 每次改动完立刻跑 `pytest tests/ -v`，28 tests 必须全绿
+- 每次改动完立刻跑 `pytest tests/ -v`，62 tests 必须全绿
 - tests 挂了就停手，修好再继续
 
 **Push 前：**

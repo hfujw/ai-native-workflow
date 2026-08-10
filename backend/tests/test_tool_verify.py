@@ -1,5 +1,6 @@
 """测试 tool_verify——纯规则测试，不需要 mock。"""
 import pytest
+
 from app.tools.verify import tool_verify
 
 
@@ -68,5 +69,5 @@ async def test_verify_passed_with_warning(valid_html):
     result = await tool_verify(html, {})
     # 缺 script 只是 warning，不阻断通过
     has_critical = any(i["severity"] == "critical" for i in result["issues"])
-    # 如果同时缺</html>和<script>可能会有critical
-    assert "</html>" in html  # 只要 html 完整就行
+    assert not has_critical  # 只缺 script → 不该产生 critical 问题
+    assert result["passed"] is True  # 无 critical → 审查必须通过

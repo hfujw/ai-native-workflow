@@ -1,5 +1,6 @@
 """测试 RenderAgent——自检、缓存、空内容短路。"""
 import pytest
+
 from app.agents.render_agent import RenderAgent
 
 

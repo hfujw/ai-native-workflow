@@ -1,9 +1,10 @@
 """LLM 客户端 — DeepSeek API 异步封装。"""
 
+import asyncio
+import logging
 import os
 import time
-import logging
-import asyncio
+
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
@@ -24,22 +25,18 @@ client = AsyncOpenAI(
 
 DEFAULT_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
-_cost_records: list[dict] = []   # 保留全局，作为 fallback
-
-def get_cost_summary(records: list[dict] | None = None) -> dict:
-    """计算费用。传入 records 则计算该列表，否则回退到全局记录。"""
-    target = records if records is not None else _cost_records
-    
-    total_input = sum(r["input_tokens"] for r in target)
-    total_output = sum(r["output_tokens"] for r in target)
+def get_cost_summary(records: list[dict]) -> dict:
+    """计算费用。records 为必传参数——每条 WebSocket 连接独立记账。"""
+    total_input = sum(r["input_tokens"] for r in records)
+    total_output = sum(r["output_tokens"] for r in records)
     cost_input = total_input / 1_000_000 * 3
     cost_output = total_output / 1_000_000 * 6
     return {
-        "calls": len(target),
+        "calls": len(records),
         "total_input_tokens": total_input,
         "total_output_tokens": total_output,
         "estimated_cost_rmb": round(cost_input + cost_output, 4),
-        "records": target[-20:],
+        "records": records[-20:],
     }
 
 
@@ -48,7 +45,7 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
                label: str = "unknown") -> str:
     """异步单轮对话，含自动重试。
 
-    session_records: 传入则写入该会话独立账本，不污染全局记录。
+    session_records: 传入则写入该会话独立账本；不传则不记账（已无全局账本）。
     label: Prometheus 指标的 tool 标签（如 "decide"/"render"），用于按工具统计延迟。
     """
     messages = []
@@ -88,20 +85,17 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
                     "output_tokens": usage.completion_tokens,
                     "model": model or DEFAULT_MODEL,
                 }
-                # 有会话账本写会话账本，否则回退到全局
+                # 会话账本：传入才记账；不传则不记（不再有全局账本）
                 if session_records is not None:
                     session_records.append(entry)
-                else:
-                    _cost_records.append(entry)
+                    logger.info("LLM tokens: in=%d out=%d total=%d | 累计¥%.4f",
+                                usage.prompt_tokens, usage.completion_tokens,
+                                usage.total_tokens,
+                                get_cost_summary(session_records)["estimated_cost_rmb"])
                 # Prometheus 指标
-                from app.core.metrics import LLM_REQUESTS, LLM_LATENCY
+                from app.core.metrics import LLM_LATENCY, LLM_REQUESTS
                 LLM_LATENCY.labels(tool=label).observe(time.monotonic() - t0)
                 LLM_REQUESTS.labels(status="success", tool=label).inc()
-
-                logger.info("LLM tokens: in=%d out=%d total=%d | 累计¥%.4f",
-                            usage.prompt_tokens, usage.completion_tokens,
-                            usage.total_tokens,
-                            get_cost_summary(session_records)["estimated_cost_rmb"])
             return content
 
         except Exception as e:
@@ -113,7 +107,7 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
                 await asyncio.sleep(wait)
             else:
                 logger.error("LLM call failed after %d attempts: %s", MAX_RETRIES + 1, e)
-                from app.core.metrics import LLM_REQUESTS, LLM_LATENCY
+                from app.core.metrics import LLM_LATENCY, LLM_REQUESTS
                 LLM_LATENCY.labels(tool=label).observe(time.monotonic() - t0)
                 LLM_REQUESTS.labels(status="error", tool=label).inc()
 
@@ -184,7 +178,7 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
         if completion_tokens == 0:
             completion_tokens = max(1, completion_chars // 4)
 
-        # 记账：写入独立账本或全局记录
+        # 记账：传入会话账本才记；不传则不记（不再有全局账本）
         entry = {
             "input_tokens": prompt_tokens,
             "output_tokens": completion_tokens,
@@ -192,20 +186,19 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
         }
         if session_records is not None:
             session_records.append(entry)
-        else:
-            _cost_records.append(entry)
 
         # Prometheus 埋点
-        from app.core.metrics import LLM_REQUESTS, LLM_LATENCY
+        from app.core.metrics import LLM_LATENCY, LLM_REQUESTS
         LLM_LATENCY.labels(tool=label).observe(_time.monotonic() - t0)
         LLM_REQUESTS.labels(status="success", tool=label).inc()
 
-        logger.info("LLM stream tokens: in=%d out=%d total=%d | 累计¥%.4f",
-                    prompt_tokens, completion_tokens, total_tokens,
-                    get_cost_summary(session_records)["estimated_cost_rmb"])
+        if session_records is not None:
+            logger.info("LLM stream tokens: in=%d out=%d total=%d | 累计¥%.4f",
+                        prompt_tokens, completion_tokens, total_tokens,
+                        get_cost_summary(session_records)["estimated_cost_rmb"])
 
     except Exception:
-        from app.core.metrics import LLM_REQUESTS, LLM_LATENCY
+        from app.core.metrics import LLM_LATENCY, LLM_REQUESTS
         LLM_LATENCY.labels(tool=label).observe(_time.monotonic() - t0)
         LLM_REQUESTS.labels(status="error", tool=label).inc()
         raise

@@ -1,9 +1,9 @@
 """WebSocket 连接管理器。"""
 
-from fastapi import WebSocket
-from typing import Dict
 import json
 import logging
+
+from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +13,8 @@ MAX_CONNECTIONS = 20
 class WSManager:
     def __init__(self):
         """建立通讯本"""
-        self.connections: Dict[str, WebSocket] = {}
-        self._ip_counts: Dict[str, int] = {}  # IP → 当前连接数
+        self.connections: dict[str, WebSocket] = {}
+        self._ip_counts: dict[str, int] = {}  # IP → 当前连接数
 
     @property
     def active_count(self) -> int:

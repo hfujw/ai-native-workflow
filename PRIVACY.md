@@ -11,7 +11,7 @@
 |---------|---------|------|
 | 用户输入 | 搜索框中输入的主题（如"秦始皇修长城"）| 发送给 AI 模型生成 HTML 页面 |
 | 自动日志 | IP 地址、请求时间、session ID、LLM token 消耗量 | 限流、成本控制、故障排查 |
-| 生成内容 | AI 生成的 HTML 页面内容 | 调试生成质量，不用于其他目的 |
+| 生成内容 | AI 生成的 HTML 页面内容（仅内存展示，**不持久化**） | 请求结束后即丢弃，不用于其他目的 |
 
 ## 不收集的数据
 
@@ -36,7 +36,7 @@
 | 日志文件（含 IP、主题、LLM token）| `backend/logs/detail.log` | 30 天（每天午夜轮转，`TimedRotatingFileHandler`，保留 30 个备份） |
 | 生成的 HTML | 服务端内存（不持久化）| 请求结束后丢弃 |
 | Demo 页面 HTML | `backend/demos/` | 手动管理 |
-| 限流计数器 | 内存 | 每天 00:00 重置 |
+| 限流计数器 | 内存（MemoryBackend）或 Redis（`STATE_BACKEND=redis`） | 按日期键（`rate:{ip}:{日期}`）自然过期 |
 
 ## 用户权利
 
@@ -47,7 +47,7 @@
 - **知情权**：了解您的数据如何被使用
 
 如需行使上述权利，请联系：
-- 邮箱：hfujw@users.noreply.github.com
+- 邮箱：`<TODO: 替换为真实可回复邮箱>`（`users.noreply.github.com` 是退信地址，无法兑现访问权/删除权承诺）
 - 响应时间：30 天内
 
 ## 安全措施
@@ -62,7 +62,7 @@
 
 ## 联系
 
-如有隐私相关问题，请联系：hfujw@users.noreply.github.com
+如有隐私相关问题，请联系：`<TODO: 替换为真实可回复邮箱>`
 
 ---
 

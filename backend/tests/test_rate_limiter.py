@@ -1,6 +1,7 @@
 """测试 RateLimiter — IP 限流 + 日预算帽。"""
 import pytest
-from app.network.rate_limiter import RateLimiter, LOCALHOST_IPS
+
+from app.network.rate_limiter import RateLimiter
 
 
 @pytest.fixture

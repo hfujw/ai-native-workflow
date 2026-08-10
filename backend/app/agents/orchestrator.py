@@ -10,12 +10,13 @@
 import asyncio
 import json
 import logging
-from app.core.config import settings
-from app.llm.client import chat_stream
-from app.llm.parser import strip_fence, clean_thought
-from app.tools import TOOL_COST
-from app.knowledge.kb import get_event_by_keyword, event_to_search_results, _name
+
 from app.agents.evaluate import evaluate_material
+from app.core.config import settings
+from app.knowledge.kb import _name, event_to_search_results, get_event_by_keyword
+from app.llm.client import chat_stream
+from app.llm.parser import clean_thought, strip_fence
+from app.tools import TOOL_COST
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +186,9 @@ async def orchestrator_node(state: dict) -> dict:
         ctx["steps"] += 1
         ctx["tool_history"].append({"step": ctx["steps"], "thought": thought,
                                      "tool": tool_name, "result_summary": _summarize(result)})
+        # 同一工具连续 3 次 → 强制换策略（喂给下一次 _decide）
+        recent_tools = [h["tool"] for h in ctx["tool_history"][-3:]]
+        ctx["force_strategy_change"] = len(recent_tools) == 3 and len(set(recent_tools)) == 1
         if push:
             await push({"type": "tool_result", "step": ctx["steps"], "tool": tool_name,
                         "summary": _summarize(result), "budget": ctx["budget_spent"]})
@@ -201,7 +205,8 @@ async def orchestrator_node(state: dict) -> dict:
         # 6. 硬检查
         if tool_name == "render":
             if not result.get("complete"):
-                ctx["issues"].append("render自动失败：HTML截断")
+                ctx["issues"].append({"severity": "critical", "category": "incomplete",
+                                      "description": "render自动失败：HTML截断"})
                 ctx["render_fail_count"] = ctx.get("render_fail_count", 0) + 1
                 ctx["render_success_streak"] = 0
             elif result.get("complete"):
@@ -291,7 +296,7 @@ async def _decide(ctx: dict) -> dict:
     if ctx['issues']:
         issues_detail = "\n".join(
             f"  - [{i.get('severity','?')}] {i.get('description','')[:100]}"
-            for i in ctx['issues'][:3]
+            for i in ctx['issues'][:3] if isinstance(i, dict)
         )
 
     summary = f"""用户想了解的具体主题：{ctx['user_input']}
@@ -356,7 +361,7 @@ async def _execute_tool(tool_name: str, params: dict, ctx: dict) -> dict:
     ctx["budget_spent"] += cost
 
     from app.agents.supervisor import dispatch
-    result = await dispatch(ctx, tool_name)
+    result = await dispatch(ctx, tool_name, params)
 
     # ctx 更新（每种工具的副作用，Supervisor 不处理）
     if tool_name == "search":

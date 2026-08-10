@@ -4,7 +4,6 @@
 orchestrator 只在预算/步数耗尽时兜底。
 """
 
-import pytest
 
 
 # ── 辅助函数（模拟 orchestrator 的决策处理） ──

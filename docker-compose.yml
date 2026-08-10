@@ -1,5 +1,7 @@
 # 一键启动：docker-compose up -d
 # 一键停止：docker-compose down
+#
+# 注意：前端需先构建一次，否则 Caddy 挂载的 dist 为空 → cd frontend && npm run build
 
 version: "3.8"
 
@@ -26,10 +28,13 @@ services:
       - "8000"
     env_file:
       - ./backend/.env
+    environment:
+      - TRUST_PROXY=true   # 只经 Caddy 反代可达，XFF 可信
     volumes:
-      - ./backend/logs:/app/logs          # 日志持久化
-      - ./backend/demos:/app/demos        # demo HTML 持久化
-      - ./backend/data:/app/data          # SQLite + ChromaDB 持久化
+      - ./backend/logs:/app/logs              # 日志持久化
+      - ./backend/demos:/app/demos            # demo HTML 持久化
+      - ./backend/data:/app/data              # SQLite（预留）
+      - ./backend/chroma_data:/app/chroma_data # ChromaDB 持久化（vector_store 写 ./chroma_data）
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 30s

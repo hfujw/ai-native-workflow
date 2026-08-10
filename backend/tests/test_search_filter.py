@@ -1,5 +1,4 @@
 """测试 _filter_noise — 搜索结果的广告过滤。"""
-import pytest
 from app.tools import _filter_noise
 
 

@@ -1,5 +1,4 @@
 """测试 evaluate_material — 素材相关性评估。"""
-import pytest
 from app.agents.evaluate import evaluate_material
 
 

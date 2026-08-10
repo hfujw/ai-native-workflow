@@ -1,5 +1,4 @@
 """测试 strip_fence — 各种 LLM 输出格式。"""
-import pytest
 from app.llm.parser import strip_fence
 
 

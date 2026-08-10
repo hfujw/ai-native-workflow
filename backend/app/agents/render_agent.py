@@ -12,8 +12,8 @@ import logging
 import time
 from typing import ClassVar
 
-from app.tools.render import tool_render_stream
 from app.llm.parser import strip_fence
+from app.tools.render import tool_render_stream
 
 logger = logging.getLogger(__name__)
 

@@ -5,9 +5,10 @@
 """
 
 import logging
-from app.tools.search import tool_search
+
 from app.agents.evaluate import evaluate_material
 from app.knowledge.kb import get_event_by_keyword
+from app.tools.search import tool_search
 
 logger = logging.getLogger(__name__)
 

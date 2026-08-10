@@ -12,7 +12,7 @@
 | 风险 | 当前状态 | 修复 |
 |------|---------|------|
 | 无用户认证——任何人可访问 WebSocket | ⚠️ 接受风险。项目设计为公开 Demo，加登录会阻止面试官试用 | IP 限流已作为替代方案 |
-| X-Forwarded-For 可伪造 | ✅ `_get_client_ip` 取第一个 IP，反向代理场景正确 | 信任反向代理配置 |
+| X-Forwarded-For 可伪造 | ✅ `TRUST_PROXY` 门控（默认关闭）+ 取 XFF **最后一个** IP（Caddy 追加的真实客户端 IP），客户端伪造值被忽略 | 仅 Caddy 反代后开 `TRUST_PROXY=true`（docker-compose 已配） |
 | session_id 可预测（uuid4 前 8 位） | ⚠️ 碰撞概率 $2^{-32}$，单机场景可接受 | 未来多 worker → 完整 UUID |
 
 ### 2. Tampering（篡改）
@@ -39,8 +39,8 @@
 | 日志记录用户输入（topic）| ⚠️ `logger.info("新请求 | topic=%s")` | 接受——需要用于排查 |
 | 错误信息泄露堆栈 | ✅ `_friendly_error` 映射到用户友好信息 | 不暴露技术细节 |
 | API Key 直接可读 | ⚠️ 任何能 SSH 的人都能读 `.env` | 生产用 Docker secrets / 环境变量 |
-| `/api/cost` 暴露 API 消耗 | ⚠️ 任何人可查 | 改为仅 localhost 可访问 |
-| `/metrics` 暴露 Prometheus | ⚠️ 任何人可查 | 加 IP 白名单或 Basic Auth |
+| `/api/cost` 暴露 API 消耗 | ✅ 已删除（2026-08-11，无全局账本，成本统计走 Prometheus） | — |
+| `/metrics` 暴露 Prometheus | ✅ Caddy 已限制内网 IP（见 Caddyfile `handle /metrics`） | — |
 
 ### 5. Denial of Service（拒绝服务）
 
@@ -60,8 +60,8 @@
 | 风险 | 当前状态 | 修复 |
 |------|---------|------|
 | 无 admin 接口 | ✅ 无认证体系 → 无提权风险 | — |
-| `/metrics` 端点可被任何人访问 | ⚠️ | P2：加 IP 白名单 |
-| `/api/cost` 端点可被任何人访问 | ⚠️ | P2：限制为 localhost |
+| `/metrics` 端点 | ✅ Caddy 已限内网 IP（仅 127.0.0.1/内网段可访问） | — |
+| `/api/cost` 端点 | ✅ 已删除 | — |
 
 ---
 
@@ -82,11 +82,11 @@
 - [x] **日志保留策略**：30 天自动清理（TimedRotatingFileHandler）
 - [x] **LICENSE 文件**：MIT 标准文本
 - [x] **PRIVACY.md**：数据收集说明
-- [ ] **`/metrics` 端点加 IP 白名单**
+- [x] **`/metrics` 端点加 IP 白名单**（Caddyfile 已实现——仅内网 IP 可访问）
 
 ### P2 - 排期
 
-- [ ] **`/api/cost` 限制 localhost 访问**
+- [x] **`/api/cost` 已删除**（2026-08-11）
 - [ ] **完整 UUID 替代 8 位前缀**
 - [ ] **用户数据删除端点**
 
@@ -105,6 +105,6 @@
 
 ## 报告漏洞
 
-如发现安全漏洞，请邮件至：`hfujw@users.noreply.github.com`
+如发现安全漏洞，请邮件至：`<TODO: 替换为真实可回复邮箱>`（注意：`users.noreply.github.com` 是退信地址，不能用于安全联系）
 
 响应时间：72 小时内确认，30 天内修复。

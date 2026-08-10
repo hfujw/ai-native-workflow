@@ -1,9 +1,9 @@
 """AI-Native Workflow — FastAPI 入口。"""
 
 import logging
-from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
-import sys
 import os
+import sys
+from logging.handlers import TimedRotatingFileHandler
 
 # ═══════════════════════════════════════════════════════════════
 # 日志系统 — 必须在所有业务 import 之前配置，防止被 uvicorn 抢占
@@ -14,8 +14,10 @@ os.makedirs(LOG_DIR, exist_ok=True)
 root = logging.getLogger()
 root.setLevel(logging.DEBUG)
 for h in list(root.handlers):
-    try: h.close()
-    except: pass
+    try:
+        h.close()
+    except Exception:
+        pass
     root.removeHandler(h)
 
 # 终端：INFO 及以上 → stdout
@@ -43,15 +45,17 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════
 # 业务 import
 # ═══════════════════════════════════════════════════════════════
-import uuid
 import asyncio
+import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.llm.client import get_cost_summary
-from app.network.ws_manager import ws_manager
 from app.network.rate_limiter import rate_limiter
-from contextlib import asynccontextmanager
+from app.network.ws_manager import ws_manager
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -80,7 +84,8 @@ from app.knowledge.kb import get_all_events
 async def health():
     """启动时本地校验 + 运行时依赖状态。不发真实 LLM 请求（避免冷启动慢 + 消耗 Token）。"""
     import os as _os
-    from app.demo import DEMOS_DIR, DEMO_TOPICS
+
+    from app.demo import DEMO_TOPICS, DEMOS_DIR
 
     checks = {}
 
@@ -135,12 +140,6 @@ async def health_ready():
     }
 
 
-@app.get("/api/cost")
-async def get_cost():
-    """返回 LLM 调用花费统计。"""
-    return get_cost_summary()
-
-
 @app.get("/api/events")
 async def list_events(category: str = None):
     """返回示例话题列表。category 可选过滤：'computer_history' / 'bagu' / 不传=全部。"""
@@ -176,17 +175,24 @@ def _friendly_error(e: Exception) -> str:
 # ── 工具函数 ──
 
 def _get_client_ip(websocket: WebSocket) -> str:
-    """从 WebSocket 获取真实客户端 IP。支持反向代理（nginx/caddy）场景。"""
-    forwarded = websocket.headers.get("x-forwarded-for", "")
-    if forwarded:
-        # X-Forwarded-For 可能包含多个 IP，取第一个（原始客户端）
-        return forwarded.split(",")[0].strip()
+    """从 WebSocket 获取真实客户端 IP。
+
+    仅在配置了反向代理（TRUST_PROXY=true，如 docker-compose + Caddy）时信任
+    X-Forwarded-For，否则直接取 TCP 对端 IP——防止客户端伪造 XFF 绕过 IP 限流。
+    取最后一个值：Caddy 会把真实客户端 IP 追加到 XFF 末尾，客户端塞在开头的伪造值被忽略。
+    """
+    from app.core.config import settings
+    if settings.trust_proxy:
+        forwarded = websocket.headers.get("x-forwarded-for", "")
+        if forwarded:
+            return forwarded.split(",")[-1].strip()
     return websocket.client.host if websocket.client else "unknown"
 
 
-from app.demo import DEMO_TOPICS, load_demo_html
-from app.core.metrics import metrics_text
 from fastapi import Response
+
+from app.core.metrics import metrics_text
+from app.demo import DEMO_TOPICS, load_demo_html
 
 
 @app.get("/metrics")
@@ -214,7 +220,7 @@ async def list_demos():
 @app.get("/api/rate-limit")
 async def get_rate_limit():
     """返回当前费率限制状态（供前端展示剩余次数）。"""
-    return rate_limiter.stats
+    return await rate_limiter.stats()
 
 
 @app.websocket("/ws/generate")
@@ -341,7 +347,7 @@ async def generate_page(websocket: WebSocket):
         # 记录花费（在生成结束后累加，用于日预算帽）
         await rate_limiter.record_cost(cost["estimated_cost_rmb"])
 
-        from app.core.metrics import GENERATIONS, GENERATION_DURATION, GENERATION_STEPS
+        from app.core.metrics import GENERATION_DURATION, GENERATION_STEPS, GENERATIONS
         GENERATIONS.labels(status=result.get("status", "unknown")).inc()
         if t_start:
             GENERATION_DURATION.observe(_time.monotonic() - t_start)
@@ -357,7 +363,7 @@ async def generate_page(websocket: WebSocket):
             issues = result.get("issues", [])
             detail = ""
             if issues:
-                issue_texts = [f"· {i.get('description', str(i))}" for i in issues[:3]]
+                issue_texts = [f"· {i.get('description', str(i))}" for i in issues[:99] if isinstance(i, dict)]
                 detail = "。具体问题：\n" + "\n".join(issue_texts)
             await ws_manager.send_failed(
                 session_id,

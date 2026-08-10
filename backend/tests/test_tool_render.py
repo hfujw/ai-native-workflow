@@ -1,6 +1,8 @@
 """测试 tool_render——用 mock LLM 响应。"""
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock
+
 from app.tools.render import tool_render
 
 

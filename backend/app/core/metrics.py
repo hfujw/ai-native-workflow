@@ -4,7 +4,7 @@
 暴露为 /metrics 端点，Prometheus 生态直接采集。
 """
 
-from prometheus_client import Counter, Histogram, Gauge, generate_latest
+from prometheus_client import Counter, Gauge, Histogram, generate_latest
 
 # ── LLM 调用 ──
 
@@ -21,17 +21,17 @@ LLM_LATENCY = Histogram(
     buckets=[1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0],
 )
 
-LLM_TOKENS = Counter(
-    "llm_tokens_total",
-    "Total tokens consumed",
-    ["direction", "tool"],  # direction: input|output
-)
-
 # ── WebSocket ──
 
 WS_CONNECTIONS = Gauge(
     "ws_connections_active",
     "Current active WebSocket connections",
+)
+
+STATE_BACKEND = Gauge(
+    "state_backend_available",
+    "State backend availability (1=available, 0=down)",
+    ["backend"],
 )
 
 # ── 生成全链路 ──

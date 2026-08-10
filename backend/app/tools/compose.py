@@ -2,6 +2,7 @@
 
 import json
 import logging
+
 from app.llm.client import chat_json
 from app.llm.parser import strip_fence
 

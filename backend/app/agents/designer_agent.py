@@ -5,8 +5,9 @@
 """
 
 import logging
-from app.tools.design import tool_design
+
 from app.tools.compose import tool_compose
+from app.tools.design import tool_design
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +45,9 @@ class DesignerAgent:
                                     "tool": "design", "budget": 0})
                     bus.register("designer")
                     bus.register("researcher")
-                    from app.agents.researcher_agent import ResearcherAgent
                     import asyncio
+
+                    from app.agents.researcher_agent import ResearcherAgent
                     listener = asyncio.create_task(ResearcherAgent().listen(bus))
                     await bus.send("researcher", {
                         "type": "search_request",

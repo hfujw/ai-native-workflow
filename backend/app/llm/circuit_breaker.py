@@ -4,8 +4,8 @@
 连续 3 次失败 → 熔断 30 秒 → 试一次 → 成功恢复，失败继续熔断
 """
 
-import time
 import logging
+import time
 from enum import Enum
 
 logger = logging.getLogger(__name__)

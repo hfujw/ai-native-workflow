@@ -1,7 +1,7 @@
 # 多 Agent 演化全景
 
-> Phase 1-4 已完成 ✅ | Phase 5 待 Redis  
-> Phase 1 已单独成文档：`docs/multi-agent-phase1-render.md`
+> Phase 1-5 已完成 ✅ | Redis 已实现（StateBackend 一行切换：STATE_BACKEND=redis）  
+> Phase 1 已单独成文档：`docs/records/multi-agent-phase1-render.md`
 
 ---
 

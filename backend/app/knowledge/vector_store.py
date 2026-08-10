@@ -1,14 +1,15 @@
 """向量语义检索 — ChromaDB + 中文 embedding 模型。
 
-将 33 个本地话题做 embedding，搜的时候比较语义相似度。
+将 169 个本地示例话题做 embedding，搜的时候比较语义相似度。
 "嬴政" 能匹配到 "秦始皇"——关键词做不到的，向量能做到。
 
 中文模型 shibing624/text2vec-base-chinese：专门为中文语义训练。
 通过 HF 镜像（hf-mirror.com）下载，国内无需代理。首次下载 ~400MB。
 """
 
-import os
 import logging
+import os
+
 from .kb import ALL_EVENTS, _name
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,7 @@ def _get_collection():
 
 
 def _init_data(collection):
-    """把 33 个话题写入向量库——只跑一次。"""
+    """把全部示例话题写入向量库——只跑一次。"""
     ids, docs, metadatas = [], [], []
     for i, event in enumerate(ALL_EVENTS):
         title = _name(event)

@@ -52,9 +52,3 @@ class MessageBus:
             return await q.get()
         except asyncio.TimeoutError:
             return None
-
-    async def broadcast(self, msg: dict, exclude: str = ""):
-        """给所有已注册 Agent 发消息。exclude 排除自己。"""
-        for name, q in self._queues.items():
-            if name != exclude:
-                await q.put(msg)

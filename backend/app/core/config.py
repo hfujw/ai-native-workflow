@@ -4,9 +4,10 @@
 不再各自读 os.getenv() 或硬编码常量。
 """
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, field_validator
 from functools import lru_cache
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -41,6 +42,7 @@ class Settings(BaseSettings):
     # ── 安全 ──
     input_max_length: int = Field(500, ge=10, le=2000, description="用户输入最大长度（字符）")
     max_connections_per_ip: int = Field(3, ge=1, le=20, description="单 IP 最大并发连接数")
+    trust_proxy: bool = Field(False, description="是否信任反向代理的 X-Forwarded-For 头（docker-compose + Caddy 部署时设 true，防止伪造 XFF 绕过限流）")
 
     # ── 日志 ──
     log_prompts: bool = Field(False, description="是否在日志中记录完整 prompt（调试用）")

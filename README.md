@@ -7,7 +7,7 @@
 ![Python](https://img.shields.io/badge/python-3.13-blue)
 ![FastAPI](https://img.shields.io/badge/fastapi-0.141-green)
 ![React](https://img.shields.io/badge/react-18-blue)
-![Tests](https://img.shields.io/badge/tests-28%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-62%20passed-brightgreen)
 
 ---
 
@@ -44,6 +44,13 @@ flowchart TD
 ```
 
 **硬边界**（LLM 不能突破）：最多 20 步 · 预算 ¥1 · 搜索 ≤8 次 · render 后必须 verify · 连续 2 次 verify 失败强制终止。
+
+---
+
+## 演示
+
+> TODO：加两张图——① 生成页面的效果截图（液态玻璃 UI）② DecisionLog 思考轨迹动图。
+> 这是视觉产品，图比文字有说服力。放 `docs/screenshot.png` 后用 Markdown 引用即可。
 
 ---
 
@@ -109,9 +116,7 @@ backend/app/
 │
 ├── core/                       🧱 基础设施
 │   ├── config.py               集中配置（pydantic-settings）
-│   ├── exceptions.py           异常体系（AppError → 6 子类）
-│   ├── metrics.py              10 个 Prometheus 指标
-│   └── idempotency.py          幂等键中间件（防重复生成）
+│   └── metrics.py              9 个 Prometheus 指标
 │
 ├── llm/                        🤖 LLM 层
 │   ├── client.py               chat / chat_json / chat_stream
@@ -136,22 +141,19 @@ backend/app/
 │   ├── render_agent.py         Phase 1：自检 + 缓存 + 重试
 │   ├── supervisor.py           Phase 4：消息总线编排器
 │   ├── message_bus.py          Phase 4：asyncio.Queue 消息总线
-│   ├── evaluate.py             素材评估（非 LLM 判定）
-│   └── context.py              AgentState 定义
+│   └── evaluate.py             素材评估（非 LLM 判定）
 │
 ├── knowledge/                  📚 知识库
-│   ├── kb.py                   33 个示例话题 + 关键词匹配
+│   ├── kb.py                   169 个示例话题 + 关键词匹配
 │   └── vector_store.py         ChromaDB 语义向量检索
 │
-├── state/                      💾 存储抽象（预留）
-│   ├── base.py                 StateBackend ABC
-│   └── memory.py               MemoryBackend 实现
-│
-└── schemas/                    📋 消息模型
-    └── websocket.py            Pydantic WebSocket 校验
+└── state/                      💾 存储抽象（memory / redis 一行切换）
+    ├── base.py                 StateBackend ABC
+    ├── memory.py               MemoryBackend（单机）
+    └── redis.py                RedisBackend（多实例共享，STATE_BACKEND=redis）
 
 backend/demos/                  预生成 HTML
-backend/tests/                  28 个 pytest 用例
+backend/tests/                  62 个 pytest 用例
 
 frontend/src/
 ├── App.jsx                     主布局（液态玻璃 + 光标聚光灯）
@@ -159,7 +161,7 @@ frontend/src/
 │   ├── DecisionLog.tsx         AI 思考流程（步骤进度线 + 实时滚动）
 │   ├── StoryPanel.tsx          生成页面展示（显影动画 + 流式渲染）
 │   ├── SearchBubble.tsx        搜索输入框
-│   ├── EventTags.tsx           33 个示例话题标签云
+│   ├── EventTags.tsx           169 个示例话题标签云
 │   ├── RevealLayer.tsx         光标聚光灯 Canvas mask
 │   ├── FailureNotice.tsx       失败提示 + demo 引导
 │   └── ErrorBoundary.tsx       React 错误边界
@@ -208,7 +210,8 @@ docker-compose.yml              一键部署
 | `GENERATION_TIMEOUT` | 300 | 单次生成超时（秒） |
 | `LOG_RETENTION_DAYS` | 30 | 日志保留天数 |
 | `LOG_PROMPTS` | 0 | 设为 1 记录完整 prompt（调试用） |
-| `STATE_BACKEND` | memory | memory / redis（Phase 5） |
+| `STATE_BACKEND` | memory | memory / redis（RedisBackend 已实现） |
+| `TRUST_PROXY` | false | 是否信任反向代理的 XFF 头（docker-compose + Caddy 部署时设 true） |
 
 ---
 

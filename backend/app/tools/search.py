@@ -1,6 +1,7 @@
 """工具 1: search — 搜素材。Tavily → 空返回 → LLM 用自身知识兜底。"""
 
 import logging
+
 import httpx
 
 logger = logging.getLogger(__name__)

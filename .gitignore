@@ -29,33 +29,23 @@ _last_failed_game.html
 *.jpg
 *.jpeg
 
-# ── 源码dump & 生成脚本 ──
-project-source-full.txt
-gen_kb.py
-
 # ── 大文件 ──
 frontend/public/bg.mp4
-
-# ── 旧前端实验 ──
-lithos-replica/
-frontend-demo/
-frontend-demo-v2/
 
 # ── 工具状态（不提交）──
 .claude/
 .agents/
 .playwright-mcp/
-skills-lock.json
 
 # ── 本地复习 & 临时文件 ──
+docs/archive/
+docs/source-batches/
 BRIEFING.md
 STRUCTURE.md
 CODE_MAP.md
 RELATIONS.md
 FULL_TRACE.md
-docs/source-batches/
 *.pdf
-*fname*
 
 # ── IDE ──
 .vscode/

@@ -1,0 +1,24 @@
+# ruff 配置 —— 显式声明 lint 策略
+#
+# 为什么存在：新版 ruff 无配置时启用全量规则（BLE001/RUF013/DTZ 等），
+# 对本项目"降级兜底式 except Exception"的写法是误伤。
+# 显式声明规则集 = 有意的工程决策，而不是让 CI 静默失败。
+#
+# 规则集选择：
+#   E   pycodestyle 错误（含 E722 bare-except 等真实问题）
+#   F   pyflakes 未使用导入/变量（真实错误）
+#   I   import 排序（可读性）
+#   W   pycodestyle 空白警告
+# 忽略：
+#   E501 行长——中文注释多，不设行长上限
+
+[lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[lint.isort]
+known-first-party = ["app"]
+
+[lint.per-file-ignores]
+# main.py：日志系统必须在任何业务 import 之前配置，import 有意下移——E402 是设计使然，不是疏漏
+"backend/app/main.py" = ["E402"]

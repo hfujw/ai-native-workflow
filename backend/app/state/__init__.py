@@ -6,6 +6,7 @@
 """
 
 from app.core.config import settings
+
 from .memory import MemoryBackend
 
 

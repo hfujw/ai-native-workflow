@@ -1,6 +1,9 @@
 """测试 tool_compose——用 mock LLM 响应。"""
-import json, pytest
-from unittest.mock import patch, AsyncMock
+import json
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from app.tools.compose import tool_compose
 
 
