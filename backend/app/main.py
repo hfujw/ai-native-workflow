@@ -154,6 +154,7 @@ async def list_events(category: str = None):
         })
     return {"events": result, "total": len(result)}
 
+# ── 工具函数 ──
 
 def _friendly_error(e: Exception) -> str:
     """将原始异常映射为用户可理解的错误信息，避免泄漏技术细节。"""

@@ -65,6 +65,7 @@ class WSManager:
             except Exception as e:
                 logger.debug("关闭旧连接失败: %s", e)
 
+        #同意Websocket链接
         await websocket.accept()
         self.connections[session_id] = websocket
         logger.debug("WebSocket 已连接 [%s]（当前 %d 个连接）", session_id, len(self.connections))
