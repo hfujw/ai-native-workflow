@@ -3,6 +3,7 @@
 import logging
 import os
 import sys
+import time
 from logging.handlers import TimedRotatingFileHandler
 
 # ═══════════════════════════════════════════════════════════════
@@ -49,8 +50,9 @@ import asyncio
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from app.llm.client import get_cost_summary
 from app.network.rate_limiter import rate_limiter
@@ -189,6 +191,18 @@ def _get_client_ip(websocket: WebSocket) -> str:
     return websocket.client.host if websocket.client else "unknown"
 
 
+# ── Phase C：偏好提取 ──
+_PREF_KEYWORDS = ["暗色", "深色", "浅色", "亮色", "极简", "复古", "现代", "黑金", "水墨"]
+
+
+def _extract_preferences(design: dict | None, content: dict | None) -> dict:
+    """从生成结果抽取偏好信号（风格关键词 + 组件偏好）。"""
+    vh = (design or {}).get("visual_hint", "") or ""
+    hints = [k for k in _PREF_KEYWORDS if k in vh]
+    comps = (design or {}).get("components", []) or []
+    return {"style_hints": hints[:5], "preferred_components": comps[:3]}
+
+
 from fastapi import Response
 
 from app.core.metrics import metrics_text
@@ -221,6 +235,105 @@ async def list_demos():
 async def get_rate_limit():
     """返回当前费率限制状态（供前端展示剩余次数）。"""
     return await rate_limiter.stats()
+
+
+@app.get("/api/eval")
+async def get_eval():
+    """返回评测报告（由 scripts/eval_run.py 生成）。没跑过返回占位。"""
+    import json as _json
+    report_path = os.path.join("data", "eval_report.json")
+    try:
+        with open(report_path, encoding="utf-8") as f:
+            return _json.load(f)
+    except (FileNotFoundError, _json.JSONDecodeError):
+        return {"status": "not_run",
+                "message": "评测还没跑过——用 `cd backend && ..\\venv\\Scripts\\python scripts/eval_run.py` 生成"}
+
+
+# ═══════════════════════════════════════════════════════════════
+# Phase E: REST API（程序化调用——demo → 系统）
+# ═══════════════════════════════════════════════════════════════
+
+class _GenerateRequest(BaseModel):
+    topic: str
+
+
+class _PreferenceRequest(BaseModel):
+    style_hints: list[str] = []
+    preferred_components: list[str] = []
+
+
+@app.post("/api/generate")
+async def generate_api(req: _GenerateRequest, request: Request):
+    """程序化生成——POST 一个话题，同步返回 HTML（复用 orchestrator，无 WS）。"""
+    from app.core.config import settings
+    topic = req.topic.strip()
+    if not topic or len(topic) > settings.input_max_length:
+        return {"error": f"话题不能为空且不超过 {settings.input_max_length} 字"}, 400
+
+    # 限流（REST 也受 IP 试用/日预算约束）
+    ip = request.client.host if request.client else "unknown"
+    allowed, reason = await rate_limiter.can_generate(ip)
+    if not allowed:
+        return {"error": reason}, 429
+
+    session_id = str(uuid.uuid4())[:8]
+    records: list[dict] = []
+    from app.agents.orchestrator import orchestrator_node
+    result = await orchestrator_node({
+        "session_id": session_id, "user_input": topic,
+        "_push": None, "_cost_records": records, "_preferences": {},
+    })
+    cost = get_cost_summary(records)["estimated_cost_rmb"]
+    await rate_limiter.record_cost(cost)
+    if result.get("status") == "success":
+        await rate_limiter.record_success(ip)
+
+    from app.core.projects import save_project
+    save_project({
+        "id": session_id, "topic": topic, "created_at": int(time.time()),
+        "status": result.get("status", "unknown"),
+        "steps": result.get("steps", 0), "cost": cost, "iterations": 1,
+        "html": result.get("html", ""), "trace_path": f"logs/traces/{session_id}.jsonl",
+    })
+    return {
+        "project_id": session_id, "topic": topic,
+        "status": result.get("status"),
+        "html": result.get("html", ""),
+        "steps": result.get("steps", 0),
+        "cost": cost,
+    }
+
+
+@app.get("/api/history")
+async def list_history():
+    """生成历史列表（新的在前）。"""
+    from app.core.projects import get_projects
+    return {"projects": get_projects()}
+
+
+@app.get("/api/history/{project_id}")
+async def get_history(project_id: str):
+    """单个生成记录（可回看页面）。"""
+    from app.core.projects import get_project
+    project = get_project(project_id)
+    if project is None:
+        return {"error": "未找到该项目"}, 404
+    return project
+
+
+@app.get("/api/preferences")
+async def get_pref():
+    """当前用户偏好。"""
+    from app.core.preferences import get_preferences
+    return await get_preferences()
+
+
+@app.put("/api/preferences")
+async def put_pref(req: _PreferenceRequest):
+    """更新用户偏好。"""
+    from app.core.preferences import update_preferences
+    return await update_preferences(req.model_dump(exclude_defaults=True))
 
 
 @app.websocket("/ws/generate")
@@ -290,20 +403,20 @@ async def generate_page(websocket: WebSocket):
             nonlocal failed_sent
             if msg.get("type") == "thinking_stream":
                 await ws_manager.send_json(session_id, {
-                    "type": "thinking_stream", "step": msg["step"],
-                    "chunk": msg["chunk"], "tool": msg["tool"],
-                    "budget": msg["budget"],
+                    "type": "thinking_stream", "step": msg.get("step", 0),
+                    "chunk": msg.get("chunk", ""), "tool": msg.get("tool", ""),
+                    "budget": msg.get("budget", 0),
                 })
             elif msg.get("type") == "heartbeat":
                 await ws_manager.send_json(session_id, {
-                    "type": "heartbeat", "tool": msg["tool"],
-                    "step": msg["step"], "budget": msg["budget"],
+                    "type": "heartbeat", "tool": msg.get("tool", ""),
+                    "step": msg.get("step", 0), "budget": msg.get("budget", 0),
                 })
             elif msg.get("type") == "thinking":
                 await ws_manager.send_json(session_id, {
-                    "type": "thinking", "step": msg["step"],
-                    "thought": msg["thought"], "tool": msg["tool"],
-                    "budget": msg["budget"],
+                    "type": "thinking", "step": msg.get("step", 0),
+                    "thought": msg.get("thought", ""), "tool": msg.get("tool", ""),
+                    "budget": msg.get("budget", 0),
                 })
             elif msg.get("type") == "tool_result":
                 await ws_manager.send_json(session_id, {
@@ -321,6 +434,13 @@ async def generate_page(websocket: WebSocket):
                 await ws_manager.send_failed(session_id, msg["reason"], [])
                 failed_sent = True
 
+        # 读用户偏好（记忆注入）——失败不阻断生成
+        try:
+            from app.core.preferences import get_preferences
+            prefs = await get_preferences()
+        except Exception:
+            prefs = {}
+
         # 把独立账本传给编排器（包 Task + 全局超时）
         from app.core.config import settings
         orch_task = asyncio.create_task(
@@ -329,6 +449,7 @@ async def generate_page(websocket: WebSocket):
                 "user_input": user_input,
                 "_push": push,
                 "_cost_records": session_cost_records,
+                "_preferences": prefs,
             })
         )
         try:
@@ -347,6 +468,20 @@ async def generate_page(websocket: WebSocket):
         # 记录花费（在生成结束后累加，用于日预算帽）
         await rate_limiter.record_cost(cost["estimated_cost_rmb"])
 
+        # 保存生成历史（可回看/续，Phase C 更新迭代数）
+        from app.core.projects import save_project
+        save_project({
+            "id": session_id,
+            "topic": user_input,
+            "created_at": int(_time.time()),
+            "status": result.get("status", "unknown"),
+            "steps": result.get("steps", 0),
+            "cost": cost["estimated_cost_rmb"],
+            "iterations": 1,
+            "html": result.get("html", ""),
+            "trace_path": f"logs/traces/{session_id}.jsonl",
+        })
+
         from app.core.metrics import GENERATION_DURATION, GENERATION_STEPS, GENERATIONS
         GENERATIONS.labels(status=result.get("status", "unknown")).inc()
         if t_start:
@@ -356,6 +491,71 @@ async def generate_page(websocket: WebSocket):
         if result.get("status") == "success":
             # 成功才计为一次试用（失败不扣）
             await rate_limiter.record_success(client_ip)
+
+            # ── Phase C：提取偏好 + 多轮迭代 ──
+            prefs = _extract_preferences(result.get("design"), result.get("content"))
+            if prefs["style_hints"] or prefs["preferred_components"]:
+                from app.core.preferences import update_preferences
+                await update_preferences(prefs)
+            iterations = 1
+            last_cost = cost["estimated_cost_rmb"]  # 首轮成本已记入日预算
+            MAX_ITERATIONS = 6  # 迭代上限（首轮 + 最多 5 次修改），防无限烧 token
+            while iterations < MAX_ITERATIONS:
+                try:
+                    follow = await asyncio.wait_for(websocket.receive_json(), timeout=600)
+                except (asyncio.TimeoutError, WebSocketDisconnect):
+                    break
+                instruction = (follow.get("instruction") or "").strip()
+                if not instruction:
+                    break
+                iterations += 1
+                from app.agents.orchestrator import refine_page
+                try:
+                    ref = await refine_page(
+                        result.get("design"), result.get("content"),
+                        result.get("material"), result.get("html", ""),
+                        user_input, instruction, push, session_cost_records,
+                        preferences=prefs,
+                    )
+                except Exception as e:
+                    logger.warning("迭代失败 | session=%s | error=%s", session_id, e)
+                    await ws_manager.send_json(session_id, {
+                        "type": "thinking", "step": 0,
+                        "thought": "这步修改没成功，换个说法再试。", "tool": "system", "budget": 0,
+                    })
+                    continue
+                result["design"] = ref.get("design")
+                result["content"] = ref.get("content")
+                result["material"] = ref.get("material")
+                result["html"] = ref.get("html", "")
+                # 记录本轮迭代成本到日预算（防白嫖 token）
+                new_cost = get_cost_summary(session_cost_records)["estimated_cost_rmb"]
+                if new_cost > last_cost:
+                    await rate_limiter.record_cost(new_cost - last_cost)
+                    last_cost = new_cost
+                # 本轮偏好更新
+                prefs = _extract_preferences(ref.get("design"), ref.get("content"))
+                if prefs["style_hints"] or prefs["preferred_components"]:
+                    await update_preferences(prefs)
+                # 更新历史（同 id 覆盖，迭代数 +）
+                save_project({
+                    "id": session_id, "topic": user_input,
+                    "created_at": int(_time.time()),
+                    "status": "success",
+                    "steps": result.get("steps", 0),
+                    "cost": get_cost_summary(session_cost_records)["estimated_cost_rmb"],
+                    "iterations": iterations,
+                    "html": result["html"],
+                    "trace_path": f"logs/traces/{session_id}.jsonl",
+                })
+                # 推送新版本
+                await ws_manager.send_page_ready(session_id, result["html"])
+            if iterations >= MAX_ITERATIONS:
+                await ws_manager.send_json(session_id, {
+                    "type": "thinking", "step": 0,
+                    "thought": "已达本轮修改上限，可换个新话题重新生成。",
+                    "tool": "system", "budget": 0,
+                })
         elif not failed_sent:
             # orchestrator 已经把失败原因推进了 DecisionLog（via push），
             # 这里只在 push 没发过失败消息时才补发

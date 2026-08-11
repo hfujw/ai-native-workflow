@@ -13,10 +13,10 @@ import logging
 
 from app.agents.evaluate import evaluate_material
 from app.core.config import settings
+from app.core.trace import log_trace
 from app.knowledge.kb import _name, event_to_search_results, get_event_by_keyword
 from app.llm.client import chat_stream
-from app.llm.parser import clean_thought, strip_fence
-from app.tools import TOOL_COST
+from app.llm.parser import clean_thought, safe_parse_json, strip_fence
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +83,8 @@ async def orchestrator_node(state: dict) -> dict:
     "issues": [],
     "tool_history": [],
     "cost_records": state.get("_cost_records", []),
+    "_last_cost_len": 0,   # 真实预算：上次结算的账本长度
+    "_preferences": state.get("_preferences", {}),  # Phase C：用户偏好
     }
 
     # 本地知识库：关键词匹配 → 没命中 → 语义向量检索兜底
@@ -159,6 +161,10 @@ async def orchestrator_node(state: dict) -> dict:
                 "verify": "审查生成结果…",
             }
             thought = defaults.get(tool_name, f"执行 {tool_name}…")
+        log_trace(ctx["session_id"], {
+            "type": "decide", "step": ctx["steps"] + 1,
+            "thought": thought, "tool": tool_name,
+        })
         if push:
             await push({"type": "thinking", "step": ctx["steps"] + 1, "thought": thought,
                         "tool": tool_name, "budget": ctx["budget_spent"]})
@@ -186,6 +192,11 @@ async def orchestrator_node(state: dict) -> dict:
         ctx["steps"] += 1
         ctx["tool_history"].append({"step": ctx["steps"], "thought": thought,
                                      "tool": tool_name, "result_summary": _summarize(result)})
+        log_trace(ctx["session_id"], {
+            "type": "tool", "step": ctx["steps"], "tool": tool_name,
+            "summary": _summarize(result),
+            "cost_delta": ctx.get("_last_tool_cost", 0),
+        })
         # 同一工具连续 3 次 → 强制换策略（喂给下一次 _decide）
         recent_tools = [h["tool"] for h in ctx["tool_history"][-3:]]
         ctx["force_strategy_change"] = len(recent_tools) == 3 and len(set(recent_tools)) == 1
@@ -209,8 +220,15 @@ async def orchestrator_node(state: dict) -> dict:
                                       "description": "render自动失败：HTML截断"})
                 ctx["render_fail_count"] = ctx.get("render_fail_count", 0) + 1
                 ctx["render_success_streak"] = 0
+                # 硬拦截：连续 3 次 render 失败 → 强制重新设计，防"连续20次重渲染"
+                ctx["consecutive_render_fail"] = ctx.get("consecutive_render_fail", 0) + 1
+                if ctx["consecutive_render_fail"] >= 3:
+                    logger.warning("render 连续 %d 次失败，强制换策略 design | session=%s",
+                                   ctx["consecutive_render_fail"], ctx["session_id"])
+                    ctx["force_next_tool"] = "design"
             elif result.get("complete"):
                 ctx["render_success_streak"] = ctx.get("render_success_streak", 0) + 1
+                ctx["consecutive_render_fail"] = 0
             # 诚实模式 或 连续2次render成功还没verify → 强制verify
             if (ctx.get("honest_mode") or ctx.get("render_success_streak", 0) >= 2) and result.get("complete"):
                 ctx["force_verify"] = True
@@ -235,7 +253,10 @@ async def orchestrator_node(state: dict) -> dict:
                 return {"status": "success", "html": ctx.get("html", ""),
                         "steps": ctx["steps"], "budget": ctx["budget_spent"],
                         "honest_mode": ctx.get("honest_mode", False),
-                        "tool_history": ctx["tool_history"]}
+                        "tool_history": ctx["tool_history"],
+                        # 多轮迭代需要复用
+                        "design": ctx.get("design"), "content": ctx.get("content"),
+                        "material": ctx.get("material")}
 
             # ❌ verify 没通过 → 强制回退，不让 LLM 决定
             ctx["render_fail_count"] = ctx.get("render_fail_count", 0) + 1
@@ -355,10 +376,34 @@ HTML长度：{len(ctx.get('html',''))}字符 | 上次验证：{'通过' if ctx['
                 "params": {"query": ctx["user_input"], "reason": "初始搜索", "depth": "quick"}}
 
 
+def _real_cost_delta(ctx: dict) -> float:
+    """自上次结算以来新增的 LLM token 真实成本（DeepSeek v4-flash 费率 + 缓存拆分）。
+
+    cost_records 是会话账本，累积所有 chat/chat_stream 的 token。
+    只算增量——包含上一轮 decide 决策 + 本轮工具的 LLM 调用。
+    """
+    from app.llm.client import INPUT_CACHE_HIT, INPUT_CACHE_MISS, OUTPUT_RATE
+
+    records = ctx.get("cost_records", [])
+    start = ctx.get("_last_cost_len", 0)
+    ctx["_last_cost_len"] = len(records)
+    new = records[start:]
+    total_in = sum(r.get("input_tokens", 0) for r in new)
+    total_cache_hit = sum(r.get("cache_hit_tokens", 0) for r in new)
+    total_out = sum(r.get("output_tokens", 0) for r in new)
+    in_miss = max(0, total_in - total_cache_hit)
+    return round(total_cache_hit / 1_000_000 * INPUT_CACHE_HIT
+                 + in_miss / 1_000_000 * INPUT_CACHE_MISS
+                 + total_out / 1_000_000 * OUTPUT_RATE, 6)
+
+
 async def _execute_tool(tool_name: str, params: dict, ctx: dict) -> dict:
-    """执行工具调用——Supervisor 分发 + ctx 更新。"""
-    cost = TOOL_COST.get(tool_name, 0.05)
-    ctx["budget_spent"] += cost
+    """执行工具调用——Supervisor 分发 + ctx 更新。
+
+    预算用真实 LLM token 成本（不再是 TOOL_COST 估算）——决策+工具的全部 LLM 调用都计入。
+    """
+    ctx["_last_tool_cost"] = _real_cost_delta(ctx)
+    ctx["budget_spent"] += ctx["_last_tool_cost"]
 
     from app.agents.supervisor import dispatch
     result = await dispatch(ctx, tool_name, params)
@@ -401,3 +446,107 @@ def _summarize(result: dict) -> str:
         n = len(result.get("issues", []))
         return f"审查发现 {n} 个问题，需{'重生成' if result.get('rollback_target') == 'render' else '重写文案' if result.get('rollback_target') == 'compose' else '重新设计'}"
     return str(result.get("error", "完成"))
+
+
+# ═══════════════════════════════════════════════════════════════
+# 多轮迭代（Phase C）：用户在成品上继续提要求，agent 改页面
+# ═══════════════════════════════════════════════════════════════
+
+REFINE_SYSTEM_PROMPT = """用户在已生成页面的基础上提出修改要求，你决定怎么改。
+
+已有：设计(design)、文案(content)、素材(material)。
+可选动作：
+- rerender   只改视觉/结构（最省 token，优先）
+- redesign   要改叙事形式或重写文案（用户明确要求改内容/换形式时）
+- research   要补充新信息，现有素材不够时
+
+输出JSON：
+{"action": "rerender|redesign|research", "hint": "给渲染/设计的指令（简短中文）", "query": "research 时的新搜索词"}"""
+
+
+async def refine_page(design, content, material, html, user_input, instruction,
+                      push, session_records, preferences=None) -> dict:
+    """多轮迭代：用户改页面 → LLM 决定改法 → 执行 → 返回新版 html。"""
+    import copy
+
+    from app.agents.designer_agent import DesignerAgent
+    from app.agents.render_agent import RenderAgent
+    from app.tools.search import tool_search
+
+    summary = (
+        f"用户想了解的：{user_input}\n"
+        f"当前设计：{json.dumps(design, ensure_ascii=False)[:800]}\n"
+        f"当前文案块数：{len((content or {}).get('blocks', []))}\n"
+        f"用户新要求：{instruction}"
+    )
+    if push:
+        await push({"type": "thinking", "step": 0,
+                    "thought": f"🔄 收到新要求「{instruction}」，决定怎么改…",
+                    "tool": "system", "budget": 0})
+
+    decision = {"action": "rerender", "hint": instruction}
+    try:
+        accumulated = ""
+        async for chunk in chat_stream(summary, system=REFINE_SYSTEM_PROMPT,
+                                       temperature=0.3, session_records=session_records, label="refine"):
+            accumulated += chunk
+        parsed = safe_parse_json(accumulated)
+        if parsed:
+            decision = parsed
+    except Exception as e:
+        logger.warning("refine 决策失败，默认 rerender: %s", e)
+
+    action = decision.get("action", "rerender")
+    hint = decision.get("hint", instruction)
+
+    if action == "research":
+        query = decision.get("query") or user_input
+        if push:
+            await push({"type": "thinking", "step": 0,
+                        "thought": f"🔍 迭代补搜：「{query}」…", "tool": "search", "budget": 0})
+        sr = await tool_search(query, reason="迭代补搜", existing_material=material)
+        material = material + sr.get("results", [])
+
+    if action in ("redesign", "research"):
+        if push:
+            await push({"type": "thinking", "step": 0,
+                        "thought": "🎨 重新设计叙事形式和文案…", "tool": "design", "budget": 0})
+        da = await DesignerAgent().run(material, user_input, push=push,
+                                       session_records=session_records, preferences=preferences)
+        design = da.get("design") or design
+        content = da.get("content") or content
+
+    # 渲染：把用户 hint 注入 visual_hint（只改视觉时不动 design/content）
+    patched = copy.deepcopy(design or {})
+    hint_text = f"用户要求：{hint}"
+    patched["visual_hint"] = f"{patched.get('visual_hint', '')} | {hint_text}".strip(" |")
+    if push:
+        await push({"type": "thinking", "step": 0,
+                    "thought": f"🖌️ 重新渲染（{action}）…", "tool": "render", "budget": 0})
+    rr = await RenderAgent().run(patched, content or {}, push=push, session_records=session_records)
+
+    # F4: 迭代也要外部验证（保持"render 后必须 verify"原则，不让 LLM 自评）
+    verified = False
+    try:
+        from app.tools.verify import tool_verify
+        v = await tool_verify(rr.get("html", ""), content or {})
+        critical = [i.get("description", "") for i in v.get("issues", [])
+                    if i.get("severity") == "critical"][:3]
+        if critical and rr.get("html"):
+            # 有 critical 问题 → 把问题当 hint 再渲染一次（重渲染后视为已修正）
+            if push:
+                await push({"type": "thinking", "step": 0,
+                            "thought": f"🔎 验证发现 {len(critical)} 个关键问题，修正后重渲染…",
+                            "tool": "verify", "budget": 0})
+            patched["visual_hint"] = f"{patched.get('visual_hint', '')} | 审查问题：{'；'.join(critical)}".strip(" |")
+            rr2 = await RenderAgent().run(patched, content or {}, push=push, session_records=session_records)
+            if rr2.get("complete"):
+                rr = rr2
+                verified = True  # 修正后重渲染成功，视为已修正
+        else:
+            verified = not critical  # 原本无 critical → 通过
+    except Exception as e:
+        logger.debug("refine 验证不可用: %s", e)
+
+    return {"html": rr.get("html", ""), "design": design, "content": content,
+            "material": material, "action": action, "verified": verified}

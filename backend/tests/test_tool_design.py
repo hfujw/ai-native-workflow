@@ -52,7 +52,7 @@ async def test_design_invalid_json(sample_material):
 
     assert result["tool"] == "design"
     assert result["components"] == ["encyclopedia"]
-    assert "LLM异常" in result["rationale"]
+    assert "非法 JSON" in result["rationale"]
 
 
 @pytest.mark.asyncio

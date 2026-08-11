@@ -27,12 +27,12 @@ TOOL_HANDLERS = {
     "design":  lambda ctx, bus, params: DesignerAgent().run(
         ctx.get("material", []), ctx.get("user_input", ""),
         push=ctx.get("_push"), session_records=ctx.get("cost_records"),
-        bus=bus,  # ← 传总线，素材不够时Agent自己求助
+        bus=bus, preferences=ctx.get("_preferences"),  # ← 用户偏好注入
     ),
     "compose": lambda ctx, bus, params: DesignerAgent().run(
         ctx.get("material", []), ctx.get("user_input", ""),
         push=ctx.get("_push"), session_records=ctx.get("cost_records"),
-        bus=bus,
+        bus=bus, preferences=ctx.get("_preferences"),
     ),
     "render":  lambda ctx, bus, params: RenderAgent().run(
         ctx.get("design") or {}, ctx.get("content") or {},

@@ -9,6 +9,7 @@ export function useWebSocket() {
   const [streamingHtml, setStreamingHtml] = useState('')
   const [error, setError] = useState(null)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [iterations, setIterations] = useState(0)   // Phase C：多轮迭代版本号
   const wsRef = useRef(null)
   const logIdRef = useRef(0)
   const generatingRef = useRef(false)
@@ -151,9 +152,20 @@ export function useWebSocket() {
     generatingRef.current = true
     reconnectRef.current = 0
     eventRef.current = eventText
+    setIterations(0)
 
     connectWS(eventText)
   }, [connectWS])
+
+  // ── Phase C：多轮迭代——在成品基础上继续改 ──
+  const sendInstruction = useCallback((text) => {
+    const ws = wsRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN || !text.trim()) return
+    setIsGenerating(true)
+    generatingRef.current = true
+    setIterations(prev => prev + 1)
+    ws.send(JSON.stringify({ instruction: text.trim() }))
+  }, [])
 
   const dismiss = useCallback(() => {
     if (wsRef.current) {
@@ -166,9 +178,47 @@ export function useWebSocket() {
     setStreamingHtml('')
     setError(null)
     setMessages([])
+    setIterations(0)
   }, [])
 
   const cancel = useCallback(() => dismiss(), [dismiss])
+
+  // ── Phase B/E：历史 / 评测 / 偏好 ──
+  const refreshHistory = useCallback(async () => {
+    try {
+      const r = await fetch('/api/history')
+      if (r.ok) return (await r.json()).projects || []
+    } catch {}
+    return []
+  }, [])
+
+  const refreshEval = useCallback(async () => {
+    try {
+      const r = await fetch('/api/eval')
+      if (r.ok) return await r.json()
+    } catch {}
+    return null
+  }, [])
+
+  const refreshPreferences = useCallback(async () => {
+    try {
+      const r = await fetch('/api/preferences')
+      if (r.ok) return await r.json()
+    } catch {}
+    return {}
+  }, [])
+
+  const savePreferences = useCallback(async (patch) => {
+    try {
+      const r = await fetch('/api/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      if (r.ok) return await r.json()
+    } catch {}
+    return null
+  }, [])
 
   // ── Demo 模式：加载预生成 HTML，零成本即时展示 ──
   const loadDemo = useCallback(async (topic) => {
@@ -205,5 +255,9 @@ export function useWebSocket() {
     }
   }, [])
 
-  return { messages, pageHtml, streamingHtml, error, isGenerating, sendEvent, loadDemo, cancel, dismiss }
+  return {
+    messages, pageHtml, streamingHtml, error, isGenerating, iterations,
+    sendEvent, sendInstruction, loadDemo, cancel, dismiss,
+    refreshHistory, refreshEval, refreshPreferences, savePreferences,
+  }
 }

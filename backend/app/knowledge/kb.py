@@ -81,7 +81,7 @@ def event_to_search_results(event: dict) -> list[dict]:
     content_parts = []
     key_facts = []
 
-    if "content" in event and "original" in event.get("content", {}):
+    if isinstance(event.get("content"), dict) and "original" in event["content"]:
         content = event["content"]
         if content.get("translation"):
             content_parts.append(content["translation"])

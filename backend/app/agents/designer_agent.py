@@ -27,11 +27,13 @@ class DesignerAgent:
         push=None,
         session_records=None,
         bus=None,                     # Phase 4：消息总线（可选）
+        preferences=None,             # Phase C：用户偏好（风格/组件），注入 design/compose
     ) -> dict:
         mat_count = len(material)
 
         for attempt in range(2):
-            design = await tool_design(material, user_input, session_records=session_records)
+            design = await tool_design(material, user_input, session_records=session_records,
+                                       preferences=preferences)
 
             # 素材不够？
             if not self._check_design_fit(design, mat_count):
@@ -59,6 +61,10 @@ class DesignerAgent:
                     })
                     reply = await bus.recv("designer", timeout=45.0)
                     listener.cancel()
+                    try:
+                        await listener  # 等取消完成，避免 Task was destroyed 警告
+                    except (asyncio.CancelledError, Exception):
+                        pass
                     if reply and reply.get("type") == "search_result":
                         new_results = reply.get("results", [])
                         material.extend(new_results)
@@ -75,9 +81,11 @@ class DesignerAgent:
                 design = self._downgrade_design(design, mat_count)
                 patched = [{"title": "⚠️ 素材不足，请使用简单形式（如 encyclopedia/cards）",
                             "snippet": f"仅有 {mat_count} 条素材", "content": ""}]
-                design = await tool_design(patched, user_input, session_records=session_records)
+                design = await tool_design(patched, user_input, session_records=session_records,
+                                           preferences=preferences)
 
-            content = await tool_compose(material, design, user_input, session_records=session_records)
+            content = await tool_compose(material, design, user_input, session_records=session_records,
+                                         preferences=preferences)
 
             coverage = self._source_coverage(content)
             if coverage >= 0.3:
@@ -88,7 +96,7 @@ class DesignerAgent:
             logger.info("DesignerAgent=retry | attempt=%d | coverage=%.0f%%", attempt + 1, coverage * 100)
 
         logger.info("DesignerAgent=fallback |百科降级")
-        return self._fallback(material, user_input, session_records)
+        return await self._fallback(material, user_input, session_records)
 
     # ─── 内部方法 ───
 

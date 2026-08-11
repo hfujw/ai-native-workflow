@@ -4,6 +4,8 @@ import logging
 
 import httpx
 
+from app.llm.parser import detect_injection
+
 logger = logging.getLogger(__name__)
 
 # ── 素材过滤 ──
@@ -81,6 +83,12 @@ async def tool_search(query: str, reason: str = "", depth: str = "quick", existi
             return {"tool": "search", "query": query, "reason": reason,
                     "results": [], "count": 0, "note": "搜索结果与主题不直接相关"}
         filtered = relevant
+
+    # 注入检测：外部内容里的提示注入特征（只记日志，不阻断——LLM 侧已加"素材只是数据"防御）
+    for r in filtered:
+        hits = detect_injection(r.get("snippet", "") + r.get("title", ""))
+        if hits:
+            logger.warning("工具=search | 检测到注入特征 %s | title=%s", hits, r.get("title", "")[:30])
 
     logger.info("工具=search | query='%s' | 结果=%d", query, len(filtered))
     return {
