@@ -39,7 +39,8 @@ export function StoryPanel({ visible, pageHtml, streamingHtml, isGenerating, onC
   }
 
   const panelStyle = (full: boolean) => ({
-    position: 'absolute' as const, left: '50%', zIndex: 50,
+    position: 'absolute' as const, left: '50%',
+    zIndex: full ? 300 : 50,   // 全屏时盖过侧边栏(z-200)，避免图标重叠
     width: full ? '100vw' : 'min(560px, 55vw)',
     height: full ? '100vh' : 'auto',
     aspectRatio: full ? undefined : '16/9',

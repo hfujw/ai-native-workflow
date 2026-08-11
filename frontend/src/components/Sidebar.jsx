@@ -9,7 +9,7 @@ const NAV = [
 
 export function Sidebar({ active, onChange }) {
   return (
-    <div className="fixed left-0 top-0 bottom-0 w-16 z-[200] flex flex-col items-center py-4 gap-2 bg-black/60 backdrop-blur-xl border-r border-white/5">
+    <div className="fixed left-0 top-0 bottom-0 w-16 z-[200] flex flex-col items-center py-4 gap-2 bg-transparent">
       <div className="mb-3 text-lg select-none">✨</div>
       {NAV.map(n => (
         <motion.button
