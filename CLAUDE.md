@@ -1,7 +1,7 @@
 # AI-Native Workflow · 时光像素
 
 > 最后更新：2026-08-11
-> 当前阶段：Phase 1-5 完成（3 Agent + 消息总线 + Redis 状态后端），62 tests，架构分层完毕
+> 当前阶段：Phase 1-5 + 产品化重构完成（多轮迭代/记忆/评测/REST API），94 tests，前端已重构（Sidebar+迭代条+三面板）
 
 ## 项目是什么
 
@@ -50,13 +50,15 @@
 backend/app/
 ├── main.py                     🚪 FastAPI + WebSocket 入口
 ├── demo.py                     📦 Demo 页面管理
-├── core/                       🧱 config / metrics
+├── core/                       🧱 config / metrics / trace / projects / preferences / eval_report
 ├── llm/                        🤖 client / parser / circuit_breaker
 ├── network/                    🌐 ws_manager / rate_limiter
 ├── tools/                      🔧 search / design / compose / render / verify
-├── agents/                     🧠 orchestrator / supervisor / message_bus / researcher / designer / render / evaluate
+├── agents/                     🧠 orchestrator（含 refine 多轮） / supervisor / message_bus / researcher / designer / render / evaluate
 ├── knowledge/                  📚 kb / vector_store
 └── state/                      💾 base / memory / redis（STATE_BACKEND 一行切换）
+
+backend/scripts/                📊 eval_run.py（端到端评测脚本）
 
 frontend/src/
 ├── App.jsx                     主布局（液态玻璃 + 光标聚光灯）
@@ -88,10 +90,11 @@ frontend/src/
 
 - ✅ 架构分层完毕（7 目录，单向依赖，无循环）
 - ✅ Phase 1-5 完成：ResearcherAgent + DesignerAgent + RenderAgent + MessageBus + RedisBackend
-- ✅ 安全加固（输入长度限制 + IP 连接限制 + 日志 30 天 + WS断开取消任务 + XFF 防伪造）
+- ✅ 产品化重构（2026-08-11）：结构化输出 / 真实预算 / 注入防御 / trace 落盘 / 历史持久化 / 偏好记忆 / 多轮迭代 refine / eval 评测 / REST API / 前端 Sidebar+迭代条+三面板
+- ✅ 安全加固（输入长度限制 + IP 连接限制 + 日志 30 天 + WS断开取消任务 + XFF 防伪造 + 注入检测）
 - ✅ 合规补全（LICENSE MIT + PRIVACY GDPR + SECURITY STRIDE）
-- ✅ 62 tests 全绿
-- 📋 下一步：Phase 6 面试竞争力（结构化输出 + trace + eval，见 `docs/plans/phase6-interview-plan.md`）
+- ✅ 94 tests 全绿（66 → 94，新增 Phase A-E 回归）
+- 📋 说明：`docs/plans/refactor-master-plan.md` 是重构主计划，Phase A-F 已全部完成
 
 ## 运行
 

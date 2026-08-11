@@ -54,6 +54,21 @@ flowchart TD
 
 ---
 
+## 端到端评测（真实数字）
+
+`cd backend && python scripts/eval_run.py` 跑出来的真实结果（DeepSeek 真实调用）：
+
+| 指标 | 值 |
+|------|-----|
+| 通过率 | **80%**（10 个不同话题，8 个一次通过）|
+| 成功任务平均步数 | **4.4 步** |
+| 每任务真实成本 | **约 ¥0.06**（DeepSeek v4-flash 费率，含缓存拆分）|
+| 失败行为 | 最初 2 个失败是记账 bug（`get_cost_summary` KeyError，已修复），**修复后重跑会更新** |
+
+> 每个任务的决策轨迹（thought/工具/成本）都落盘可回放——`backend/logs/traces/`。
+
+---
+
 ## 快速开始
 
 ### 方式一：Docker（推荐——不需要装 Python/Node，一行命令）
@@ -116,7 +131,11 @@ backend/app/
 │
 ├── core/                       🧱 基础设施
 │   ├── config.py               集中配置（pydantic-settings）
-│   └── metrics.py              9 个 Prometheus 指标
+│   ├── metrics.py              9 个 Prometheus 指标
+│   ├── trace.py                决策轨迹落盘（JSONL，可回放/评测）
+│   ├── projects.py             生成历史持久化
+│   ├── preferences.py          用户偏好记忆
+│   └── eval_report.py          评测报告生成
 │
 ├── llm/                        🤖 LLM 层
 │   ├── client.py               chat / chat_json / chat_stream
@@ -135,7 +154,7 @@ backend/app/
 │   └── verify.py               Playwright 真执行
 │
 ├── agents/                     🧠 编排 + 3 Agent
-│   ├── orchestrator.py         ⭐ ReAct 主循环
+│   ├── orchestrator.py         ⭐ ReAct 主循环 + refine 多轮迭代
 │   ├── researcher_agent.py    Phase 3：自主搜索（换词+向量+停止）
 │   ├── designer_agent.py      Phase 2：设计+文案合并（自循环）
 │   ├── render_agent.py         Phase 1：自检 + 缓存 + 重试
@@ -153,20 +172,26 @@ backend/app/
     └── redis.py                RedisBackend（多实例共享，STATE_BACKEND=redis）
 
 backend/demos/                  预生成 HTML
-backend/tests/                  62 个 pytest 用例
+backend/scripts/eval_run.py     📊 端到端评测脚本（跑 N 话题出数字）
+backend/tests/                  94 个 pytest 用例
 
 frontend/src/
-├── App.jsx                     主布局（液态玻璃 + 光标聚光灯）
+├── App.jsx                     主布局（液态玻璃 + 光标聚光灯 + Sidebar 导航）
 ├── components/
+│   ├── Sidebar.jsx             导航：生成 / 历史 / 偏好 / 评测
 │   ├── DecisionLog.tsx         AI 思考流程（步骤进度线 + 实时滚动）
 │   ├── StoryPanel.tsx          生成页面展示（显影动画 + 流式渲染）
 │   ├── SearchBubble.tsx        搜索输入框
 │   ├── EventTags.tsx           169 个示例话题标签云
 │   ├── RevealLayer.tsx         光标聚光灯 Canvas mask
 │   ├── FailureNotice.tsx       失败提示 + demo 引导
-│   └── ErrorBoundary.tsx       React 错误边界
+│   ├── ErrorBoundary.tsx       React 错误边界
+│   ├── IterationBar.tsx        多轮迭代指令条（"再大胆点/换个配色"）
+│   ├── HistoryPanel.tsx        生成历史（卡片列表 + 回看）
+│   ├── PreferencesPanel.tsx    用户偏好（可编辑）
+│   └── EvalPanel.tsx           评测数字（通过率/步数/成本）
 └── hooks/
-    └── useWebSocket.js         WebSocket + 断线重连 + 流式接收
+    └── useWebSocket.js         WebSocket + 多轮迭代 + 历史/偏好/评测 API
 
 Caddyfile                       生产反代（自动 HTTPS + WebSocket + Gzip）
 docker-compose.yml              一键部署
@@ -188,8 +213,14 @@ docker-compose.yml              一键部署
 | Tavily 替代 Bing | 国内可直连，返回 JSON 已清洗文本。不配 Key 也能跑 |
 | 流式渲染 | `contentDocument.write` 写 DOM，不换 `srcdoc`——不频闪，用户看到页面逐段"长出来" |
 | 断路器 | 连续 3 次 LLM API 失败自动熔断 30s，防止级联故障浪费重试和 Token |
-| 预算控制 | 每个工具虚拟定价，总预算 ¥1 硬上限。IP 1 次/天试用 + 全站 ¥5/天，公网不破产 |
+| 预算控制 | 真实 LLM token 成本计入 ¥1 上限（DeepSeek v4-flash 费率：缓存命中 ¥0.02/M、未命中 ¥1/M、输出 ¥2/M）。IP 1 次/天试用 + 全站 ¥5/天 |
 | 知识来源标注 | compose 阶段要求 LLM 给每个数字/年份/人名标注来源和可信度 |
+| 结构化输出 | design/compose 用 DeepSeek `json_object` + schema 校验——坏数据不再流向下游 |
+| 多轮迭代 | 成品后能继续对话改页面——LLM 决定 rerender/redesign/research，trace 记录每版 |
+| 记忆与历史 | 偏好自动提取并注入下次生成；每次生成（含迭代）落盘可回看、可续 |
+| 决策轨迹 | 每步 thought/工具/成本写 JSONL——可回放、可评测（面试演示素材） |
+| 评测基准 | `scripts/eval_run.py` 跑 N 话题，输出通过率/步数/成本——有真实数字 |
+| REST API | `POST /api/generate` 程序化生成——是"系统"不是 demo |
 
 ---
 

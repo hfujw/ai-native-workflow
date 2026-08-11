@@ -34,7 +34,8 @@
 | 数据 | 存储位置 | 保留期限 |
 |------|---------|---------|
 | 日志文件（含 IP、主题、LLM token）| `backend/logs/detail.log` | 30 天（每天午夜轮转，`TimedRotatingFileHandler`，保留 30 个备份） |
-| 生成的 HTML | 服务端内存（不持久化）| 请求结束后丢弃 |
+| 生成的 HTML + 决策轨迹 | `backend/data/projects.json` + `backend/logs/traces/` | projects 保留最近 100 条；trace 随项目保留 |
+| 用户偏好（风格/组件关键词）| StateBackend（`prefs` 键，memory/redis） | 可随时在「偏好」页查看/清除；`/api/preferences` 可查改 |
 | Demo 页面 HTML | `backend/demos/` | 手动管理 |
 | 限流计数器 | 内存（MemoryBackend）或 Redis（`STATE_BACKEND=redis`） | 按日期键（`rate:{ip}:{日期}`）自然过期 |
 

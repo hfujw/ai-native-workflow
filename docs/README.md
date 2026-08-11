@@ -15,7 +15,8 @@
 | 文档 | 说明 | 状态 |
 |------|------|------|
 | [multi-agent-full-roadmap.md](plans/multi-agent-full-roadmap.md) | Agent 架构演化全景（Phase 1-5） | ✅ Phase 1-5 已完成，Redis 已实现 |
-| [phase6-interview-plan.md](plans/phase6-interview-plan.md) | 面试竞争力升级计划（4 缺口 + 执行顺序） | 📋 当前主线，待拍板执行 |
+| [refactor-master-plan.md](plans/refactor-master-plan.md) | 产品化重构主计划（多轮迭代/记忆/评测/REST API/前端） | ✅ Phase A-F 全部完成（2026-08-11） |
+| [phase6-interview-plan.md](plans/phase6-interview-plan.md) | 面试竞争力升级计划 | ⚠️ 大部分已并入 refactor-master-plan 完成 |
 
 ## analysis/ —— 分析
 
@@ -33,6 +34,7 @@
 | [UPGRADE_PLAN.md](records/UPGRADE_PLAN.md) | v4.0 工程化升级完工记录（21 tests 时代） |
 | [multi-agent-phase1-render.md](records/multi-agent-phase1-render.md) | Phase 1 Render Agent 设计稿（已落地） |
 | [fix-suggestions-2026-08-11.md](records/fix-suggestions-2026-08-11.md) | 对抗性审查 + 修复记录（P0/P1 已修复，62 tests） |
+| [adversarial-audit-2026-08-11.md](records/adversarial-audit-2026-08-11.md) | 全量对抗性检查记录（记账 bug / 迭代上限 / 死循环拦截 / 防御加固，94 tests） |
 
 ## deployment/ —— 部署
 
