@@ -16,16 +16,12 @@
 |------|------|------|
 | [multi-agent-full-roadmap.md](plans/multi-agent-full-roadmap.md) | Agent 架构演化全景（Phase 1-5） | ✅ Phase 1-5 已完成，Redis 已实现 |
 | [refactor-master-plan.md](plans/refactor-master-plan.md) | 产品化重构主计划（多轮迭代/记忆/评测/REST API/前端） | ✅ Phase A-F 全部完成（2026-08-11） |
-| [phase6-interview-plan.md](plans/phase6-interview-plan.md) | 面试竞争力升级计划 | ⚠️ 大部分已并入 refactor-master-plan 完成 |
 
 ## analysis/ —— 分析
 
 | 文档 | 说明 | 状态 |
 |------|------|------|
 | [CUTS.md](analysis/CUTS.md) | 减法记录——裁掉的功能 + 理由 + 捡回时机 | ✅ 有效 |
-| [data-layer-diagnosis.md](analysis/data-layer-diagnosis.md) | 数据层诊断 | ⚠️ 写于 08-08，"StateBackend 闲置"已过时（限流器已接入 StateBackend，且新增 RedisBackend） |
-| [observability.md](analysis/observability.md) | 可观测性现状 + 目标 | ⚠️ `llm_tokens_total` 指标已删（从未埋点）；引用的 `grafana-dashboard.json` 不存在；OTel 目标与 CUTS.md 的"裁掉 OTel"决策冲突 |
-| [performance-analysis.md](analysis/performance-analysis.md) | 性能剖析 | ⚠️ `_successful_trials` 字典已重构为 StateBackend（rate_limiter 用 `state.incr`） |
 
 ## records/ —— 历史记录
 
