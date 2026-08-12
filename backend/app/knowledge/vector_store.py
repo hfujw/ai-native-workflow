@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 _collection = None
 _CHINESE_MODEL = "shibing624/text2vec-base-chinese"
+# P3：锚定项目目录，不随启动 CWD 漂移——否则从不同目录启动会重建向量库
+_CHROMA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "chroma_data")
 
 
 def _get_collection():
@@ -42,7 +44,8 @@ def _get_collection():
         logger.warning("中文 embedding 模型下载失败，向量检索不可用: %s", e)
         return None
 
-    client = chromadb.PersistentClient(path="./chroma_data")
+    os.makedirs(os.path.dirname(_CHROMA_DIR), exist_ok=True)
+    client = chromadb.PersistentClient(path=_CHROMA_DIR)
     _collection = client.get_or_create_collection(
         name="topics_cn",
         embedding_function=ef,

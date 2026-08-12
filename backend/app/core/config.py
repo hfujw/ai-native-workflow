@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     input_max_length: int = Field(500, ge=10, le=2000, description="用户输入最大长度（字符）")
     max_connections_per_ip: int = Field(3, ge=1, le=20, description="单 IP 最大并发连接数")
     trust_proxy: bool = Field(False, description="是否信任反向代理的 X-Forwarded-For 头（docker-compose + Caddy 部署时设 true，防止伪造 XFF 绕过限流）")
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"],
+        description="CORS 白名单（dev 走 vite 代理同源，直连时才需要；上线前按需收紧）",
+    )
 
     # ── 日志 ──
     log_prompts: bool = Field(False, description="是否在日志中记录完整 prompt（调试用）")

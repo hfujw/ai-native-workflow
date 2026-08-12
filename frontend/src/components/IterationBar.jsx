@@ -15,11 +15,9 @@ export function IterationBar({ visible, iterations, isGenerating, onSend }) {
 
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[150] w-[min(90vw,560px)]">
-      {iterations > 0 && (
-        <div className="text-center mb-2 text-xs text-amber-200/60">
-          第 {iterations} 版 · 生成完成后可继续提要求
-        </div>
-      )}
+      <div className="text-center mb-2 text-xs text-amber-200/60">
+        第 {iterations + 1} 版 · 生成完成后可继续提要求
+      </div>
       <div className="flex flex-wrap justify-center gap-2 mb-2">
         {QUICK.map(q => (
           <button

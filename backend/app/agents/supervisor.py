@@ -64,8 +64,9 @@ async def dispatch(ctx: dict, tool_name: str, params: dict | None = None) -> dic
     try:
         result = await handler(ctx, bus, params)
     except Exception as e:
+        # P3：原始异常记日志；回传友好文案——避免把内部细节（OpenAI 错误等）泄漏给前端/日志
         logger.error("Supervisor=tool_failed | tool=%s | error=%s", tool_name, e)
-        result = {"error": str(e)}
+        result = {"error": "工具执行失败，请重试"}
 
     return result
 

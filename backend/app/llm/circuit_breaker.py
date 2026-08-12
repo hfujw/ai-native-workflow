@@ -8,6 +8,11 @@ import logging
 import time
 from enum import Enum
 
+try:
+    import openai
+except ImportError:  # pragma: no cover — openai 是硬依赖，防御式兜底
+    openai = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,7 +47,14 @@ class CircuitBreaker:
                 self.failure_count = 0
                 logger.info("circuit_breaker=closed — 已恢复")
             return result
-        except Exception:
+        except Exception as e:
+            # P3：认证错误（401/403）是 key 问题不是服务故障——不计数不熔断，
+            # 避免坏 key 把断路器熔断成"服务全挂"
+            if openai is not None and isinstance(
+                e, (openai.AuthenticationError, openai.PermissionDeniedError)
+            ):
+                logger.warning("circuit_breaker=auth_error — 不熔断 | %s", type(e).__name__)
+                raise
             self.failure_count += 1
             self.last_failure_time = time.monotonic()
             if self.failure_count >= self.failure_threshold:

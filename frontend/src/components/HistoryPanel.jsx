@@ -70,6 +70,7 @@ export function HistoryPanel({ refresh }) {
             <iframe
               title="history-preview"
               srcDoc={(versions[ver]?.html) || selected.html || ''}
+              sandbox="allow-scripts"
               className="w-full h-full rounded-xl bg-white border border-white/10"
               onClick={e => e.stopPropagation()}
             />

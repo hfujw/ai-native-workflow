@@ -70,16 +70,28 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AI-Native Workflow", version="2.0.0", lifespan=lifespan)
 
-# CORS — 允许前端开发时的跨域请求（Vite dev server: localhost:5173）
+# CORS — 白名单（dev 走 vite 代理同源；收紧避免任意站点调用后端烧预算）
+from app.core.config import settings as _settings
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_settings.cors_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 from app.knowledge.kb import get_all_events
+
+
+def _playwright_browsers_dir() -> str:
+    """Playwright 浏览器目录——跨平台：Windows 在 %LOCALAPPDATA%，其他在 ~/.cache。"""
+    override = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if override:
+        return override
+    if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
+        return os.path.join(os.environ["LOCALAPPDATA"], "ms-playwright")
+    return os.path.expanduser("~/.cache/ms-playwright")
 
 
 @app.get("/api/health")
@@ -100,7 +112,7 @@ async def health():
         checks["config"] = f"fail: {e}"
 
     # Playwright 浏览器
-    pw_dir = _os.path.expanduser("~/.cache/ms-playwright")
+    pw_dir = _playwright_browsers_dir()
     checks["playwright_browser"] = "ok" if _os.path.isdir(pw_dir) else "missing"
 
     # Demo 就绪状态
@@ -132,7 +144,7 @@ async def health_ready():
         checks["config"] = f"fail: {e}"
 
     # Playwright 浏览器（render 工具必需）
-    pw_dir = _os.path.expanduser("~/.cache/ms-playwright")
+    pw_dir = _playwright_browsers_dir()
     checks["playwright_browser"] = "ok" if _os.path.isdir(pw_dir) else "missing"
 
     all_ok = all(v == "ok" for v in checks.values())
@@ -189,6 +201,20 @@ def _get_client_ip(websocket: WebSocket) -> str:
         if forwarded:
             return forwarded.split(",")[-1].strip()
     return websocket.client.host if websocket.client else "unknown"
+
+
+def _get_request_ip(request: Request) -> str:
+    """REST 用 IP——与 WS 一致：trust_proxy 时信任 XFF 最后一个值，否则取 TCP 对端。
+
+    P3：旧版 /api/generate 直接用 request.client.host，代理后全是代理 IP，
+    导致 IP 限流全落在代理上。统一走 XFF 逻辑。
+    """
+    from app.core.config import settings
+    if settings.trust_proxy:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            return forwarded.split(",")[-1].strip()
+    return request.client.host if request.client else "unknown"
 
 
 # ── Phase C：偏好提取 ──
@@ -271,8 +297,8 @@ async def generate_api(req: _GenerateRequest, request: Request):
     if not topic or len(topic) > settings.input_max_length:
         return {"error": f"话题不能为空且不超过 {settings.input_max_length} 字"}, 400
 
-    # 限流（REST 也受 IP 试用/日预算约束）
-    ip = request.client.host if request.client else "unknown"
+    # 限流（REST 也受 IP 试用/日预算约束）——P3：统一走 XFF 逻辑
+    ip = _get_request_ip(request)
     allowed, reason = await rate_limiter.can_generate(ip)
     if not allowed:
         return {"error": reason}, 429
@@ -280,14 +306,22 @@ async def generate_api(req: _GenerateRequest, request: Request):
     session_id = str(uuid.uuid4())[:8]
     records: list[dict] = []
     from app.agents.orchestrator import orchestrator_node
-    result = await orchestrator_node({
-        "session_id": session_id, "user_input": topic,
-        "_push": None, "_cost_records": records, "_preferences": {},
-    })
+    try:
+        result = await orchestrator_node({
+            "session_id": session_id, "user_input": topic,
+            "_push": None, "_cost_records": records, "_preferences": {},
+        })
+    except Exception:
+        # 生成抛异常 → 释放预留的试用名额（成本也先不记——异常多半没消耗 token）
+        await rate_limiter.release_trial(ip)
+        raise
     cost = get_cost_summary(records)["estimated_cost_rmb"]
     await rate_limiter.record_cost(cost)
     if result.get("status") == "success":
         await rate_limiter.record_success(ip)
+    else:
+        # 生成失败 → 释放名额，让用户可以重试
+        await rate_limiter.release_trial(ip)
 
     from app.core.projects import save_project
     save_project({
@@ -346,6 +380,8 @@ async def generate_page(websocket: WebSocket):
 
     session_cost_records: list[dict] = []  # 本连接独立记账，不碰全局
     t_start = None  # 用于记录生成开始时间（GENERATION_DURATION 埋点）
+    trial_reserved = False  # can_generate 是否已原子占用试用名额
+    generation_ok = False   # 是否成功完成（失败时释放名额）
 
     try:
         # 接收用户输入（加超时，防止连接挂起）
@@ -378,6 +414,7 @@ async def generate_page(websocket: WebSocket):
             logger.info("限流拒绝 [%s] IP=%s reason=%s", session_id, client_ip, reason)
             await ws_manager.send_failed(session_id, reason, DEMO_TOPICS)
             return
+        trial_reserved = True  # can_generate 已原子占用试用名额——失败时 finally 里释放
 
         logger.info("新请求 | session=%s | topic=%s | ip=%s", session_id, user_input, client_ip)
 
@@ -489,7 +526,8 @@ async def generate_page(websocket: WebSocket):
             GENERATION_STEPS.observe(result.get("steps", 0))
 
         if result.get("status") == "success":
-            # 成功才计为一次试用（失败不扣）
+            generation_ok = True
+            # 成功——名额保留（can_generate 已占用）
             await rate_limiter.record_success(client_ip)
 
             # ── Phase C：提取偏好 + 多轮迭代 ──
@@ -507,6 +545,22 @@ async def generate_page(websocket: WebSocket):
                     break
                 instruction = (follow.get("instruction") or "").strip()
                 if not instruction:
+                    break
+                # P0 安全：指令同样限长——防超长 prompt 烧 token（topic 已有校验，指令此前无）
+                if len(instruction) > settings.input_max_length:
+                    await ws_manager.send_json(session_id, {
+                        "type": "thinking", "step": 0,
+                        "thought": f"这条修改要求太长了（最多 {settings.input_max_length} 字），请精简后重试。",
+                        "tool": "system", "budget": 0,
+                    })
+                    continue
+                # P2：迭代计入本次预算上限——防单会话迭代无限烧 token（orchestrator 只罩首轮）
+                if get_cost_summary(session_cost_records)["estimated_cost_rmb"] >= settings.budget_total:
+                    await ws_manager.send_json(session_id, {
+                        "type": "thinking", "step": 0,
+                        "thought": f"本次生成已达预算上限（¥{settings.budget_total}），迭代暂停。",
+                        "tool": "system", "budget": 0,
+                    })
                     break
                 iterations += 1
                 from app.agents.orchestrator import refine_page
@@ -582,4 +636,7 @@ async def generate_page(websocket: WebSocket):
         except Exception:
             pass
     finally:
+        # 生成失败/超时/断开 → 释放预留的试用名额（成功时名额保留）
+        if trial_reserved and not generation_ok:
+            await rate_limiter.release_trial(client_ip)
         await ws_manager.disconnect(session_id, client_ip)
