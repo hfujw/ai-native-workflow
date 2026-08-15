@@ -22,8 +22,7 @@ class Settings(BaseSettings):
     deepseek_base_url: str = Field("https://api.deepseek.com")
     deepseek_model: str = Field("deepseek-chat")
 
-    # ── 搜索 ──
-    tavily_api_key: str = Field("", description="Tavily Search API Key（免费1000次/月，国内可访问）")
+    # ── 搜索（用户在前端设置里填搜索服务的 Key——不回落 .env，没填 = 不联网） ──
 
     # ── 预算（可通过 env 覆盖，调试和部署时都能改） ──
     max_steps: int = Field(20, ge=1, le=100)

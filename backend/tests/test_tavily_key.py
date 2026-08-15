@@ -1,71 +1,79 @@
-"""搜索凭证（Tavily）会话级绑定测试——与 LLM 凭证独立管理。
+"""搜索服务会话级绑定测试——和模型选择一样：用户选服务 + 独立 Key/地址。
 
 覆盖：
-- T-1 bind 后 _effective_tavily_key 用会话 key
-- T-2 未绑定回落 .env 配置
-- T-3 绑定只影响当前任务（contextvars 隔离）
-- T-4 _search_tavily 实际使用会话 key（mock httpx 验证请求体）
+- S-1 bind 后 _search_service 返回绑定配置
+- S-2 未绑定 / 空 Key → None（不联网，不回落任何配置）
+- S-3 绑定只影响当前任务（contextvars 隔离）
+- S-4 搜索请求用会话服务的 Key + 端点（mock httpx 验证请求体）
+- S-5 自定义端点生效
 """
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
 
 @pytest.fixture(autouse=True)
 def _clear():
-    from app.tools.search import _tavily_key_ctx
-    _tavily_key_ctx.set(None)
+    from app.tools.search import _search_svc_ctx
+    _search_svc_ctx.set(None)
     yield
-    _tavily_key_ctx.set(None)
+    _search_svc_ctx.set(None)
 
 
-def test_bind_uses_session_key():
-    from app.tools.search import _effective_tavily_key, bind_tavily_key
+def test_bind_returns_service():
+    from app.tools.search import _search_service, bind_search_service
 
-    bind_tavily_key("tvly-session-123")
-    assert _effective_tavily_key() == "tvly-session-123"
-
-
-def test_unbound_falls_back_to_env(monkeypatch):
-    from app.tools.search import _effective_tavily_key
-
-    from app.config import settings
-    monkeypatch.setattr(settings, "tavily_api_key", "tvly-env-456")
-    assert _effective_tavily_key() == "tvly-env-456"
+    bind_search_service({"name": "Tavily", "api_key": "tvly-123", "base_url": "https://api.tavily.com"})
+    svc = _search_service()
+    assert svc["api_key"] == "tvly-123"
+    assert svc["name"] == "Tavily"
 
 
-def test_bind_ignores_blank():
-    from app.tools.search import _effective_tavily_key, bind_tavily_key
+def test_bind_fills_default_endpoint():
+    """自定义服务没填端点 → 默认 Tavily 端点。"""
+    from app.tools.search import _search_service, bind_search_service
 
-    bind_tavily_key("   ")
-    from app.config import settings
-    assert _effective_tavily_key() == settings.tavily_api_key.strip()
+    bind_search_service({"name": "我的搜索", "api_key": "k"})
+    assert _search_service()["base_url"] == "https://api.tavily.com"
+
+
+def test_unbound_is_none():
+    from app.tools.search import _search_service
+
+    assert _search_service() is None
+
+
+def test_blank_key_means_not_configured():
+    """空白 Key = 未配置（没填就是没填，不回落 .env）。"""
+    from app.tools.search import _search_service, bind_search_service
+
+    bind_search_service({"name": "Tavily", "api_key": "   ", "base_url": "https://x"})
+    assert _search_service() is None
 
 
 @pytest.mark.asyncio
 async def test_binding_isolated_between_tasks():
-    """一个任务绑定后，另一个任务仍用默认。"""
+    """一个任务绑定后，另一个任务仍为 None。"""
     import asyncio
-    from app.tools.search import _effective_tavily_key, bind_tavily_key
+    from app.tools.search import _search_service, bind_search_service
 
     async def bound():
-        bind_tavily_key("tvly-a")
+        bind_search_service({"name": "A", "api_key": "k-a"})
         await asyncio.sleep(0.05)
-        return _effective_tavily_key()
+        return _search_service()
 
     async def plain():
         await asyncio.sleep(0.05)
-        return _effective_tavily_key()
+        return _search_service()
 
-    assert await asyncio.create_task(bound()) == "tvly-a"
-    from app.config import settings
-    assert await asyncio.create_task(plain()) == settings.tavily_api_key.strip()
+    assert (await asyncio.create_task(bound()))["api_key"] == "k-a"
+    assert await asyncio.create_task(plain()) is None
 
 
 @pytest.mark.asyncio
-async def test_search_tavily_uses_session_key():
-    """_search_tavily 请求体带会话 key（独立于 LLM 凭证）。"""
-    from app.tools.search import _search_tavily, bind_tavily_key
+async def test_search_uses_session_service_key_and_endpoint():
+    """请求体带会话服务的 Key，发往会话服务的端点。"""
+    from app.tools.search import _search_tavily, bind_search_service
 
     captured = {}
 
@@ -91,10 +99,22 @@ async def test_search_tavily_uses_session_key():
             captured["json"] = json
             return FakeResp()
 
-    bind_tavily_key("tvly-session-999")
+    bind_search_service({"name": "我的网关", "api_key": "tvly-999", "base_url": "https://my-search.example.com"})
     with patch("app.tools.search.httpx.AsyncClient", FakeClient):
         results = await _search_tavily("恐龙")
 
     assert len(results) == 1
-    assert captured["json"]["api_key"] == "tvly-session-999"
-    assert captured["url"] == "https://api.tavily.com/search"
+    assert captured["json"]["api_key"] == "tvly-999"
+    assert captured["url"] == "https://my-search.example.com/search"
+
+
+@pytest.mark.asyncio
+async def test_search_without_service_returns_empty():
+    """没配置搜索服务 → 不联网（返回空，不请求任何端点）。"""
+    from app.tools.search import _search_tavily
+
+    async def boom(*a, **k):
+        raise AssertionError("未配置服务不应发起请求")
+
+    with patch("app.tools.search.httpx.AsyncClient", boom):
+        assert await _search_tavily("恐龙") == []

@@ -15,7 +15,7 @@ import {
   pinProject,
   renameProject,
 } from "./lib/api";
-import type { GenParams, ModelItem, Msg, ProviderCreds, ToolCall, ToolId } from "./lib/api";
+import type { GenParams, ModelItem, Msg, ProviderCreds, SearchService, ToolCall, ToolId } from "./lib/api";
 import { deleteSession, loadSessions, saveSession } from "./lib/sessions";
 import type { SavedSession } from "./lib/sessions";
 import {
@@ -146,8 +146,22 @@ export default function App() {
     localStorage.removeItem("lumen.apiKey");
     localStorage.removeItem("lumen.apiBase");
   }, [legacyApiKey, legacyApiBase, setProviderCreds]);
-  // 搜索凭证（Tavily Key）——与 LLM 凭证独立管理；单一来源在 App，随 WS 发送
-  const [tavilyKey, setTavilyKey] = usePersistentState("lumen.tavilyKey", "");
+  // 搜索服务列表（和模型选择一样：用户选服务 + 独立 Key/地址；默认内置 Tavily）
+  // 单一来源在 App，随 WS 发送；未配置任何服务的 Key = 不联网（不回落 .env）
+  const [searchServices, setSearchServices] = usePersistentState<SearchService[]>(
+    "lumen.searchServices",
+    [{ id: "tavily", name: "Tavily", apiKey: "", baseUrl: "https://api.tavily.com", removable: false }]
+  );
+  const [activeSearchService, setActiveSearchService] = usePersistentState("lumen.activeSearchService", "tavily");
+  // 旧数据迁移：早期版本 tavilyKey 单值 → 归入 Tavily 服务（只迁移一次）
+  const [legacyTavilyKey] = usePersistentState("lumen.tavilyKey", "");
+  useEffect(() => {
+    if (!legacyTavilyKey) return;
+    setSearchServices((svcs) =>
+      svcs.map((s) => (s.id === "tavily" ? { ...s, apiKey: s.apiKey || legacyTavilyKey } : s))
+    );
+    localStorage.removeItem("lumen.tavilyKey");
+  }, [legacyTavilyKey, setSearchServices]);
   const [fullscreenHtml, setFullscreenHtml] = useState<string | null>(null);
   /** 空状态建议话题（来自后端知识库 /api/events） */
   const [starters, setStarters] = useState<string[]>([]);
@@ -411,12 +425,17 @@ export default function App() {
 
     const currentModel = models.find((m) => m.id === composerModel);
     const creds = currentModel ? providerCreds[currentModel.provider] : undefined;
+    // 当前选中的搜索服务（有 Key 才发；没配 = 不联网）
+    const searchSvc = searchServices.find((s) => s.id === activeSearchService);
     send(text, {
       params: genParams,
       model: currentModel?.modelId,
       apiKey: creds?.apiKey || undefined,
       apiBase: creds?.apiBase || undefined,
-      tavilyKey: tavilyKey || undefined,
+      searchService:
+        searchSvc && searchSvc.apiKey
+          ? { name: searchSvc.name, apiKey: searchSvc.apiKey, baseUrl: searchSvc.baseUrl }
+          : undefined,
       onMessage: applyGenMsg,
       onError: (reason) => {
         const t = targetIdRef.current;
@@ -642,8 +661,10 @@ export default function App() {
             onModelsChange={setModels}
             providerCreds={providerCreds}
             onProviderCredsChange={setProviderCreds}
-            tavilyKey={tavilyKey}
-            onTavilyKeyChange={setTavilyKey}
+            searchServices={searchServices}
+            onSearchServicesChange={setSearchServices}
+            activeSearchService={activeSearchService}
+            onActiveSearchServiceChange={setActiveSearchService}
           />
         </div>
       </aside>

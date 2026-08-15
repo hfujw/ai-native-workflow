@@ -867,23 +867,59 @@ body {
   min-width: 0;
 }
 .credential-edit-row .setting-input { flex: 1; min-width: 0; }
-/* 凭证来源徽标（DSH describe：configured/source——只报来源，不含值） */
-.credential-field-with-badge {
+/* 搜索服务列表（和模型行一样：服务行 + 展开编辑 Key/地址） */
+.search-svc-intro {
+  font-size: 12px;
+  color: var(--text-3);
+  margin: 0 0 10px;
+}
+.search-svc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.search-svc-row {
+  border: 1px solid var(--border-medium);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+}
+.search-svc-row.active { border-color: var(--dsw-brand); }
+.search-svc-head {
   display: flex;
   align-items: center;
+  gap: 8px;
+}
+.search-svc-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-  min-height: 28px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.credential-source {
-  font-size: 11px;
-  line-height: 16px;
-  border-radius: 4px;
-  padding: 1px 6px;
-  flex: none;
+.search-svc-editor {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-medium);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-.credential-source.user { background: color-mix(in srgb, var(--dsw-state-success) 14%, transparent); color: var(--dsw-state-success); }
-.credential-source.env { background: color-mix(in srgb, var(--dsw-state-warn) 14%, transparent); color: var(--dsw-state-warn); }
-.credential-source.none { background: var(--surface-3); color: var(--text-3); }
+.search-svc-add-card {
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+}
 .model-row-name {
   font-size: 14px;
   font-weight: 500;
