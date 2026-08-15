@@ -1,4 +1,8 @@
-"""LLM 客户端 — DeepSeek API 异步封装。"""
+"""LLM 客户端 — DeepSeek API 异步封装。
+
+Key 全部来自前端设置（会话级绑定，随 WS/REST 发送）——后端不读 .env 的 key。
+没有绑定任何 key → 调用时报"未配置 API Key"（没填就是没填）。
+"""
 
 import asyncio
 import contextvars
@@ -6,30 +10,14 @@ import logging
 import os
 import time
 
-from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
-load_dotenv()
 logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = 120
 MAX_RETRIES = 2
 
-_api_key = (os.getenv("DEEPSEEK_API_KEY") or "").strip()
-
-# 默认客户端：.env 有 key 才创建；没有 → None（用户在前端设置里填 key，
-# 会话级绑定优先；都没配 → 调用时报"未配置 API Key"，不静默、不让启动卡死）
-_default_client = (
-    AsyncOpenAI(
-        api_key=_api_key,
-        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-        timeout=DEFAULT_TIMEOUT,
-    )
-    if _api_key
-    else None
-)
-
-# 会话级客户端：用户自定义 API Key/Base（contextvars——只影响当前任务及其子任务，
-# 不污染其他连接；不绑定则回落 _default_client）
+# 会话级客户端：用户在前端设置的 Key/Base（contextvars——只影响当前任务及其子任务，
+# 不污染其他连接；不绑定则 _get_client 明确报错）
 _session_client: contextvars.ContextVar = contextvars.ContextVar(
     "llm_session_client", default=None)
 
@@ -37,13 +25,12 @@ DEFAULT_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
 
 def bind_session_client(api_key: str | None = None, base_url: str | None = None) -> None:
-    """绑定当前会话的 LLM 客户端（用户自定义 API Key 生效）。
+    """绑定当前会话的 LLM 客户端（用户在前端设置的 API Key 生效）。
 
     必须在 asyncio.create_task 之前调用——contextvars 在创建任务时复制，
-    子任务（orchestrator）才能继承绑定。传 None 的字段回落环境变量默认值。
-    没 key 可绑（api_key 空且 .env 也没有）→ 不绑定，调用时报"未配置 API Key"。
+    子任务（orchestrator）才能继承绑定。没 key → 不绑定（调用时报未配置）。
     """
-    key = (api_key or "").strip() or _api_key
+    key = (api_key or "").strip()
     if not key:
         _session_client.set(None)
         return
@@ -55,13 +42,13 @@ def bind_session_client(api_key: str | None = None, base_url: str | None = None)
 
 
 def clear_session_client() -> None:
-    """清除当前会话绑定，回落默认客户端。"""
+    """清除当前会话绑定。"""
     _session_client.set(None)
 
 
 def _get_client() -> AsyncOpenAI:
-    """会话级客户端优先；没有则默认客户端；都没有 → 明确报错（没填就是没填）。"""
-    client = _session_client.get() or _default_client
+    """当前会话的客户端；没有绑定 → 明确报错（没填就是没填，不静默回落）。"""
+    client = _session_client.get()
     if client is None:
         raise RuntimeError("未配置 API Key——请在 Lumen 设置 → 模型 里填写所用模型的 API Key")
     return client

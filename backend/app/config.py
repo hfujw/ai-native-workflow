@@ -18,9 +18,8 @@ class Settings(BaseSettings):
     )
 
     # ── LLM ──
-    # 默认 API Key 可选：用户在前端设置里填（会话级绑定，优先于这里）；
-    # 这里没配、前端也没填 → 生成时报"未配置 API Key"（不静默、不让启动卡死）
-    deepseek_api_key: str = Field("", description="DeepSeek API Key（可选；前端填的优先）")
+    # Key 全部来自前端设置（会话级绑定）——后端不读 .env 的 key。
+    # 这里只保留默认端点/模型（前端没填时兜底）。
     deepseek_base_url: str = Field("https://api.deepseek.com")
     deepseek_model: str = Field("deepseek-chat")
 
