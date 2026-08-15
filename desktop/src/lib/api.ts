@@ -94,6 +94,7 @@ export type GenParams = {
   searchMax: number;       // 搜索轮数上限
   searchEnabled: boolean;  // 联网搜索开关
   skillId: string;         // 风格 skill（模板资产注入渲染；空=LLM 自由发挥）
+  searchModel?: string;    // 搜索换词决策用的模型 ID（空=跟随主模型；建议用便宜模型省钱）
 };
 
 /** 模型配置（设置页管理，Composer 选择） */

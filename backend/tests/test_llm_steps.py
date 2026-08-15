@@ -104,3 +104,45 @@ async def test_judge_retry_uses_llm_steps():
     assert ctx["judge_fail_count"] < judge_limit
     # llm_steps 更小也生效（如用户把 LLM 步数调成 1）
     assert min(1, _s.judge_max_retries) == 1
+
+
+# ═══════════════════════════════════════════════════════════════
+# 搜索模型独立配置（searchModel → search_model → 换词决策）
+# ═══════════════════════════════════════════════════════════════
+
+def test_apply_gen_params_sets_search_model():
+    """前端 searchModel → ctx.search_model。"""
+    ctx = {}
+    apply_gen_params(ctx, {"searchModel": "deepseek-chat"})
+    assert ctx["search_model"] == "deepseek-chat"
+
+
+def test_apply_gen_params_search_model_optional():
+    """未传 searchModel → 不设置（跟随主模型）。"""
+    ctx = {}
+    apply_gen_params(ctx, {"searchEnabled": True})
+    assert "search_model" not in ctx
+
+
+@pytest.mark.asyncio
+async def test_dispatch_search_uses_search_model_first():
+    """search 换词优先用 search_model，未配置才跟随主模型。"""
+    with patch("app.agent.supervisor.ResearcherAgent") as MockRA:
+        inst = MockRA.return_value
+        inst.run = AsyncMock(return_value={"tool": "search", "results": [], "count": 0, "level": "none"})
+        ctx = {"user_input": "恐龙", "material": [], "cost_records": [],
+               "model": "deepseek-reasoner", "search_model": "deepseek-chat"}
+        await dispatch(ctx, "search", None)
+        assert inst.run.call_args.kwargs.get("model") == "deepseek-chat"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_search_falls_back_to_main_model():
+    """无 search_model → 用主模型（ctx.model）。"""
+    with patch("app.agent.supervisor.ResearcherAgent") as MockRA:
+        inst = MockRA.return_value
+        inst.run = AsyncMock(return_value={"tool": "search", "results": [], "count": 0, "level": "none"})
+        ctx = {"user_input": "恐龙", "material": [], "cost_records": [],
+               "model": "deepseek-reasoner"}
+        await dispatch(ctx, "search", None)
+        assert inst.run.call_args.kwargs.get("model") == "deepseek-reasoner"

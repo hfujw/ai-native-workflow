@@ -67,6 +67,7 @@ def apply_gen_params(ctx: dict, params: dict | None) -> None:
     - budget      → budget_total（单次生成成本上限，元）
     - searchMax   → search_max（搜索轮数上限）
     - searchEnabled → search_enabled（False 时强制禁止搜索）
+    - searchModel → search_model（搜索换词决策的模型；空=跟随主模型）
     - llmSteps    → llm_steps（每类 LLM 内部决策循环/重试的上限：
                      render 自检 / design 重试 / search 换词 / 审查回退）
     """
@@ -78,6 +79,8 @@ def apply_gen_params(ctx: dict, params: dict | None) -> None:
     if p.get("searchMax") is not None:
         ctx["search_max"] = min(20, max(0, int(p["searchMax"])))   # 上限对齐 config
     ctx["search_enabled"] = bool(p.get("searchEnabled", True))
+    if p.get("searchModel"):
+        ctx["search_model"] = str(p["searchModel"])  # 搜索换词用便宜模型（省 token）
     if p.get("llmSteps") is not None:
         ctx["llm_steps"] = min(100, max(1, int(p["llmSteps"])))
     if p.get("skillId"):
