@@ -15,7 +15,7 @@ import {
   pinProject,
   renameProject,
 } from "./lib/api";
-import type { GenParams, ModelItem, Msg, ToolCall, ToolId } from "./lib/api";
+import type { GenParams, ModelItem, Msg, ProviderCreds, ToolCall, ToolId } from "./lib/api";
 import { deleteSession, loadSessions, saveSession } from "./lib/sessions";
 import type { SavedSession } from "./lib/sessions";
 import {
@@ -121,10 +121,31 @@ export default function App() {
     });
   }, [setModels]);
   const [sidebarOpen, setSidebarOpen] = usePersistentState("lumen.sidebar", true);
-  // 用户自定义 LLM 接入（单一来源：App 持有，传 SettingsButton 受控编辑；
-  // 生成时随 WS 发送 → 后端绑定会话级客户端）
-  const [apiKey, setApiKey] = usePersistentState("lumen.apiKey", "");
-  const [apiBase, setApiBase] = usePersistentState("lumen.apiBase", "https://api.deepseek.com");
+  // 提供方连接凭证（每个 provider 独立——选哪个模型的模型，就用哪个 provider 的 Key/地址；
+  // 发送时随 WS 传给后端 → 后端绑定会话级客户端）
+  const [providerCreds, setProviderCreds] = usePersistentState<Record<string, ProviderCreds>>(
+    "lumen.providerCreds",
+    {}
+  );
+  // 旧数据迁移：早期版本 apiKey/apiBase 是全局单值 → 归入 DeepSeek 提供方（只迁移一次）
+  const [legacyApiKey] = usePersistentState("lumen.apiKey", "");
+  const [legacyApiBase] = usePersistentState("lumen.apiBase", "");
+  useEffect(() => {
+    if (!legacyApiKey && !legacyApiBase) return;
+    setProviderCreds((creds) => {
+      const cur = creds["DeepSeek"] ?? { apiKey: "", apiBase: "" };
+      const next = {
+        ...creds,
+        DeepSeek: {
+          apiKey: cur.apiKey || legacyApiKey,
+          apiBase: cur.apiBase || legacyApiBase || "https://api.deepseek.com",
+        },
+      };
+      return next;
+    });
+    localStorage.removeItem("lumen.apiKey");
+    localStorage.removeItem("lumen.apiBase");
+  }, [legacyApiKey, legacyApiBase, setProviderCreds]);
   const [fullscreenHtml, setFullscreenHtml] = useState<string | null>(null);
   /** 空状态建议话题（来自后端知识库 /api/events） */
   const [starters, setStarters] = useState<string[]>([]);
@@ -386,11 +407,13 @@ export default function App() {
     ]);
     setView("chat");
 
+    const currentModel = models.find((m) => m.id === composerModel);
+    const creds = currentModel ? providerCreds[currentModel.provider] : undefined;
     send(text, {
       params: genParams,
-      model: models.find((m) => m.id === composerModel)?.modelId,
-      apiKey: apiKey || undefined,
-      apiBase: apiBase || undefined,
+      model: currentModel?.modelId,
+      apiKey: creds?.apiKey || undefined,
+      apiBase: creds?.apiBase || undefined,
       onMessage: applyGenMsg,
       onError: (reason) => {
         const t = targetIdRef.current;
@@ -614,10 +637,8 @@ export default function App() {
             onParamsChange={setGenParams}
             models={models}
             onModelsChange={setModels}
-            apiKey={apiKey}
-            onApiKeyChange={setApiKey}
-            apiBase={apiBase}
-            onApiBaseChange={setApiBase}
+            providerCreds={providerCreds}
+            onProviderCredsChange={setProviderCreds}
           />
         </div>
       </aside>
