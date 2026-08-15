@@ -50,7 +50,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import demos, generate, health, history, preferences
+from app.api import generate, history, meta, preferences, skills
 from app.api.ws import ws_manager
 from app.config import settings as _settings
 
@@ -77,8 +77,8 @@ app.add_middleware(
 )
 
 # 路由
-app.include_router(health.router)
-app.include_router(demos.router)
+app.include_router(meta.router)
 app.include_router(generate.router)
 app.include_router(history.router)
 app.include_router(preferences.router)
+app.include_router(skills.router)

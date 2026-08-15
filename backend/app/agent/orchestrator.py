@@ -60,6 +60,27 @@ ORCHESTRATOR_SYSTEM_PROMPT = """你是一个视觉叙事引擎。用户给你一
 {"thought":"3-4句自然内心独白","tool":"search|design|compose|render|verify","params":{}}"""
 
 
+def apply_gen_params(ctx: dict, params: dict | None) -> None:
+    """把前端设置里的生成参数（会话级）覆盖到编排上下文。
+
+    - agentSteps  → max_steps（Agent 决策循环步数）
+    - budget      → budget_total（单次生成成本上限，元）
+    - searchMax   → search_max（搜索轮数上限）
+    - searchEnabled → search_enabled（False 时强制禁止搜索）
+    - llmSteps    → llm_steps（预留：单次 LLM 调用的步数语义，工具层参数化后接入）
+    """
+    p = params or {}
+    if p.get("agentSteps") is not None:
+        ctx["max_steps"] = min(100, max(1, int(p["agentSteps"])))  # 上限对齐 config（防烧钱）
+    if p.get("budget") is not None:
+        ctx["budget_total"] = max(0.0, float(p["budget"]))
+    if p.get("searchMax") is not None:
+        ctx["search_max"] = min(20, max(0, int(p["searchMax"])))   # 上限对齐 config
+    ctx["search_enabled"] = bool(p.get("searchEnabled", True))
+    if p.get("llmSteps") is not None:
+        ctx["llm_steps"] = min(100, max(1, int(p["llmSteps"])))
+
+
 async def orchestrator_node(state: dict) -> dict:
     """主循环：思考→行动→反馈→循环。思考先推到前端，用户看到后AI再行动。"""
     user_input = state.get("user_input", "")
@@ -77,6 +98,8 @@ async def orchestrator_node(state: dict) -> dict:
     "steps": 0,
     "max_steps": settings.max_steps,
     "search_max": settings.search_max,
+    "search_enabled": True,
+    "model": settings.deepseek_model,   # 会话模型（前端 Composer 选择可覆盖）
     "budget_spent": 0.0,
     "budget_total": settings.budget_total,
     "passed": False,
@@ -86,6 +109,12 @@ async def orchestrator_node(state: dict) -> dict:
     "_last_cost_len": 0,   # 真实预算：上次结算的账本长度
     "_preferences": state.get("_preferences", {}),  # Phase C：用户偏好
     }
+
+    # 前端设置里的生成参数（会话级覆盖全局配置）
+    apply_gen_params(ctx, state.get("_params"))
+    # 前端 Composer 选择的模型（会话级覆盖）
+    if state.get("_model"):
+        ctx["model"] = state["_model"]
 
     # 本地知识库：关键词匹配 → 没命中 → 语义向量检索兜底
     # "嬴政" 能匹配到 "秦始皇修长城"——关键词做不到的，向量能做到。
@@ -135,6 +164,14 @@ async def orchestrator_node(state: dict) -> dict:
             ctx["honest_mode"] = True
             ctx["material_level"] = {"level": "low", "reason": "LLM自评素材不足", "suggestion": "诚实呈现"}
             decision["tool"] = "render"  # 不单独 push——后面的统一 push 会推
+
+        # 1.55. 联网开关：searchEnabled=false 时强制禁止搜索（设置里的护栏）
+        if decision.get("tool") == "search" and not ctx.get("search_enabled", True):
+            decision["tool"] = "design"
+            if push:
+                await push({"type": "thinking", "step": ctx["steps"] + 1,
+                            "thought": "联网搜索已在设置中关闭，跳过搜索，直接基于自身知识与素材设计。",
+                            "tool": "system", "budget": ctx["budget_spent"]})
 
         # 1.6. 搜索次数硬拦截
         search_rounds = sum(1 for h in ctx["tool_history"] if h["tool"] == "search")
@@ -352,6 +389,7 @@ HTML长度：{len(ctx.get('html',''))}字符 | 上次验证：{'通过' if ctx['
         async for chunk in chat_stream(
             summary,
             system=ORCHESTRATOR_SYSTEM_PROMPT,
+            model=ctx.get("model"),
             temperature=0.5,
             session_records=ctx.get("cost_records"),
             label="decide",
@@ -465,7 +503,7 @@ REFINE_SYSTEM_PROMPT = """用户在已生成页面的基础上提出修改要求
 
 
 async def refine_page(design, content, material, html, user_input, instruction,
-                      push, session_records, preferences=None) -> dict:
+                      push, session_records, preferences=None, model=None) -> dict:
     """多轮迭代：用户改页面 → LLM 决定改法 → 执行 → 返回新版 html。"""
     import copy
 
@@ -512,7 +550,8 @@ async def refine_page(design, content, material, html, user_input, instruction,
             await push({"type": "thinking", "step": 0,
                         "thought": "🎨 重新设计叙事形式和文案…", "tool": "design", "budget": 0})
         da = await DesignerAgent().run(material, user_input, push=push,
-                                       session_records=session_records, preferences=preferences)
+                                       session_records=session_records, preferences=preferences,
+                                       model=model)
         design = da.get("design") or design
         content = da.get("content") or content
 
@@ -523,7 +562,8 @@ async def refine_page(design, content, material, html, user_input, instruction,
     if push:
         await push({"type": "thinking", "step": 0,
                     "thought": f"🖌️ 重新渲染（{action}）…", "tool": "render", "budget": 0})
-    rr = await RenderAgent().run(patched, content or {}, push=push, session_records=session_records)
+    rr = await RenderAgent().run(patched, content or {}, push=push, session_records=session_records,
+                                 model=model)
 
     # F4: 迭代也要外部验证（保持"render 后必须 verify"原则，不让 LLM 自评）
     verified = False
