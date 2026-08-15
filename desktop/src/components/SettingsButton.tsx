@@ -9,6 +9,7 @@ import {
   IconClose,
   IconCpu,
   IconGear,
+  IconPen,
   IconPenTool,
   IconPlus,
   IconSparkle,
@@ -121,6 +122,10 @@ export default function SettingsButton({
   const [lang] = useState("中文"); // 界面语言切换开发中（禁用态）
   const [activePreset, setActivePreset] = usePersistentState("lumen.preset", "storyteller");
   const [customPresets, setCustomPresets] = usePersistentState<Preset[]>("lumen.customPresets", []);
+  // 正在编辑的自定义预设 id（null=无；展开行内编辑表单）
+  const [editingPreset, setEditingPreset] = useState<string | null>(null);
+  // 编辑草稿（打开时从预设拷贝，保存时写回）
+  const [editPresetDraft, setEditPresetDraft] = useState<Preset | null>(null);
 
   // 模型页（DSH ModelsSection：provider 行 + 一次一张编辑卡片 + 添加提供方）
   // 展开的 provider（null=收起全部；一次只展开一张）
@@ -208,23 +213,55 @@ export default function SettingsButton({
     onParamsChange({ ...p.params, skillId: styleName ? (SKILL_ID_BY_NAME[styleName] ?? "") : "" });
   };
 
-  /** 基于当前默认预设复制一份到自定义组 */
-  const duplicatePreset = () => {
-    const src = PRESETS.find((p) => p.id === activePreset) ?? PRESETS[0];
-    const copy: Preset = {
-      ...src,
+  /** 自建预设：从空白开始（不是复制内置）——自己起名、选技能、定参数 */
+  const createPreset = () => {
+    const draft: Preset = {
       id: `custom-${Date.now()}`,
+      name: "",
       trust: "user",
-      name: `${src.name} 副本`,
-      badge: undefined,
+      desc: "",
+      skills: [],
+      params: { agentSteps: 20, llmSteps: 10, searchMax: 8, searchEnabled: true, budget: 1.0 },
     };
-    setCustomPresets((cs) => [...cs, copy]);
-    applyPreset(copy);
+    setEditPresetDraft(draft);
+    setEditingPreset(draft.id); // 占位 id：保存时才真正写入列表
   };
 
   const removeCustomPreset = (id: string) => {
     setCustomPresets((cs) => cs.filter((c) => c.id !== id));
     if (activePreset === id) applyPreset(PRESETS[0]);
+    if (editingPreset === id) setEditingPreset(null);
+  };
+
+  /** 打开自定义预设编辑：从预设拷贝草稿（改的是副本，取消不丢原数据） */
+  const startEditPreset = (p: Preset) => {
+    setEditPresetDraft(JSON.parse(JSON.stringify(p)) as Preset);
+    setEditingPreset(p.id);
+  };
+  /** 技能组合 chips 切换（编辑草稿内） */
+  const toggleDraftSkill = (skill: string) => {
+    if (!editPresetDraft) return;
+    const has = editPresetDraft.skills.includes(skill);
+    setEditPresetDraft({
+      ...editPresetDraft,
+      skills: has
+        ? editPresetDraft.skills.filter((s) => s !== skill)
+        : [...editPresetDraft.skills, skill],
+    });
+  };
+  /** 保存预设：新建（草稿 id 不在列表）追加，编辑写回；应用后设为默认 */
+  const savePresetEdit = () => {
+    if (!editPresetDraft || !editingPreset) return;
+    const name = editPresetDraft.name.trim();
+    if (!name) return;
+    const final = { ...editPresetDraft, name };
+    const exists = customPresets.some((c) => c.id === editingPreset);
+    setCustomPresets((cs) =>
+      exists ? cs.map((c) => (c.id === editingPreset ? final : c)) : [...cs, final]
+    );
+    applyPreset(final); // 新建/编辑后直接设为默认并应用参数
+    setEditingPreset(null);
+    setEditPresetDraft(null);
   };
   const addModel = () => {
     if (!newModelId.trim()) return;
@@ -318,7 +355,7 @@ export default function SettingsButton({
                 {tab === "preset" && (
                   <>
                     <h2 className="setting-page-title">Agent 预设</h2>
-                    <p className="setting-page-intro">选择一个预设作为默认 Agent——预设推荐 skill 组合并设定编排参数</p>
+                    <p className="setting-page-intro">选择一个预设作为默认 Agent——预设推荐 skill 组合并设定编排参数；自定义预设可自建、可编辑</p>
                     {(["system", "user"] as const).map((trust) => {
                       const group = [...PRESETS, ...customPresets].filter((p) => p.trust === trust);
                       const isCustom = trust === "user";
@@ -354,26 +391,163 @@ export default function SettingsButton({
                                     </div>
                                   </button>
                                   {isCustom && (
-                                    <button
-                                      className="preset-card-remove"
-                                      title="移除预设"
-                                      onClick={() => removeCustomPreset(p.id)}
-                                    >
-                                      <IconClose size={13} />
-                                    </button>
+                                    <>
+                                      <button
+                                        className="preset-card-edit"
+                                        title="编辑预设"
+                                        onClick={() => startEditPreset(p)}
+                                      >
+                                        <IconPen size={13} />
+                                      </button>
+                                      <button
+                                        className="preset-card-remove"
+                                        title="移除预设"
+                                        onClick={() => removeCustomPreset(p.id)}
+                                      >
+                                        <IconClose size={13} />
+                                      </button>
+                                    </>
                                   )}
                                 </li>
                               ))}
                             </ul>
                           )}
                           {isCustom && (
-                            <button className="preset-creator-btn" onClick={duplicatePreset}>
-                              <IconPlus size={14} /> 基于内置新建
+                            <button className="preset-creator-btn" onClick={createPreset}>
+                              <IconPlus size={14} /> 自建预设
                             </button>
                           )}
                         </div>
                       );
                     })}
+
+                    {/* ── 自建/编辑表单（空白草稿 = 自建；带数据 = 编辑） ── */}
+                    {editingPreset && editPresetDraft && (
+                      <div className="preset-editor">
+                        <div className="model-editor-header">
+                          <span className="model-editor-title">
+                            {customPresets.some((c) => c.id === editingPreset) ? "编辑预设" : "自建预设"}
+                          </span>
+                        </div>
+                        <div className="model-field">
+                          <label className="model-field-label">名称</label>
+                          <input
+                            className="setting-input"
+                            placeholder="给我的预设起个名"
+                            value={editPresetDraft.name}
+                            onChange={(e) => setEditPresetDraft({ ...editPresetDraft, name: e.target.value })}
+                            autoFocus
+                          />
+                        </div>
+                        <div className="model-field">
+                          <label className="model-field-label">描述</label>
+                          <input
+                            className="setting-input"
+                            placeholder="这个预设擅长什么（一句话）"
+                            value={editPresetDraft.desc}
+                            onChange={(e) => setEditPresetDraft({ ...editPresetDraft, desc: e.target.value })}
+                          />
+                        </div>
+                        <div className="model-field">
+                          <label className="model-field-label">技能组合</label>
+                          <div className="preset-skill-picker">
+                            {Object.keys(SKILL_ID_BY_NAME).map((s) => (
+                              <button
+                                key={s}
+                                className={`preset-skill-chip ${editPresetDraft.skills.includes(s) ? "on" : ""}`}
+                                onClick={() => toggleDraftSkill(s)}
+                              >
+                                {s}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="preset-editor-params">
+                          <label className="model-field-label">编排参数</label>
+                          <div className="preset-param-grid">
+                            <div className="model-field">
+                              <label className="model-field-label">Agent 步数</label>
+                              <input
+                                className="setting-input"
+                                type="number"
+                                value={editPresetDraft.params.agentSteps}
+                                onChange={(e) =>
+                                  setEditPresetDraft({
+                                    ...editPresetDraft,
+                                    params: { ...editPresetDraft.params, agentSteps: parseInt(e.target.value) || 0 },
+                                  })
+                                }
+                              />
+                            </div>
+                            <div className="model-field">
+                              <label className="model-field-label">LLM 步数</label>
+                              <input
+                                className="setting-input"
+                                type="number"
+                                value={editPresetDraft.params.llmSteps}
+                                onChange={(e) =>
+                                  setEditPresetDraft({
+                                    ...editPresetDraft,
+                                    params: { ...editPresetDraft.params, llmSteps: parseInt(e.target.value) || 0 },
+                                  })
+                                }
+                              />
+                            </div>
+                            <div className="model-field">
+                              <label className="model-field-label">搜索次数</label>
+                              <input
+                                className="setting-input"
+                                type="number"
+                                value={editPresetDraft.params.searchMax}
+                                onChange={(e) =>
+                                  setEditPresetDraft({
+                                    ...editPresetDraft,
+                                    params: { ...editPresetDraft.params, searchMax: parseInt(e.target.value) || 0 },
+                                  })
+                                }
+                              />
+                            </div>
+                            <div className="model-field">
+                              <label className="model-field-label">预算（元）</label>
+                              <input
+                                className="setting-input"
+                                type="number"
+                                value={editPresetDraft.params.budget}
+                                onChange={(e) =>
+                                  setEditPresetDraft({
+                                    ...editPresetDraft,
+                                    params: { ...editPresetDraft.params, budget: parseFloat(e.target.value) || 0 },
+                                  })
+                                }
+                              />
+                            </div>
+                          </div>
+                          <label className="preset-offline-toggle">
+                            <button
+                              className={`toggle ${editPresetDraft.params.searchEnabled ? "on" : ""}`}
+                              onClick={() =>
+                                setEditPresetDraft({
+                                  ...editPresetDraft,
+                                  params: { ...editPresetDraft.params, searchEnabled: !editPresetDraft.params.searchEnabled },
+                                })
+                              }
+                            />
+                            {editPresetDraft.params.searchEnabled ? "联网搜索" : "离线（不联网）"}
+                          </label>
+                        </div>
+                        <div className="model-editor-actions">
+                          <button
+                            className="btn-secondary"
+                            onClick={() => { setEditingPreset(null); setEditPresetDraft(null); }}
+                          >
+                            取消
+                          </button>
+                          <button className="btn-primary" onClick={savePresetEdit} disabled={!editPresetDraft.name.trim()}>
+                            保存
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
 

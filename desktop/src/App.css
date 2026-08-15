@@ -585,14 +585,14 @@ body {
   font-size: 11px;
   color: var(--text-3);
 }
-/* 自定义预设：右上角移除按钮（DSH iconButtonDanger 语义） */
+/* 自定义预设：右上角操作按钮（编辑 + 移除） */
 .preset-card {
   position: relative;
 }
+.preset-card-edit,
 .preset-card-remove {
   position: absolute;
   top: 8px;
-  right: 8px;
   width: 28px;
   height: 28px;
   color: var(--text-3);
@@ -605,7 +605,52 @@ body {
   justify-content: center;
   transition: background 0.15s, color 0.15s;
 }
+.preset-card-edit { right: 40px; }
+.preset-card-remove { right: 8px; }
+.preset-card-edit:hover { background: var(--surface-3); color: var(--text-1); }
 .preset-card-remove:hover { background: color-mix(in srgb, var(--dsw-state-error) 12%, transparent); color: var(--dsw-state-error); }
+
+/* 自建/编辑预设表单 */
+.preset-editor {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--border-medium);
+  border-radius: 12px;
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.preset-skill-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.preset-skill-picker .preset-skill-chip {
+  cursor: pointer;
+  border: 1px solid var(--border-medium);
+  background: transparent;
+  font: inherit;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.preset-skill-picker .preset-skill-chip.on {
+  background: color-mix(in srgb, var(--dsw-brand) 16%, transparent);
+  border-color: var(--dsw-brand);
+  color: var(--text-1);
+}
+.preset-param-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+.preset-offline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+  cursor: pointer;
+}
 .preset-group { display: flex; flex-direction: column; gap: 12px; }
 .preset-group + .preset-group { margin-top: 20px; }
 .preset-creator-btn {
