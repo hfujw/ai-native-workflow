@@ -1,26 +1,35 @@
 import { useState } from "react";
 import { useDropdown } from "../hooks/useDropdown";
+import { IconCheck, IconChevronDown, IconSend } from "./icons";
+import type { ModelItem } from "../lib/api";
 
-const MODELS = ["deepseek-Flash", "deepseek-Pro"];
-const TOOLS = [
-  { name: "搜索", icon: "🔍" },
-  { name: "图表", icon: "📊" },
-  { name: "图片", icon: "🖼️" },
-  { name: "地图", icon: "🗺️" },
-];
-
-export default function Composer({ onSend }: { onSend: (text: string) => void }) {
+/** 输入栏 —— DSH InputBar 样式：上输入区 + 下行右侧 [模型选择][发送] */
+export default function Composer({
+  onSend,
+  models,
+  modelId,
+  onModelIdChange,
+  iterable,
+  sending,
+}: {
+  onSend: (text: string) => void;
+  /** 可选模型（来自设置页管理，持久化） */
+  models: ModelItem[];
+  /** 选中的模型（受控：由 App 持有并持久化，发送时传给后端） */
+  modelId: string;
+  onModelIdChange: (id: string) => void;
+  /** 成品可迭代状态：为 true 时输入会修改当前页面 */
+  iterable?: boolean;
+  /** 生成/迭代进行中：禁用发送，防连点 */
+  sending?: boolean;
+}) {
   const [input, setInput] = useState("");
-  const [model, setModel] = useState(MODELS[0]);
-  const [tools, setTools] = useState<string[]>([]);
-
   const modelDrop = useDropdown();
-  const plusDrop = useDropdown();
 
-  const addTool = (t: string) => setTools((ts) => (ts.includes(t) ? ts : [...ts, t]));
-  const removeTool = (t: string) => setTools((ts) => ts.filter((x) => x !== t));
+  const current = models.find((m) => m.id === modelId) ?? models[0];
 
   const send = () => {
+    if (sending) return;
     const text = input.trim();
     if (!text) return;
     onSend(text);
@@ -29,36 +38,15 @@ export default function Composer({ onSend }: { onSend: (text: string) => void })
 
   return (
     <div className="composer-area">
-      {/* 工具 chips（选中工具时显示在输入框上方） */}
-      {tools.length > 0 && (
-        <div className="composer-tools">
-          {tools.map((t) => (
-            <span className="tool-chip" key={t}>
-              {t}
-              <button className="tool-chip-x" onClick={() => removeTool(t)}>×</button>
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* 输入框 */}
       <div className="composer">
-        <button ref={plusDrop.triggerRef} className="plus-btn" onClick={plusDrop.toggle}>＋</button>
-        {plusDrop.portal(
-          <div className="plus-menu">
-            {TOOLS.map((t) => (
-              <button key={t.name} onClick={() => { addTool(t.name); plusDrop.close(); }}>
-                <span>{t.icon}</span> {t.name}
-              </button>
-            ))}
-          </div>
-        )}
-
+        {/* 上行：输入文字 */}
         <textarea
           value={input}
           onChange={(e) => setInput(e.currentTarget.value)}
-          placeholder="发送消息..."
+          placeholder={iterable ? "继续修改这个页面..." : "给 Lumen 提供灵感..."}
+          maxLength={500}
           rows={1}
+          autoFocus
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -67,25 +55,40 @@ export default function Composer({ onSend }: { onSend: (text: string) => void })
           }}
         />
 
-        {/* 模型选择 */}
-        <button ref={modelDrop.triggerRef} className="model-chip" onClick={modelDrop.toggle}>
-          {model} {modelDrop.open ? "▾" : "◂"}
-        </button>
-        {modelDrop.portal(
-          <div className="model-menu">
-            {MODELS.map((m) => (
-              <button
-                key={m}
-                className={m === model ? "active" : ""}
-                onClick={() => { setModel(m); modelDrop.close(); }}
-              >
-                {m} {m === model && "✓"}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* 下行右侧：模型选择（挨着发送左边）+ 发送 */}
+        <div className="composer-foot">
+          <button
+            ref={modelDrop.triggerRef}
+            className={`model-select ${modelDrop.open ? "open" : ""}`}
+            onClick={modelDrop.toggle}
+            title="选择模型"
+            disabled={models.length === 0}
+          >
+            {current?.name ?? "无可用模型"}
+            <IconChevronDown className={`chev ${modelDrop.open ? "open" : ""}`} size={13} />
+          </button>
+          {modelDrop.portal(
+            <div className="model-menu">
+              {models.map((m) => (
+                <button
+                  key={m.id}
+                  className={`model-option ${m.id === current?.id ? "selected" : ""}`}
+                  onClick={() => { onModelIdChange(m.id); modelDrop.close(); }}
+                >
+                  <div className="model-option-copy">
+                    <span className="model-option-name">{m.name}</span>
+                    <span className="model-option-desc">{m.modelId}</span>
+                  </div>
+                  {m.id === current?.id && <IconCheck size={15} />}
+                </button>
+              ))}
+            </div>
+          )}
 
-        <button className="send-btn" disabled={!input.trim()} onClick={send}>↑</button>
+          <button className="send-btn" disabled={!input.trim() || sending} onClick={send} title={sending ? "生成中..." : "发送"}>
+            <IconSend size={15} />
+          </button>
+        </div>
       </div>
     </div>
   );
