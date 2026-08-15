@@ -867,6 +867,23 @@ body {
   min-width: 0;
 }
 .credential-edit-row .setting-input { flex: 1; min-width: 0; }
+/* 凭证来源徽标（DSH describe：configured/source——只报来源，不含值） */
+.credential-field-with-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+.credential-source {
+  font-size: 11px;
+  line-height: 16px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex: none;
+}
+.credential-source.user { background: color-mix(in srgb, var(--dsw-state-success) 14%, transparent); color: var(--dsw-state-success); }
+.credential-source.env { background: color-mix(in srgb, var(--dsw-state-warn) 14%, transparent); color: var(--dsw-state-warn); }
+.credential-source.none { background: var(--surface-3); color: var(--text-3); }
 .model-row-name {
   font-size: 14px;
   font-weight: 500;
