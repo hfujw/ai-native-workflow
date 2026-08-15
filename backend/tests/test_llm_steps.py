@@ -93,8 +93,14 @@ async def test_judge_retry_uses_llm_steps():
     }
 
     # 不复用完整 orchestrator 主循环（依赖 WS push），直接验证判据表达式：
-    # 回退上限 = ctx["llm_steps"]（=3），fail_count=2 < 3 → 还会再回退
-    assert ctx["judge_fail_count"] < ctx.get("llm_steps", settings.llm_steps)
-    # 若 fail_count 达到 llm_steps → 不再回退
-    ctx["judge_fail_count"] = 3
-    assert not (ctx["judge_fail_count"] < ctx.get("llm_steps", settings.llm_steps))
+    # 回退上限 = min(llm_steps, judge_max_retries) —— 用户拍板 ≤2 轮
+    from app.config import settings as _s
+    judge_limit = min(ctx["llm_steps"], _s.judge_max_retries)
+    assert judge_limit == 2  # llm_steps=3 但 judge 上限 2 → 取小
+    # fail_count=2 已达上限 → 不再回退
+    assert not (ctx["judge_fail_count"] < judge_limit)
+    # 未达上限 → 会回退
+    ctx["judge_fail_count"] = 1
+    assert ctx["judge_fail_count"] < judge_limit
+    # llm_steps 更小也生效（如用户把 LLM 步数调成 1）
+    assert min(1, _s.judge_max_retries) == 1

@@ -140,6 +140,7 @@ async def tool_render_stream(
             system="你是前端工程师。直接输出完整HTML。",
             temperature=0.3,
             session_records=session_records,
+            model=model,  # 会话模型透传——缺了会静默回落默认模型（对抗审查 N1）
             label="render",
         ):
             accumulated += chunk

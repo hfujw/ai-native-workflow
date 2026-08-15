@@ -5,7 +5,7 @@ import type { GenParams } from "../lib/api";
 /** 生成 WebSocket 地址（http → ws） */
 export const WS_URL = `${BACKEND_URL.replace(/^http/, "ws")}/ws/generate`;
 
-export type GenStatus = "idle" | "connecting" | "running" | "done" | "error";
+export type GenStatus = "idle" | "connecting" | "running" | "ready" | "done" | "error";
 
 type SendOptions = {
   /** 前端设置里的生成参数（会话级覆盖后端配置） */
@@ -56,6 +56,8 @@ export function useGenerate() {
       } catch {
         return;
       }
+      // page_ready：主生成完成、连接保持（后端在等迭代指令）→ 解锁输入
+      if (msg.type === "page_ready") setStatus("ready");
       options.onMessage(msg);
     };
 

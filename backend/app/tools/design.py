@@ -239,7 +239,7 @@ class DesignerAgent:
                 patched = [{"title": "⚠️ 素材不足，请使用简单形式（如 encyclopedia/cards）",
                             "snippet": f"仅有 {mat_count} 条素材", "content": ""}]
                 design = await tool_design(patched, user_input, session_records=session_records,
-                                           preferences=preferences)
+                                           preferences=preferences, model=model)
 
             content = await tool_compose(material, design, user_input, session_records=session_records,
                                          preferences=preferences, model=model)
