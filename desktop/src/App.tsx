@@ -425,8 +425,12 @@ export default function App() {
 
     const currentModel = models.find((m) => m.id === composerModel);
     const creds = currentModel ? providerCreds[currentModel.provider] : undefined;
-    // 当前选中的搜索服务（有 Key 才发；没配 = 不联网）
-    const searchSvc = searchServices.find((s) => s.id === activeSearchService);
+    // 搜索服务：优先用户选中的；选中项没配 Key → 自动用第一个有 Key 的服务
+    // （都没有 = 不联网——绝不回落任何隐藏配置）
+    let searchSvc = searchServices.find((s) => s.id === activeSearchService);
+    if (!searchSvc?.apiKey) {
+      searchSvc = searchServices.find((s) => s.apiKey) ?? undefined;
+    }
     send(text, {
       params: genParams,
       model: currentModel?.modelId,

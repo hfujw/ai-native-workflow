@@ -671,10 +671,21 @@ export default function SettingsButton({
                                 title={s.apiKey ? "已配置 Key" : "未配置 Key——该服务不可用"}
                               />
                               <span className="model-row-actions">
-                                {activeSearchService !== s.id && (
-                                  <button className="btn-secondary" onClick={() => onActiveSearchServiceChange(s.id)}>设为当前</button>
+                                {activeSearchService === s.id ? (
+                                  s.apiKey ? (
+                                    <span className="preset-inuse">使用中</span>
+                                  ) : (
+                                    <span className="search-svc-unconfigured">未配置 Key——不联网</span>
+                                  )
+                                ) : (
+                                  <button
+                                    className="btn-secondary"
+                                    onClick={() => onActiveSearchServiceChange(s.id)}
+                                    title={s.apiKey ? "切换到此搜索服务" : "该服务未配置 Key，切换后联网搜索不可用"}
+                                  >
+                                    设为当前
+                                  </button>
                                 )}
-                                {activeSearchService === s.id && <span className="preset-inuse">使用中</span>}
                                 <button className="btn-secondary" onClick={() => setEditingSearch(editingSearch === s.id ? null : s.id)}>
                                   {editingSearch === s.id ? "收起" : "编辑"}
                                 </button>
