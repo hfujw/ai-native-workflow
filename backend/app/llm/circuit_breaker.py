@@ -29,6 +29,7 @@ class CircuitBreaker:
         self.state = State.CLOSED
         self.failure_count = 0
         self.last_failure_time = 0.0
+        self.last_error: Exception | None = None  # 最近一次真实失败原因（诊断用）
 
     async def call(self, coro):
         """包裹 LLM API 调用。熔断中直接抛异常，不浪费一次网络请求。"""
@@ -37,8 +38,9 @@ class CircuitBreaker:
                 self.state = State.HALF_OPEN
                 logger.info("circuit_breaker=half_open")
             else:
-                logger.warning("circuit_breaker=open — 拒绝请求")
-                raise CircuitOpenError()
+                logger.warning("circuit_breaker=open — 拒绝请求（上次失败: %s）",
+                               _describe_error(self.last_error))
+                raise CircuitOpenError(self.last_error)
 
         try:
             result = await coro
@@ -55,18 +57,32 @@ class CircuitBreaker:
             ):
                 logger.warning("circuit_breaker=auth_error — 不熔断 | %s", type(e).__name__)
                 raise
+            self.last_error = e  # 记住真实原因，熔断时报给用户
             self.failure_count += 1
             self.last_failure_time = time.monotonic()
             if self.failure_count >= self.failure_threshold:
                 self.state = State.OPEN
-                logger.warning("circuit_breaker=open — 连续 %d 次失败", self.failure_count)
+                logger.warning("circuit_breaker=open — 连续 %d 次失败，原因: %s",
+                               self.failure_count, _describe_error(e))
             raise
 
 
+def _describe_error(e: Exception | None) -> str:
+    """把真实异常转成可读原因（带类型，方便诊断是网络/限流/参数）。"""
+    if e is None:
+        return "未知"
+    # OpenAI SDK 异常：尽量提取 status + message
+    status = getattr(e, "status_code", None)
+    if status is not None:
+        return f"HTTP {status} | {type(e).__name__} | {str(e)[:200]}"
+    return f"{type(e).__name__} | {str(e)[:200]}"
+
+
 class CircuitOpenError(Exception):
-    """断路器打开时抛出，调用方直接返回友好提示。"""
-    def __init__(self):
-        super().__init__("AI 服务暂时不可用，请稍后重试")
+    """断路器打开时抛出——携带真实失败原因，方便用户/日志诊断。"""
+    def __init__(self, cause: Exception | None = None):
+        self.cause = cause
+        super().__init__(f"AI 服务暂时不可用，请稍后重试（原因: {_describe_error(cause)}）")
 
 
 # 全局单例
