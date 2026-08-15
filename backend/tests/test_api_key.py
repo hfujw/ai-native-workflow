@@ -1,10 +1,10 @@
-"""批次 D：会话级 API Key/Base 绑定（contextvars）——用户自定义 LLM 接入生效。
+"""批次 D：会话级 API Key/Base 绑定（contextvars）——Key 全前端填，后端不读 .env。
 
 覆盖：
-- D-1 bind 后 _get_client() 使用自定义 base_url
-- D-2 未绑定回落默认客户端
+- D-1 bind 后 _get_client() 使用自定义 key/base
+- D-2 未绑定 → 明确报错"未配置 API Key"（没填就是没填，不回落任何隐藏配置）
 - D-3 绑定只影响当前任务（contextvars 隔离）
-- D-4 clear 后回落默认
+- D-4 clear 后未绑定 → 报错
 - D-5 chat() 实际使用会话客户端（mock create）
 """
 from unittest.mock import AsyncMock, patch
@@ -33,27 +33,34 @@ def test_bind_session_client_uses_custom_base():
     assert str(c.base_url).rstrip("/") == "https://custom.example.com/v1"
 
 
-def test_bind_partial_falls_back_to_env():
-    """只给 key 不给 base → base 回落默认。"""
-    from app.llm.client import bind_session_client, _get_client, DEFAULT_MODEL
+def test_bind_partial_uses_default_endpoint():
+    """只给 key 不给 base → base 用默认端点（不是隐藏 key）。"""
+    from app.llm.client import bind_session_client, _get_client
 
     bind_session_client("sk-test-123", None)
     c = _get_client()
     assert c.api_key == "sk-test-123"
-    # 默认 base 来自环境变量 DEEPSEEK_BASE_URL 或官方地址
-    import os
-    assert c.base_url == os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-    assert DEFAULT_MODEL
+    assert str(c.base_url).rstrip("/") == "https://api.deepseek.com"
+
+
+def test_bind_blank_key_means_not_configured():
+    """空白 key → 不绑定（未配置）。"""
+    from app.llm.client import bind_session_client, _get_client
+
+    bind_session_client("   ", None)
+    with pytest.raises(RuntimeError, match="未配置 API Key"):
+        _get_client()
 
 
 # ═══════════════════════════════════════════════════════════════
-# D-2：未绑定回落默认
+# D-2：未绑定 → 明确报错（没填就是没填）
 # ═══════════════════════════════════════════════════════════════
 
-def test_unbound_uses_default_client():
-    from app.llm.client import _get_client, _default_client
+def test_unbound_raises_not_configured():
+    from app.llm.client import _get_client
 
-    assert _get_client() is _default_client
+    with pytest.raises(RuntimeError, match="未配置 API Key"):
+        _get_client()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -62,9 +69,9 @@ def test_unbound_uses_default_client():
 
 @pytest.mark.asyncio
 async def test_binding_isolated_between_tasks():
-    """一个任务绑定后，另一个任务仍用默认客户端。"""
+    """一个任务绑定后，另一个任务未绑定（报错，不共享）。"""
     import asyncio
-    from app.llm.client import bind_session_client, _get_client, _default_client
+    from app.llm.client import bind_session_client, _get_client
 
     async def bound_task():
         bind_session_client("sk-task-a", "https://a.example.com")
@@ -76,22 +83,23 @@ async def test_binding_isolated_between_tasks():
         return _get_client()
 
     bound_client = await asyncio.create_task(bound_task())
-    plain_client = await asyncio.create_task(plain_task())
     assert bound_client.api_key == "sk-task-a"
-    assert plain_client is _default_client
+    with pytest.raises(RuntimeError, match="未配置 API Key"):
+        await asyncio.create_task(plain_task())
 
 
 # ═══════════════════════════════════════════════════════════════
-# D-4：clear 回落默认
+# D-4：clear 后未绑定 → 报错
 # ═══════════════════════════════════════════════════════════════
 
 def test_clear_session_client():
-    from app.llm.client import bind_session_client, clear_session_client, _get_client, _default_client
+    from app.llm.client import bind_session_client, clear_session_client, _get_client
 
     bind_session_client("sk-x", "https://x.example.com")
-    assert _get_client() is not _default_client
+    assert _get_client().api_key == "sk-x"
     clear_session_client()
-    assert _get_client() is _default_client
+    with pytest.raises(RuntimeError, match="未配置 API Key"):
+        _get_client()
 
 
 # ═══════════════════════════════════════════════════════════════

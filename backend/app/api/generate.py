@@ -130,8 +130,8 @@ async def generate_page(websocket: WebSocket):
         user_input = data.get("event", "").strip()
         gen_params = data.get("params") or None  # 前端设置里的生成参数（会话级覆盖）
         gen_model = data.get("model") or None    # 前端 Composer 选择的模型（None=后端默认）
-        user_api_key = data.get("apiKey") or None   # 用户自定义 LLM API Key（None=后端默认）
-        user_api_base = data.get("apiBase") or None # 用户自定义 LLM Base URL（None=后端默认）
+        user_api_key = data.get("apiKey") or None   # 前端填的 LLM API Key（没填=未配置）
+        user_api_base = data.get("apiBase") or None # 前端填的 LLM Base URL（没填=默认端点）
         user_search_svc = data.get("searchService") or None  # 用户选择的搜索服务（None=不联网）
 
         # 绑定会话级 LLM 客户端——必须在 create_task 之前（contextvars 随任务复制）
