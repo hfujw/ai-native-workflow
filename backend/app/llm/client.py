@@ -61,7 +61,7 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
     """异步单轮对话，含自动重试。
 
     session_records: 传入则写入该会话独立账本；不传则不记账（已无全局账本）。
-    label: Prometheus 指标的 tool 标签（如 "decide"/"render"），用于按工具统计延迟。
+    label: 调用来源标签（如 "decide"/"render"），用于日志定位。
     response_format: 结构化输出（如 {"type": "json_object"}）——提升 JSON 可靠性。
     """
     messages = []
@@ -70,7 +70,6 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
     messages.append({"role": "user", "content": prompt})
 
     last_error = None
-    t0 = time.monotonic()
     from app.llm.circuit_breaker import llm_breaker
     for attempt in range(MAX_RETRIES + 1):
         try:
@@ -112,10 +111,6 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
                                 usage.prompt_tokens, usage.completion_tokens,
                                 usage.total_tokens,
                                 get_cost_summary(session_records)["estimated_cost_rmb"])
-                # Prometheus 指标
-                from app.observability.metrics import LLM_LATENCY, LLM_REQUESTS
-                LLM_LATENCY.labels(tool=label).observe(time.monotonic() - t0)
-                LLM_REQUESTS.labels(status="success", tool=label).inc()
             return content
 
         except Exception as e:
@@ -127,9 +122,6 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
                 await asyncio.sleep(wait)
             else:
                 logger.error("LLM call failed after %d attempts: %s", MAX_RETRIES + 1, e)
-                from app.observability.metrics import LLM_LATENCY, LLM_REQUESTS
-                LLM_LATENCY.labels(tool=label).observe(time.monotonic() - t0)
-                LLM_REQUESTS.labels(status="error", tool=label).inc()
 
     raise last_error or RuntimeError("LLM call failed with unknown error")
 
@@ -156,7 +148,7 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
                       label: str = "unknown"):
     """流式输出——逐 chunk yield 文本片段。
 
-    不修改 chat() 签名。session_records 写入独立账本，label 用于 Prometheus。
+    不修改 chat() 签名。session_records 写入独立账本，label 用于日志定位。
     """
     import time as _time
     messages = []
@@ -164,7 +156,6 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
-    t0 = _time.monotonic()
     try:
         # DeepSeek 兼容层不一定支持 stream_options——报错就降级
         try:
@@ -219,18 +210,10 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
         if session_records is not None:
             session_records.append(entry)
 
-        # Prometheus 埋点
-        from app.observability.metrics import LLM_LATENCY, LLM_REQUESTS
-        LLM_LATENCY.labels(tool=label).observe(_time.monotonic() - t0)
-        LLM_REQUESTS.labels(status="success", tool=label).inc()
-
         if session_records is not None:
             logger.info("LLM stream tokens: in=%d out=%d total=%d | 累计¥%.4f",
                         prompt_tokens, completion_tokens, total_tokens,
                         get_cost_summary(session_records)["estimated_cost_rmb"])
 
     except Exception:
-        from app.observability.metrics import LLM_LATENCY, LLM_REQUESTS
-        LLM_LATENCY.labels(tool=label).observe(_time.monotonic() - t0)
-        LLM_REQUESTS.labels(status="error", tool=label).inc()
         raise

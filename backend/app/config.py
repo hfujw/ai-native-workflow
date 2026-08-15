@@ -30,31 +30,24 @@ class Settings(BaseSettings):
     budget_total: float = Field(1.0, gt=0)
     search_max: int = Field(8, ge=0, le=20)
 
-    # ── 限流 ──
-    daily_budget: float = Field(5.0, gt=0)
-    trials_per_ip: int = Field(1, ge=0)
-
     # ── WebSocket ──
     max_connections: int = Field(20, ge=1)
     receive_timeout: int = Field(30, ge=5)
     generation_timeout: int = Field(300, ge=60)
 
-    # ── 安全 ──
+    # ── 安全（本地工具的健壮性护栏，非公网防护）──
     input_max_length: int = Field(500, ge=10, le=2000, description="用户输入最大长度（字符）")
-    max_connections_per_ip: int = Field(3, ge=1, le=20, description="单 IP 最大并发连接数")
-    trust_proxy: bool = Field(False, description="是否信任反向代理的 X-Forwarded-For 头（docker-compose + Caddy 部署时设 true，防止伪造 XFF 绕过限流）")
     cors_origins: list[str] = Field(
-        default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"],
-        description="CORS 白名单（dev 走 vite 代理同源，直连时才需要；上线前按需收紧）",
+        default_factory=lambda: [
+            "http://localhost:1420", "http://127.0.0.1:1420",  # tauri dev 窗口
+            "http://tauri.localhost",                          # tauri 打包后 webview 源
+        ],
+        description="CORS 白名单（Tauri 桌面端访问本地后端用）",
     )
 
     # ── 日志 ──
     log_prompts: bool = Field(False, description="是否在日志中记录完整 prompt（调试用）")
     log_retention_days: int = Field(30, ge=1, le=365, description="日志保留天数")
-
-    # ── 状态后端 ──
-    state_backend: str = Field("memory", description="memory | redis")
-    redis_url: str = Field("redis://localhost:6379")
 
     # ── 断路器 ──
     circuit_failure_threshold: int = Field(3, ge=1)
