@@ -307,7 +307,9 @@ async def orchestrator_node(state: dict) -> dict:
                         ctx.get("material", []), ctx.get("html", ""),
                         session_records=ctx.get("cost_records"), model=ctx.get("model"),
                     )
-                    if not verdict["passed"] and ctx.get("judge_fail_count", 0) < ctx.get("llm_steps", settings.llm_steps):
+                    # 回退上限：用户拍板 ≤2 轮（judge_max_retries），同时不超 llm_steps
+                    judge_limit = min(ctx.get("llm_steps", settings.llm_steps), settings.judge_max_retries)
+                    if not verdict["passed"] and ctx.get("judge_fail_count", 0) < judge_limit:
                         ctx["judge_fail_count"] = ctx.get("judge_fail_count", 0) + 1
                         target = pick_rollback(verdict["issues"])
                         logger.info("orchestrator=judge_retry | session=%s | round=%d | target=%s",
@@ -562,7 +564,8 @@ async def refine_page(design, content, material, html, user_input, instruction,
     try:
         accumulated = ""
         async for chunk in chat_stream(summary, system=REFINE_SYSTEM_PROMPT,
-                                       temperature=0.3, session_records=session_records, label="refine"):
+                                       temperature=0.3, session_records=session_records,
+                                       model=model, label="refine"):
             accumulated += chunk
         parsed = safe_parse_json(accumulated)
         if parsed:
@@ -615,7 +618,8 @@ async def refine_page(design, content, material, html, user_input, instruction,
                             "thought": f"🔎 验证发现 {len(critical)} 个关键问题，修正后重渲染…",
                             "tool": "verify", "budget": 0})
             patched["visual_hint"] = f"{patched.get('visual_hint', '')} | 审查问题：{'；'.join(critical)}".strip(" |")
-            rr2 = await RenderAgent().run(patched, content or {}, push=push, session_records=session_records)
+            rr2 = await RenderAgent().run(patched, content or {}, push=push, session_records=session_records,
+                                          model=model)
             if rr2.get("complete"):
                 rr = rr2
                 verified = True  # 修正后重渲染成功，视为已修正

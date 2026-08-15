@@ -58,7 +58,8 @@ class Settings(BaseSettings):
 
     # ── 质量审查（四维对抗：事实/覆盖/可读/美学）──
     judge_enabled: bool = Field(True, description="生成后执行质量审查（额外一次 LLM 调用）")
-    # 审查回退轮数由 llm_steps 统一控制（见"预算"组）
+    # 审查回退轮数上限（用户拍板 ≤2 轮）——同时受 llm_steps 钳制（min 取小）
+    judge_max_retries: int = Field(2, ge=0, le=5, description="审查不通过的最大回退轮数，超限诚实交付")
 
     # ── 工具级参数（不同工具不同行为——调试就是改这里，不是改代码）──
     tool_decide_temperature: float = Field(0.5, ge=0, le=2)
