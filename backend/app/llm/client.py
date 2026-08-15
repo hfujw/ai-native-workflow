@@ -27,6 +27,25 @@ def _assert_configured() -> None:
         raise LLMNotConfiguredError(
             "未配置 API Key——请在 Lumen 设置 → 模型 里填写所用模型的 API Key")
 
+
+def _describe_llm_error(e: Exception) -> str:
+    """把 LLM 调用异常转成可读描述：优先 status code + 服务端真实消息。
+
+    很多 OpenAI SDK 异常的 str() 不友好（或只含英文包装），这里尽量
+    提取 HTTP 状态和响应 body 里的 message，方便定位是网络/限流/参数/key。
+    """
+    status = getattr(e, "status_code", None)
+    if status is not None:
+        # APIStatusError 系：body 里通常有 error.message
+        body = getattr(e, "body", None)
+        if isinstance(body, dict):
+            err = body.get("error") or {}
+            msg = err.get("message") if isinstance(err, dict) else None
+            if msg:
+                return f"HTTP {status} | {msg}"
+        return f"HTTP {status} | {type(e).__name__} | {str(e)[:200]}"
+    return f"{type(e).__name__} | {str(e)[:200]}"
+
 # 会话级客户端：用户在前端设置的 Key/Base（contextvars——只影响当前任务及其子任务，
 # 不污染其他连接；不绑定则 _get_client 明确报错）
 _session_client: contextvars.ContextVar = contextvars.ContextVar(
@@ -155,10 +174,11 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
             if attempt < MAX_RETRIES:
                 wait = 2 ** attempt
                 logger.warning("LLM call failed (attempt %d/%d): %s, retrying in %ds...",
-                               attempt + 1, MAX_RETRIES + 1, e, wait)
+                               attempt + 1, MAX_RETRIES + 1, _describe_llm_error(e), wait)
                 await asyncio.sleep(wait)
             else:
-                logger.error("LLM call failed after %d attempts: %s", MAX_RETRIES + 1, e)
+                logger.error("LLM call failed after %d attempts: %s", MAX_RETRIES + 1,
+                             _describe_llm_error(e))
 
     raise last_error or RuntimeError("LLM call failed with unknown error")
 
@@ -174,7 +194,7 @@ async def chat_json(prompt: str, system: str = "", model: str = None,
                           session_records=session_records,
                           response_format={"type": "json_object"})
     except Exception as e:
-        logger.warning("chat_json 结构化输出失败(%s)，降级普通调用", e)
+        logger.warning("chat_json 结构化输出失败(%s)，降级普通调用", _describe_llm_error(e))
         return await chat(prompt, system=system, model=model, temperature=0.1,
                           session_records=session_records)
 
