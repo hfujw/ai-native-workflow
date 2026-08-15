@@ -777,6 +777,7 @@ export default function App() {
 
             <Composer
               onSend={handleSend}
+              onStop={stop}
               models={models}
               modelId={composerModel}
               onModelIdChange={setComposerModel}

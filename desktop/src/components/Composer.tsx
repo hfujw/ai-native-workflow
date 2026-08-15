@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { useDropdown } from "../hooks/useDropdown";
-import { IconCheck, IconChevronDown, IconSend } from "./icons";
+import { IconCheck, IconChevronDown, IconSend, IconSquare } from "./icons";
 import { groupModelsByProvider, type ModelItem } from "../lib/api";
 
-/** 输入栏 —— DSH InputBar 样式：上输入区 + 下行右侧 [模型选择][发送] */
+/** 输入栏 —— DSH InputBar 样式：上输入区 + 下行右侧 [模型选择][发送/停止] */
 export default function Composer({
   onSend,
+  onStop,
   models,
   modelId,
   onModelIdChange,
@@ -13,6 +14,8 @@ export default function Composer({
   sending,
 }: {
   onSend: (text: string) => void;
+  /** 生成/迭代进行中点击：停止当前生成 */
+  onStop?: () => void;
   /** 可选模型（来自设置页管理，持久化） */
   models: ModelItem[];
   /** 选中的模型（受控：由 App 持有并持久化，发送时传给后端） */
@@ -20,7 +23,7 @@ export default function Composer({
   onModelIdChange: (id: string) => void;
   /** 成品可迭代状态：为 true 时输入会修改当前页面 */
   iterable?: boolean;
-  /** 生成/迭代进行中：禁用发送，防连点 */
+  /** 生成/迭代进行中：发送按钮变终止按钮 */
   sending?: boolean;
 }) {
   const [input, setInput] = useState("");
@@ -95,8 +98,13 @@ export default function Composer({
             </div>
           )}
 
-          <button className="send-btn" disabled={!input.trim() || sending} onClick={send} title={sending ? "生成中..." : "发送"}>
-            <IconSend size={15} />
+          <button
+            className={`send-btn ${sending ? "stop" : ""}`}
+            disabled={!sending && (!input.trim() || models.length === 0)}
+            onClick={sending ? onStop : send}
+            title={sending ? "停止生成" : "发送"}
+          >
+            {sending ? <IconSquare size={13} /> : <IconSend size={15} />}
           </button>
         </div>
       </div>
