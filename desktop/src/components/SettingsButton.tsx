@@ -98,6 +98,10 @@ export default function SettingsButton({
   onParamsChange,
   models,
   onModelsChange,
+  apiKey,
+  onApiKeyChange,
+  apiBase,
+  onApiBaseChange,
 }: {
   theme: "dark" | "light" | "system";
   setTheme: (t: "dark" | "light" | "system") => void;
@@ -107,22 +111,29 @@ export default function SettingsButton({
   /** 模型列表（受控：由 App 持有并持久化，Composer 共用） */
   models: ModelItem[];
   onModelsChange: (m: ModelItem[]) => void;
+  /** 连接凭证（受控：单一来源在 App，随 WS 发送生效） */
+  apiKey: string;
+  onApiKeyChange: (k: string) => void;
+  apiBase: string;
+  onApiBaseChange: (b: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("preset");
   const langDrop = useDropdown();
 
-  // 持久化：预设 / API 配置（刷新不丢）
+  // 持久化：预设（刷新不丢）
   const [lang] = useState("中文"); // 界面语言切换开发中（禁用态）
   const [activePreset, setActivePreset] = usePersistentState("lumen.preset", "storyteller");
   const [customPresets, setCustomPresets] = usePersistentState<Preset[]>("lumen.customPresets", []);
-  const [apiKey, setApiKey] = usePersistentState("lumen.apiKey", "");
-  const [apiBase, setApiBase] = usePersistentState("lumen.apiBase", "https://api.deepseek.com");
 
   // 模型页（DSH ModelsSection：行卡片 + 行内编辑器 + 添加卡片）
   const [editingModel, setEditingModel] = useState<string | null>(null);
   const [editModelId, setEditModelId] = useState("");
   const [addingModel, setAddingModel] = useState(false);
+  // 凭证：全局单一（不属于任何单个模型）。已填时 DOM 里不出现完整 key——
+  // 只显示掩码文本（不可复制），编辑 = 换新 key（不显示旧值）。
+  const [editingKey, setEditingKey] = useState(false);
+  const [keyInput, setKeyInput] = useState("");
   // 添加表单
   const [newProvider, setNewProvider] = useState("DeepSeek");
   const [newModelId, setNewModelId] = useState("deepseek-chat");
@@ -139,9 +150,27 @@ export default function SettingsButton({
   const pickProvider = (p: string) => {
     setNewProvider(p);
     const info = PROVIDERS[p];
-    setApiBase(info.base);
+    // 只填模型默认值，不碰全局凭证（apiBase 由凭证区块单独管理）
     setNewModelId(info.defaultModel);
     setNewDisplayName(p);
+  };
+
+  /** 打开换 key：显示空输入框（绝不预填旧 key） */
+  const startEditKey = () => {
+    setKeyInput("");
+    setEditingKey(true);
+  };
+  /** 保存新 key：写入全局凭证后关闭编辑态 */
+  const saveKey = () => {
+    const v = keyInput.trim();
+    if (!v) return;
+    onApiKeyChange(v);
+    setEditingKey(false);
+    setKeyInput("");
+  };
+  const cancelEditKey = () => {
+    setEditingKey(false);
+    setKeyInput("");
   };
 
   const toggleEdit = (id: string) => {
@@ -199,7 +228,6 @@ export default function SettingsButton({
       },
     ]);
     setAddingModel(false);
-    setApiKey("");
     setNewDisplayName("");
   };
 
@@ -363,6 +391,51 @@ export default function SettingsButton({
                     <h2 className="model-page-title">模型</h2>
                     <p className="model-page-intro">管理可用的生成模型与连接凭证</p>
 
+                    {/* ── 连接凭证（全局单一；已填 key 只显示掩码，不可复制） ── */}
+                    <div className="credential-block">
+                      <div className="setting-section-title">连接凭证</div>
+                      <div className="model-field">
+                        <label className="model-field-label">API Key</label>
+                        {editingKey ? (
+                          <div className="credential-edit-row">
+                            <input
+                              className="setting-input"
+                              type="password"
+                              placeholder="sk-...（输入新 Key）"
+                              value={keyInput}
+                              onChange={(e) => setKeyInput(e.target.value)}
+                              autoFocus
+                            />
+                            <button className="btn-secondary" onClick={cancelEditKey}>取消</button>
+                            <button className="btn-primary" onClick={saveKey} disabled={!keyInput.trim()}>保存</button>
+                          </div>
+                        ) : apiKey ? (
+                          <div className="credential-edit-row">
+                            {/* 掩码：DOM 里只有掩码文本，没有完整 key——天然不可复制 */}
+                            <span className="credential-mask" title="已配置，Key 不可查看">
+                              {`sk-••••••••${apiKey.length > 4 ? apiKey.slice(-4) : ""}`}
+                            </span>
+                            <button className="btn-secondary" onClick={startEditKey}>更换 Key</button>
+                          </div>
+                        ) : (
+                          <div className="credential-edit-row">
+                            <input
+                              className="setting-input"
+                              type="password"
+                              placeholder="sk-...（留空则用后端 .env 配置）"
+                              value={keyInput}
+                              onChange={(e) => setKeyInput(e.target.value)}
+                            />
+                            <button className="btn-primary" onClick={saveKey} disabled={!keyInput.trim()}>保存</button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="model-field">
+                        <label className="model-field-label">API 地址</label>
+                        <input className="setting-input" value={apiBase} onChange={(e) => onApiBaseChange(e.target.value)} />
+                      </div>
+                    </div>
+
                     <ul className="model-rows">
                       {models.map((m) => (
                         <li key={m.id} className="model-row-card">
@@ -370,7 +443,10 @@ export default function SettingsButton({
                             <span className="model-row-identity">
                               <span className="model-row-name">{m.name}</span>
                               <span className="model-row-tag">{m.modelId}</span>
-                              <span className="credential-dot configured" title="凭证已配置" />
+                              <span
+                                className={`credential-dot ${apiKey ? "configured" : "missing"}`}
+                                title={apiKey ? "已配置自定义 Key（全局凭证）" : "未配置 Key（生成用后端 .env）"}
+                              />
                             </span>
                             <span className="model-row-actions">
                               <button className="btn-secondary" onClick={() => toggleEdit(m.id)}>编辑</button>
@@ -389,15 +465,6 @@ export default function SettingsButton({
                               <div className="model-field">
                                 <label className="model-field-label">模型 ID</label>
                                 <input className="setting-input" value={editModelId} onChange={(e) => setEditModelId(e.target.value)} />
-                              </div>
-                              <div className="model-field">
-                                <label className="model-field-label">API Key</label>
-                                <input className="setting-input" type="password" placeholder="sk-..." value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-                                <span className="model-field-hint">注：生成暂用后端配置，本地 Key 接入开发中</span>
-                              </div>
-                              <div className="model-field">
-                                <label className="model-field-label">API 地址</label>
-                                <input className="setting-input" value={apiBase} onChange={(e) => setApiBase(e.target.value)} />
                               </div>
                               <div className="model-editor-actions">
                                 <button className="btn-secondary" onClick={() => setEditingModel(null)}>取消</button>
@@ -430,14 +497,6 @@ export default function SettingsButton({
                           <div className="model-field">
                             <label className="model-field-label">显示名称</label>
                             <input className="setting-input" placeholder="如 OpenAI" value={newDisplayName} onChange={(e) => setNewDisplayName(e.target.value)} />
-                          </div>
-                          <div className="model-field">
-                            <label className="model-field-label">API Key</label>
-                            <input className="setting-input" type="password" placeholder="sk-..." value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-                          </div>
-                          <div className="model-field">
-                            <label className="model-field-label">API 地址</label>
-                            <input className="setting-input" value={apiBase} onChange={(e) => setApiBase(e.target.value)} />
                           </div>
                           <div className="model-editor-actions">
                             <button className="btn-secondary" onClick={() => setAddingModel(false)}>取消</button>

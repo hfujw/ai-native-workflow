@@ -794,6 +794,34 @@ body {
 }
 .credential-dot.configured { background: var(--dsw-state-success); }
 .credential-dot.missing { background: var(--dsw-state-error); }
+/* 连接凭证：掩码文本（DOM 里不含完整 key）+ 编辑行 */
+.credential-block {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-medium);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.credential-mask {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 13px;
+  color: var(--text-2);
+  letter-spacing: 1px;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 6px 0;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+.credential-edit-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+.credential-edit-row .setting-input { flex: 1; min-width: 0; }
 .model-row-name {
   font-size: 14px;
   font-weight: 500;
