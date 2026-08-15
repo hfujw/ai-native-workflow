@@ -16,8 +16,8 @@ type SendOptions = {
   apiKey?: string;
   /** 用户自定义 LLM Base URL（会话级覆盖后端默认） */
   apiBase?: string;
-  /** 用户自定义搜索（Tavily）Key（会话级覆盖后端默认；与 LLM 凭证独立） */
-  tavilyKey?: string;
+  /** 用户选择的搜索服务（{name, apiKey, baseUrl}；不传=不联网） */
+  searchService?: { name: string; apiKey: string; baseUrl: string };
   /** 每条 WS 消息（已 JSON.parse） */
   onMessage: (msg: Record<string, unknown>) => void;
   /** 连接失败 / 中途断开 */
@@ -48,7 +48,7 @@ export function useGenerate() {
       if (options.model) payload.model = options.model;
       if (options.apiKey) payload.apiKey = options.apiKey;
       if (options.apiBase) payload.apiBase = options.apiBase;
-      if (options.tavilyKey) payload.tavilyKey = options.tavilyKey;
+      if (options.searchService) payload.searchService = options.searchService;
       ws.send(JSON.stringify(payload));
     };
 

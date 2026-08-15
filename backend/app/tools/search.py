@@ -2,7 +2,10 @@
 
 一能力一文件：原始操作 tool_search + 自主决策包装 ResearcherAgent。
 Tavily → 空返回 → LLM 用自身知识兜底；Agent 内部换词重试 + 向量兜底。
-Tavily 凭证与会话绑定（用户设置里独立配置，随 WS 发送）——不是 LLM 凭证，单独管理。
+
+搜索服务与会话绑定（用户设置里独立配置，随 WS 发送）——和模型选择一样：
+用户选哪个搜索服务（Tavily / 自定义端点），就用哪个服务的 Key/地址。
+没配 Key = 不联网（绝不回落 .env——没填就是没填）。
 """
 
 import contextvars
@@ -16,26 +19,36 @@ from app.llm.parser import detect_injection
 
 logger = logging.getLogger(__name__)
 
-# 会话级 Tavily Key（contextvars——只影响当前任务及其子任务，不污染其他连接；
-# 未绑定则回落后端 .env 配置）。与 LLM 凭证分开：搜索是搜索，LLM 是 LLM。
-_tavily_key_ctx: contextvars.ContextVar = contextvars.ContextVar(
-    "tavily_api_key", default=None)
+# 会话级搜索服务配置（contextvars——只影响当前任务及其子任务，不污染其他连接）。
+# 形状：{"name": str, "api_key": str, "base_url": str}
+_search_svc_ctx: contextvars.ContextVar = contextvars.ContextVar(
+    "search_service", default=None)
 
 
-def bind_tavily_key(api_key: str | None) -> None:
-    """绑定当前会话的 Tavily Key（用户设置里独立配置）。
+def bind_search_service(service: dict | None) -> None:
+    """绑定当前会话的搜索服务（用户设置里选择的服务 + 独立 Key/地址）。
 
     必须在 asyncio.create_task 之前调用——contextvars 在创建任务时复制，
     子任务（orchestrator/ResearcherAgent）才能继承绑定。
+    没传 Key → 不绑定（联网搜索不可用，不回落任何配置）。
     """
-    if api_key and api_key.strip():
-        _tavily_key_ctx.set(api_key.strip())
+    if not service:
+        _search_svc_ctx.set(None)
+        return
+    key = (service.get("api_key") or "").strip()
+    if not key:
+        _search_svc_ctx.set(None)
+        return
+    _search_svc_ctx.set({
+        "name": str(service.get("name") or "搜索"),
+        "api_key": key,
+        "base_url": str(service.get("base_url") or "").strip() or "https://api.tavily.com",
+    })
 
 
-def _effective_tavily_key() -> str:
-    """会话级 Key 优先，回落后端 .env 配置。"""
-    from app.config import settings
-    return _tavily_key_ctx.get() or settings.tavily_api_key.strip()
+def _search_service() -> dict | None:
+    """当前会话的搜索服务（None = 未配置，联网不可用）。"""
+    return _search_svc_ctx.get()
 
 # ── 素材过滤 ──
 _AD_NOISE = {"广告", "推广", "促销", "优惠", "团购", "门票", "攻略", "旅游团",
@@ -48,18 +61,21 @@ def _filter_noise(results: list[dict]) -> list[dict]:
 
 
 async def _search_tavily(query: str, max_results: int = 8) -> list[dict]:
-    """Tavily Search API——国内可直连，返回 JSON 已清洗文本。没配 Key 直接返回空。
+    """搜索当前会话绑定的服务（Tavily 兼容协议：POST {base}/search）。
 
-    Key 优先级：会话级（用户设置）> 后端 .env。
+    没配置搜索服务/Key → 返回空（联网不可用，LLM 用自身知识兜底）。
+    端点可自定义——用户添加的搜索服务用自己的地址。
     """
-    key = _effective_tavily_key()
-    if not key:
+    svc = _search_service()
+    if not svc:
         return []
+    key = svc["api_key"]
+    base = svc["base_url"]
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                "https://api.tavily.com/search",
+                f"{base.rstrip('/')}/search",
                 json={
                     "api_key": key,
                     "query": query,
@@ -78,10 +94,10 @@ async def _search_tavily(query: str, max_results: int = 8) -> list[dict]:
                     "url": r.get("url", ""),
                     "snippet": r.get("content", "")[:600],
                 })
-            logger.info("Tavily搜索 | query='%s' | 结果=%d", query[:40], len(results))
+            logger.info("搜索服务=%s | query='%s' | 结果=%d", svc["name"], query[:40], len(results))
             return results
     except Exception as e:
-        logger.warning("Tavily搜索失败: %s", e)
+        logger.warning("搜索失败（%s）: %s", svc["name"], e)
         return []
 
 

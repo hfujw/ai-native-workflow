@@ -39,16 +39,6 @@ export function renameProject(id: string, topic: string): Promise<{ ok: boolean 
   return request(`/api/history/${id}`, { method: "PATCH", body: JSON.stringify({ topic }) });
 }
 
-/** 后端环境变量凭证配置状态（只报有没有配，不含值——DSH describe 语义） */
-export type CredentialsStatus = {
-  llm_env_configured: boolean;
-  tavily_env_configured: boolean;
-};
-
-export function fetchCredentialsStatus(): Promise<CredentialsStatus> {
-  return request("/api/credentials/status");
-}
-
 /** 置顶历史作品 */
 export function pinProject(id: string): Promise<{ ok: boolean }> {
   return request(`/api/history/${id}/pin`, { method: "POST" });
@@ -120,6 +110,15 @@ export type ModelItem = {
 export type ProviderCreds = {
   apiKey: string;    // 已填时 UI 只显示掩码，DOM 不含完整值
   apiBase: string;   // 如 https://api.deepseek.com
+};
+
+/** 搜索服务（和模型选择一样：用户选服务 + 独立 Key/地址；默认内置 Tavily） */
+export type SearchService = {
+  id: string;        // "tavily" 或自定义 id
+  name: string;      // 显示名称
+  apiKey: string;    // 已填时 UI 只显示掩码，DOM 不含完整值
+  baseUrl: string;   // 端点（Tavily 默认 https://api.tavily.com）
+  removable: boolean;
 };
 
 /** 按提供方分组（DSH ModelDirectory：provider → models，设置页与 Composer 共用） */

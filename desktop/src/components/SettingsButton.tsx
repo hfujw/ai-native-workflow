@@ -3,12 +3,11 @@ import type { ComponentType } from "react";
 import { useDropdown } from "../hooks/useDropdown";
 import { usePersistentState } from "../hooks/usePersistentState";
 import {
-  fetchCredentialsStatus,
   groupModelsByProvider,
-  type CredentialsStatus,
   type GenParams,
   type ModelItem,
   type ProviderCreds,
+  type SearchService,
 } from "../lib/api";
 import type { IconProps } from "./icons";
 import {
@@ -108,8 +107,10 @@ export default function SettingsButton({
   onModelsChange,
   providerCreds,
   onProviderCredsChange,
-  tavilyKey,
-  onTavilyKeyChange,
+  searchServices,
+  onSearchServicesChange,
+  activeSearchService,
+  onActiveSearchServiceChange,
 }: {
   theme: "dark" | "light" | "system";
   setTheme: (t: "dark" | "light" | "system") => void;
@@ -122,9 +123,11 @@ export default function SettingsButton({
   /** 提供方凭证（受控：每个 provider 独立，App 发送时按模型 provider 取用） */
   providerCreds: Record<string, ProviderCreds>;
   onProviderCredsChange: (c: Record<string, ProviderCreds>) => void;
-  /** 搜索凭证（Tavily Key，受控：与 LLM 凭证独立，随 WS 发送） */
-  tavilyKey: string;
-  onTavilyKeyChange: (k: string) => void;
+  /** 搜索服务（受控：和模型选择一样——用户选服务 + 独立 Key/地址） */
+  searchServices: SearchService[];
+  onSearchServicesChange: (s: SearchService[]) => void;
+  activeSearchService: string;
+  onActiveSearchServiceChange: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("preset");
@@ -156,38 +159,47 @@ export default function SettingsButton({
   // 每个 provider 的凭证编辑态（正在换 key 的 provider + 新 key 输入；绝不预填旧值）
   const [editingKeyFor, setEditingKeyFor] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState("");
-  // 搜索凭证（Tavily）编辑态——与 LLM 凭证独立
-  const [editingTavily, setEditingTavily] = useState(false);
-  const [tavilyInput, setTavilyInput] = useState("");
-  // 后端环境变量凭证状态（只报有没有配，不含值）——显示"用户填 / 环境兜底"来源
-  const [envStatus, setEnvStatus] = useState<CredentialsStatus | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    fetchCredentialsStatus()
-      .then((s) => {
-        if (!cancelled) setEnvStatus(s);
-      })
-      .catch(() => {
-        /* 后端未启动时静默 */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // 搜索服务编辑态（和模型行一样：展开卡片管理 Key/地址；添加自定义服务）
+  const [editingSearch, setEditingSearch] = useState<string | null>(null);
+  const [editingSearchKey, setEditingSearchKey] = useState<string | null>(null);
+  const [searchKeyInput, setSearchKeyInput] = useState("");
+  const [addingSearch, setAddingSearch] = useState(false);
+  const [newSearchName, setNewSearchName] = useState("");
+  const [newSearchBase, setNewSearchBase] = useState("https://api.tavily.com");
+  const [newSearchKey, setNewSearchKey] = useState("");
 
-  /** 凭证来源徽标（DSH describe 语义：configured / source） */
-  const SourceBadge = ({ userConfigured, envConfigured }: { userConfigured: boolean; envConfigured: boolean }) => {
-    if (userConfigured) return <span className="credential-source user">用户配置</span>;
-    if (envConfigured) return <span className="credential-source env">环境变量兜底</span>;
-    return <span className="credential-source none">未配置</span>;
-  };
-
-  const saveTavilyKey = () => {
-    const v = tavilyInput.trim();
+  const saveSearchKey = (id: string) => {
+    const v = searchKeyInput.trim();
     if (!v) return;
-    onTavilyKeyChange(v);
-    setEditingTavily(false);
-    setTavilyInput("");
+    onSearchServicesChange(
+      searchServices.map((s) => (s.id === id ? { ...s, apiKey: v } : s))
+    );
+    setEditingSearchKey(null);
+    setSearchKeyInput("");
+  };
+  const saveSearchBase = (id: string, base: string) => {
+    onSearchServicesChange(
+      searchServices.map((s) => (s.id === id ? { ...s, baseUrl: base } : s))
+    );
+  };
+  const removeSearchService = (id: string) => {
+    const next = searchServices.filter((s) => s.id !== id);
+    onSearchServicesChange(next);
+    if (activeSearchService === id) {
+      onActiveSearchServiceChange(next[0]?.id ?? "");
+    }
+  };
+  const addSearchService = () => {
+    if (!newSearchName.trim()) return;
+    const id = `search-${Date.now()}`;
+    onSearchServicesChange([
+      ...searchServices,
+      { id, name: newSearchName.trim(), apiKey: newSearchKey.trim(), baseUrl: newSearchBase.trim() || "https://api.tavily.com", removable: true },
+    ]);
+    setAddingSearch(false);
+    setNewSearchName("");
+    setNewSearchBase("https://api.tavily.com");
+    setNewSearchKey("");
   };
 
   /** 取某 provider 的凭证（无则返回空） */
@@ -642,50 +654,112 @@ export default function SettingsButton({
                     <h2 className="model-page-title">模型</h2>
                     <p className="model-page-intro">每个提供方独立配置 Key 与模型——选哪个模型的模型，就用哪个提供方的凭证</p>
 
-                    {/* ── 搜索凭证（Tavily，独立于 LLM 凭证——搜索是搜索，LLM 是 LLM） ── */}
+                    {/* ── 搜索服务（和模型选择一样：用户选服务 + 独立 Key/地址；没配 = 不联网） ── */}
                     <div className="credential-block">
-                      <div className="setting-section-title">搜索凭证</div>
-                      <div className="model-field">
-                        <label className="model-field-label">Tavily API Key（联网搜索用）</label>
-                        <div className="credential-field-with-badge">
-                          <SourceBadge
-                            userConfigured={!!tavilyKey}
-                            envConfigured={!!envStatus?.tavily_env_configured}
-                          />
-                        </div>
-                        {editingTavily ? (
-                          <div className="credential-edit-row">
-                            <input
-                              className="setting-input"
-                              type="password"
-                              placeholder="tvly-...（输入新 Key）"
-                              value={tavilyInput}
-                              onChange={(e) => setTavilyInput(e.target.value)}
-                              autoFocus
-                            />
-                            <button className="btn-secondary" onClick={() => setEditingTavily(false)}>取消</button>
-                            <button className="btn-primary" onClick={saveTavilyKey} disabled={!tavilyInput.trim()}>保存</button>
+                      <div className="setting-section-title">搜索服务</div>
+                      <p className="search-svc-intro">联网搜索用的服务——和模型一样：选哪个服务，就用哪个服务的 Key 与地址。没配置 Key = 不联网。</p>
+                      <div className="search-svc-list">
+                        {searchServices.map((s) => (
+                          <div key={s.id} className={`search-svc-row ${activeSearchService === s.id ? "active" : ""}`}>
+                            <div className="search-svc-head">
+                              <span className="search-svc-name">
+                                {s.name}
+                                {!s.removable && <span className="model-row-provider">内置</span>}
+                              </span>
+                              <span
+                                className={`credential-dot ${s.apiKey ? "configured" : "missing"}`}
+                                title={s.apiKey ? "已配置 Key" : "未配置 Key——该服务不可用"}
+                              />
+                              <span className="model-row-actions">
+                                {activeSearchService !== s.id && (
+                                  <button className="btn-secondary" onClick={() => onActiveSearchServiceChange(s.id)}>设为当前</button>
+                                )}
+                                {activeSearchService === s.id && <span className="preset-inuse">使用中</span>}
+                                <button className="btn-secondary" onClick={() => setEditingSearch(editingSearch === s.id ? null : s.id)}>
+                                  {editingSearch === s.id ? "收起" : "编辑"}
+                                </button>
+                                {s.removable && (
+                                  <button className="btn-danger" onClick={() => removeSearchService(s.id)}>删除</button>
+                                )}
+                              </span>
+                            </div>
+
+                            {editingSearch === s.id && (
+                              <div className="search-svc-editor">
+                                <div className="model-field">
+                                  <label className="model-field-label">API Key（联网搜索用）</label>
+                                  {editingSearchKey === s.id ? (
+                                    <div className="credential-edit-row">
+                                      <input
+                                        className="setting-input"
+                                        type="password"
+                                        placeholder={`${s.name} 的 Key`}
+                                        value={searchKeyInput}
+                                        onChange={(e) => setSearchKeyInput(e.target.value)}
+                                        autoFocus
+                                      />
+                                      <button className="btn-secondary" onClick={() => setEditingSearchKey(null)}>取消</button>
+                                      <button className="btn-primary" onClick={() => saveSearchKey(s.id)} disabled={!searchKeyInput.trim()}>保存</button>
+                                    </div>
+                                  ) : s.apiKey ? (
+                                    <div className="credential-edit-row">
+                                      <span className="credential-mask" title="已配置，Key 不可查看">
+                                        {`••••••••${s.apiKey.length > 4 ? s.apiKey.slice(-4) : ""}`}
+                                      </span>
+                                      <button className="btn-secondary" onClick={() => { setSearchKeyInput(""); setEditingSearchKey(s.id); }}>更换 Key</button>
+                                    </div>
+                                  ) : (
+                                    <div className="credential-edit-row">
+                                      <input
+                                        className="setting-input"
+                                        type="password"
+                                        placeholder={`${s.name} 的 Key（没填 = 不联网）`}
+                                        value={searchKeyInput}
+                                        onChange={(e) => setSearchKeyInput(e.target.value)}
+                                      />
+                                      <button className="btn-primary" onClick={() => saveSearchKey(s.id)} disabled={!searchKeyInput.trim()}>保存</button>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="model-field">
+                                  <label className="model-field-label">API 地址</label>
+                                  <input
+                                    className="setting-input"
+                                    placeholder="https://api.tavily.com"
+                                    value={s.baseUrl}
+                                    onChange={(e) => saveSearchBase(s.id, e.target.value)}
+                                  />
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        ) : tavilyKey ? (
-                          <div className="credential-edit-row">
-                            <span className="credential-mask" title="已配置，Key 不可查看">
-                              {`tvly-••••••••${tavilyKey.length > 4 ? tavilyKey.slice(-4) : ""}`}
-                            </span>
-                            <button className="btn-secondary" onClick={() => { setTavilyInput(""); setEditingTavily(true); }}>更换 Key</button>
-                          </div>
-                        ) : (
-                          <div className="credential-edit-row">
-                            <input
-                              className="setting-input"
-                              type="password"
-                              placeholder="tvly-...（留空则用后端 .env 配置）"
-                              value={tavilyInput}
-                              onChange={(e) => setTavilyInput(e.target.value)}
-                            />
-                            <button className="btn-primary" onClick={saveTavilyKey} disabled={!tavilyInput.trim()}>保存</button>
-                          </div>
-                        )}
+                        ))}
                       </div>
+
+                      {addingSearch ? (
+                        <div className="search-svc-add-card">
+                          <div className="model-field">
+                            <label className="model-field-label">服务名称</label>
+                            <input className="setting-input" placeholder="如 我的搜索网关" value={newSearchName} onChange={(e) => setNewSearchName(e.target.value)} />
+                          </div>
+                          <div className="model-field">
+                            <label className="model-field-label">API 地址</label>
+                            <input className="setting-input" placeholder="https://api.example.com" value={newSearchBase} onChange={(e) => setNewSearchBase(e.target.value)} />
+                          </div>
+                          <div className="model-field">
+                            <label className="model-field-label">API Key</label>
+                            <input className="setting-input" type="password" placeholder="该服务的 Key" value={newSearchKey} onChange={(e) => setNewSearchKey(e.target.value)} />
+                          </div>
+                          <div className="model-editor-actions">
+                            <button className="btn-secondary" onClick={() => setAddingSearch(false)}>取消</button>
+                            <button className="btn-primary" onClick={addSearchService} disabled={!newSearchName.trim()}>保存</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button className="model-add-btn" onClick={() => setAddingSearch(true)}>
+                          <IconPlus size={14} /> 添加搜索服务
+                        </button>
+                      )}
                     </div>
 
                     <ul className="model-rows">
@@ -699,7 +773,7 @@ export default function SettingsButton({
                                 <span className="model-row-count">{g.models.length} 个模型</span>
                                 <span
                                   className={`credential-dot ${creds.apiKey ? "configured" : "missing"}`}
-                                  title={creds.apiKey ? "已配置该提供方的 Key" : "未配置 Key（用后端 .env 或留空）"}
+                                  title={creds.apiKey ? "已配置该提供方的 Key" : "未配置 Key——该提供方不可用"}
                                 />
                               </span>
                               <span className="model-row-actions" onClick={(e) => e.stopPropagation()}>
@@ -717,15 +791,9 @@ export default function SettingsButton({
                                   <span className="model-editor-route">{g.models.length} 个模型</span>
                                 </div>
 
-                                {/* 该提供方的连接凭证（独立；已填只显示掩码，不可复制） */}
+                                {/* 该提供方的连接凭证（独立；已填只显示掩码，不可复制；没填 = 不可用） */}
                                 <div className="model-field">
                                   <label className="model-field-label">API Key</label>
-                                  <div className="credential-field-with-badge">
-                                    <SourceBadge
-                                      userConfigured={!!creds.apiKey}
-                                      envConfigured={!!envStatus?.llm_env_configured && g.provider === "DeepSeek"}
-                                    />
-                                  </div>
                                   {editingKeyFor === g.provider ? (
                                     <div className="credential-edit-row">
                                       <input
