@@ -57,8 +57,9 @@ class _GenerateRequest(BaseModel):
     topic: str
     params: dict | None = None  # 前端设置里的生成参数（会话级覆盖）
     model: str | None = None    # 前端 Composer 选择的模型（None=后端默认）
-    api_key: str | None = None  # 用户自定义 API Key（None=后端默认）
-    api_base: str | None = None  # 用户自定义 Base URL（None=后端默认）
+    api_key: str | None = None  # 用户自定义 LLM API Key（None=后端默认）
+    api_base: str | None = None  # 用户自定义 LLM Base URL（None=后端默认）
+    tavily_key: str | None = None  # 用户自定义搜索（Tavily）Key（None=后端默认）
 
 
 @router.post("/api/generate")
@@ -68,6 +69,9 @@ async def generate_api(req: _GenerateRequest):
     from app.llm.client import bind_session_client
     if req.api_key or req.api_base:
         bind_session_client(req.api_key, req.api_base)
+    if req.tavily_key:
+        from app.tools.search import bind_tavily_key
+        bind_tavily_key(req.tavily_key)
     topic = req.topic.strip()
     if not topic or len(topic) > settings.input_max_length:
         # 注意：新版 FastAPI 不再支持 (dict, status) 元组返回——必须用 JSONResponse
@@ -126,8 +130,9 @@ async def generate_page(websocket: WebSocket):
         user_input = data.get("event", "").strip()
         gen_params = data.get("params") or None  # 前端设置里的生成参数（会话级覆盖）
         gen_model = data.get("model") or None    # 前端 Composer 选择的模型（None=后端默认）
-        user_api_key = data.get("apiKey") or None   # 用户自定义 API Key（None=后端默认）
-        user_api_base = data.get("apiBase") or None # 用户自定义 Base URL（None=后端默认）
+        user_api_key = data.get("apiKey") or None   # 用户自定义 LLM API Key（None=后端默认）
+        user_api_base = data.get("apiBase") or None # 用户自定义 LLM Base URL（None=后端默认）
+        user_tavily_key = data.get("tavilyKey") or None  # 用户自定义搜索 Key（None=后端默认）
 
         # 绑定会话级 LLM 客户端——必须在 create_task 之前（contextvars 随任务复制）
         if user_api_key or user_api_base:
@@ -135,6 +140,11 @@ async def generate_page(websocket: WebSocket):
             bind_session_client(user_api_key, user_api_base)
             logger.info("会话绑定自定义 LLM 客户端 | session=%s | base=%s",
                         session_id, user_api_base or "(默认)")
+        # 绑定会话级搜索凭证（Tavily）——与 LLM 凭证独立管理，随任务复制
+        if user_tavily_key:
+            from app.tools.search import bind_tavily_key
+            bind_tavily_key(user_tavily_key)
+            logger.info("会话绑定自定义搜索凭证 | session=%s", session_id)
 
         if not user_input:
             await ws_manager.send_failed(session_id, "请输入一个主题", [])

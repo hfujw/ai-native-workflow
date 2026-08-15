@@ -101,6 +101,8 @@ export default function SettingsButton({
   onModelsChange,
   providerCreds,
   onProviderCredsChange,
+  tavilyKey,
+  onTavilyKeyChange,
 }: {
   theme: "dark" | "light" | "system";
   setTheme: (t: "dark" | "light" | "system") => void;
@@ -113,6 +115,9 @@ export default function SettingsButton({
   /** 提供方凭证（受控：每个 provider 独立，App 发送时按模型 provider 取用） */
   providerCreds: Record<string, ProviderCreds>;
   onProviderCredsChange: (c: Record<string, ProviderCreds>) => void;
+  /** 搜索凭证（Tavily Key，受控：与 LLM 凭证独立，随 WS 发送） */
+  tavilyKey: string;
+  onTavilyKeyChange: (k: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("preset");
@@ -144,6 +149,17 @@ export default function SettingsButton({
   // 每个 provider 的凭证编辑态（正在换 key 的 provider + 新 key 输入；绝不预填旧值）
   const [editingKeyFor, setEditingKeyFor] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState("");
+  // 搜索凭证（Tavily）编辑态——与 LLM 凭证独立
+  const [editingTavily, setEditingTavily] = useState(false);
+  const [tavilyInput, setTavilyInput] = useState("");
+
+  const saveTavilyKey = () => {
+    const v = tavilyInput.trim();
+    if (!v) return;
+    onTavilyKeyChange(v);
+    setEditingTavily(false);
+    setTavilyInput("");
+  };
 
   /** 取某 provider 的凭证（无则返回空） */
   const credsOf = (provider: string): ProviderCreds =>
@@ -596,6 +612,46 @@ export default function SettingsButton({
                   <>
                     <h2 className="model-page-title">模型</h2>
                     <p className="model-page-intro">每个提供方独立配置 Key 与模型——选哪个模型的模型，就用哪个提供方的凭证</p>
+
+                    {/* ── 搜索凭证（Tavily，独立于 LLM 凭证——搜索是搜索，LLM 是 LLM） ── */}
+                    <div className="credential-block">
+                      <div className="setting-section-title">搜索凭证</div>
+                      <div className="model-field">
+                        <label className="model-field-label">Tavily API Key（联网搜索用）</label>
+                        {editingTavily ? (
+                          <div className="credential-edit-row">
+                            <input
+                              className="setting-input"
+                              type="password"
+                              placeholder="tvly-...（输入新 Key）"
+                              value={tavilyInput}
+                              onChange={(e) => setTavilyInput(e.target.value)}
+                              autoFocus
+                            />
+                            <button className="btn-secondary" onClick={() => setEditingTavily(false)}>取消</button>
+                            <button className="btn-primary" onClick={saveTavilyKey} disabled={!tavilyInput.trim()}>保存</button>
+                          </div>
+                        ) : tavilyKey ? (
+                          <div className="credential-edit-row">
+                            <span className="credential-mask" title="已配置，Key 不可查看">
+                              {`tvly-••••••••${tavilyKey.length > 4 ? tavilyKey.slice(-4) : ""}`}
+                            </span>
+                            <button className="btn-secondary" onClick={() => { setTavilyInput(""); setEditingTavily(true); }}>更换 Key</button>
+                          </div>
+                        ) : (
+                          <div className="credential-edit-row">
+                            <input
+                              className="setting-input"
+                              type="password"
+                              placeholder="tvly-...（留空则用后端 .env 配置）"
+                              value={tavilyInput}
+                              onChange={(e) => setTavilyInput(e.target.value)}
+                            />
+                            <button className="btn-primary" onClick={saveTavilyKey} disabled={!tavilyInput.trim()}>保存</button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
                     <ul className="model-rows">
                       {providerGroups.map((g) => {
