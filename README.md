@@ -1,4 +1,4 @@
-# 时光像素 · 给 LLM 装可插拔 skill 的 AI 原生工作台
+# Lumen · 给 LLM 装可插拔 skill 的 AI 原生工作台
 
 > 你选 skill（风格 + 工具）、定模式（网页 / 游戏），LLM 自己决定流程把它做出来——全程透明、可迭代。
 > 不是"调了 LLM 的流水线"，是 **流程由 LLM 自己决定、能力由 skill 可插拔** 的 AI 原生系统。
@@ -7,7 +7,7 @@
 ![Python](https://img.shields.io/badge/python-3.13-blue)
 ![FastAPI](https://img.shields.io/badge/fastapi-0.141-green)
 ![Tauri](https://img.shields.io/badge/tauri-2-purple)
-![Tests](https://img.shields.io/badge/tests-96%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-87%20passed-brightgreen)
 
 ---
 
@@ -81,24 +81,6 @@ flowchart TD
 
 ## 快速开始
 
-### 方式一：Docker（推荐——不需要装 Python/Node，一行命令）
-
-```bash
-git clone https://github.com/hfujw/ai-native-workflow.git
-cd ai-native-workflow
-
-# 配 Key（只需要做一次）
-cp backend/.env.example backend/.env
-# 编辑 backend/.env：DEEPSEEK_API_KEY=sk-xxxxxxxx
-
-# 启动
-docker-compose up
-```
-
-浏览器打开 `http://localhost:8000`。Docker 自带 Python、Playwright 浏览器、Caddy 反代——你不需要装任何东西。
-
-### 方式二：手动启动（开发/改代码时用）
-
 **前置要求**：Python 3.11+ · Node.js 18+ · DeepSeek API Key · Tavily Key（可选）
 
 ```bash
@@ -146,7 +128,7 @@ backend/app/
 │   ├── history.py              生成历史列表 / 回看
 │   ├── preferences.py          用户偏好读写
 │   ├── demos.py                Demo 页面
-│   ├── health.py               health 探针 + /metrics + events + rate-limit + eval
+│   ├── meta.py                 示例话题列表 + 评测报告
 │   └── ws.py                   WebSocket 连接管理
 │
 ├── agent/                      🧠 编排脑（LLM 自主决策）
@@ -161,7 +143,7 @@ backend/app/
 │   ├── render.py               tool_render(_stream) + RenderAgent（自检 + 缓存 + 重试）
 │   └── verify.py               tool_verify（Playwright 真执行）
 │
-├── skills/                     🎨 可插拔 skill：每个子目录一个（pixel / magazine / infographic）
+├── skills/                     🎨 skill 加载器：list/load/install/delete（skill 文件在 backend/skills/）
 ├── llm/                        🤖 LLM 层
 │   ├── client.py               chat / chat_json / chat_stream
 │   ├── parser.py               strip_fence + clean_thought + 注入检测
@@ -171,24 +153,20 @@ backend/app/
 │   ├── kb.py                   169 个示例话题 + 关键词匹配
 │   └── vector_store.py         ChromaDB 语义向量检索
 │
-├── session/                    💾 状态后端（memory / redis 一行切换）
+├── session/                    💾 状态存储（单机内存）
 │   ├── base.py                 StateBackend ABC
-│   ├── memory.py               MemoryBackend（单机）
-│   └── redis.py                RedisBackend（多实例共享，STATE_BACKEND=redis）
-├── security/                   🛡️ rate_limiter（IP 限流 + 日预算帽）
-└── observability/              📊 metrics / trace / eval_report
+│   └── memory.py               MemoryBackend
+└── observability/              📊 trace / eval_report（决策日志 + 评测）
 
 backend/demos/                  预生成 HTML
+backend/skills/                  🎨 运行时 skill 目录（首次播种内置，下载/删除都在这；gitignored）
 backend/scripts/eval_run.py     📊 端到端评测脚本（跑 N 话题出数字）
-backend/tests/                  96 个 pytest 用例
+backend/tests/                  87 个 pytest 用例
 
 desktop/src/                    🖥️ Tauri 桌面前端（ChatGPT 式，接后端中）
 ├── App.tsx                     主布局 + 决策流程/成品消息流
-├── components/                 Composer / Dropdown / LevelSelect / ProfileMenu / SkillPage
+├── components/                 Composer / Dropdown / LevelSelect / ProfileMenu / SkillPage / icons
 └── hooks/                      useDropdown（自适应下拉）/ useClickOutside
-
-Caddyfile                       生产反代（自动 HTTPS + /api /ws 反向代理）
-docker-compose.yml              一键部署
 ```
 
 ---
@@ -207,7 +185,7 @@ docker-compose.yml              一键部署
 | Tavily 替代 Bing | 国内可直连，返回 JSON 已清洗文本。不配 Key 也能跑 |
 | 流式渲染 | `contentDocument.write` 写 DOM，不换 `srcdoc`——不频闪，用户看到页面逐段"长出来" |
 | 断路器 | 连续 3 次 LLM API 失败自动熔断 30s，防止级联故障浪费重试和 Token |
-| 预算控制 | 真实 LLM token 成本计入 ¥1 上限（DeepSeek v4-flash 费率：缓存命中 ¥0.02/M、未命中 ¥1/M、输出 ¥2/M）。IP 1 次/天试用 + 全站 ¥5/天 |
+| 预算控制 | 真实 LLM token 成本计入 ¥1 上限（DeepSeek v4-flash 费率：缓存命中 ¥0.02/M、未命中 ¥1/M、输出 ¥2/M），迭代共用同一预算 |
 | 知识来源标注 | compose 阶段要求 LLM 给每个数字/年份/人名标注来源和可信度 |
 | 结构化输出 | design/compose 用 DeepSeek `json_object` + schema 校验——坏数据不再流向下游 |
 | 多轮迭代 | 成品后能继续对话改页面——LLM 决定 rerender/redesign/research，trace 记录每版 |
@@ -227,19 +205,14 @@ docker-compose.yml              一键部署
 | `MAX_STEPS` | 20 | Agent 最大循环步数 |
 | `BUDGET_TOTAL` | 1.0 | 单次生成预算上限（元） |
 | `SEARCH_MAX` | 8 | 最多搜索次数 |
-| `DAILY_BUDGET` | 5.0 | 全站日预算（元） |
-| `TRIALS_PER_IP` | 1 | 每 IP 每天试用次数 |
 | `MAX_CONNECTIONS` | 20 | WebSocket 最大连接数 |
-| `MAX_CONNECTIONS_PER_IP` | 3 | 单 IP 最大连接数 |
 | `INPUT_MAX_LENGTH` | 500 | 用户输入最大长度（字符） |
 | `GENERATION_TIMEOUT` | 300 | 单次生成超时（秒） |
 | `LOG_RETENTION_DAYS` | 30 | 日志保留天数 |
 | `LOG_PROMPTS` | 0 | 设为 1 记录完整 prompt（调试用） |
-| `STATE_BACKEND` | memory | memory / redis（RedisBackend 已实现） |
-| `TRUST_PROXY` | false | 是否信任反向代理的 XFF 头（docker-compose + Caddy 部署时设 true） |
 
 ---
 
 ## 关键词
 
-`ai-native` `ai-workflow` `llm-orchestration` `react-agent` `visual-storytelling` `ai-agent` `langchain-alternative` `playwright-verification` `deepseek-api` `fastapi-websocket` `chromadb` `prometheus` `tavily` `honest-ai` `circuit-breaker` `agent-architecture` `render-agent` `multi-agent` `self-check` `vector-search`
+`ai-native` `ai-workflow` `llm-orchestration` `react-agent` `visual-storytelling` `ai-agent` `langchain-alternative` `playwright-verification` `deepseek-api` `fastapi-websocket` `chromadb` `tavily` `honest-ai` `circuit-breaker` `agent-architecture` `render-agent` `multi-agent` `self-check` `vector-search` `tauri` `deep-agent`

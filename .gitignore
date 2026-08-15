@@ -20,6 +20,7 @@ backend/logs/
 backend/chroma_data/
 backend/demos/*.html
 backend/data/
+backend/skills/
 
 # ── 测试 & 调试输出 ──
 test_output.html
@@ -28,6 +29,8 @@ _last_failed_game.html
 *.png
 *.jpg
 *.jpeg
+# 桌面图标例外：Tauri 构建需要完整 icons/（含 PNG）
+!desktop/src-tauri/icons/**
 
 # ── 工具状态（不提交）──
 .claude/
