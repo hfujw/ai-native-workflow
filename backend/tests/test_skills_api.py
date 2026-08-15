@@ -22,6 +22,10 @@ def test_list_skills_marks_builtin(tmp_skills):
     assert r.status_code == 200
     skills = r.json()["skills"]
     assert any(s["id"] == "pixel" and s["builtin"] is True for s in skills)
+    # 内置 skill 播种后带模板资产（template.html）
+    magazine = next(s for s in skills if s["id"] == "magazine")
+    assert "template.html" in magazine.get("assets", {})
+    assert "<!DOCTYPE html>" in magazine["assets"]["template.html"][:50]
 
 
 def test_install_skill(tmp_skills):

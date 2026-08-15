@@ -1,8 +1,10 @@
 """可插拔 skill — 所有 skill 都在一个目录 `backend/skills/`（gitignored）。
 
 - 每个 skill 一个子目录，内含 SKILL.md（markdown-frontmatter：元数据 + 指令）
-- 内置的三个（像素/杂志/信息图）是**首次运行时播种**的默认内容，跟用户下载的
-  完全一样——都能被 `delete_skill` 整个删掉，删了不回来（目录存在即不重新播种）
+- 可选模板资产：`template.html`（页面骨架）+ `reference.css`（排版系统）——
+  渲染时注入，给 LLM 一个"真人设计的骨架"而不是凭空发挥
+- 内置的三个（像素/杂志/信息图）是**首次运行时播种**的默认内容，模板资产
+  从 `app/skills/templates/<id>/` 复制而来（源码随仓库分发）
 - 形式对齐 Claude skill 体系：frontmatter 放机器元数据，正文放注入 LLM 的指令
 """
 
@@ -14,6 +16,7 @@ import shutil
 logger = logging.getLogger(__name__)
 
 _SKILLS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "skills")  # backend/skills
+_TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")       # 源码内置模板
 
 # 内置默认 skill（播种源——写在代码里，随仓库发布；运行时生成进 skills/）
 _BUILTINS: dict[str, dict] = {
@@ -54,7 +57,34 @@ def _ensure_seeded() -> None:
         os.makedirs(skill_dir, exist_ok=True)
         with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as f:
             f.write(_render_skill_md(meta))
+        _seed_assets(sid, skill_dir)
     logger.info("已播种 %d 个内置 skill → %s", len(_BUILTINS), _SKILLS_DIR)
+
+
+def _seed_assets(sid: str, skill_dir: str) -> None:
+    """把源码里的模板资产（template.html/reference.css）复制到运行时 skill 目录。"""
+    src = os.path.join(_TEMPLATES_DIR, sid)
+    if not os.path.isdir(src):
+        return
+    for name in ("template.html", "reference.css"):
+        s = os.path.join(src, name)
+        if os.path.isfile(s):
+            shutil.copy2(s, os.path.join(skill_dir, name))
+            logger.debug("skill 模板资产已播种: %s/%s", sid, name)
+
+
+def _read_assets(skill_dir: str) -> dict:
+    """读取 skill 的模板资产（不存在则为空）。"""
+    assets: dict = {}
+    for name in ("template.html", "reference.css"):
+        p = os.path.join(skill_dir, name)
+        if os.path.isfile(p):
+            try:
+                with open(p, encoding="utf-8") as f:
+                    assets[name] = f.read()
+            except OSError as e:
+                logger.warning("skill 资产读取失败(%s): %s", name, e)
+    return assets
 
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
@@ -99,6 +129,7 @@ def _load_all() -> list[dict]:
                     "desc": meta.get("desc", ""),
                     "prompt": body,
                     "builtin": entry in _BUILTINS,  # 内置标记（前端"我的 Skill"区分）
+                    "assets": _read_assets(path.rsplit("SKILL.md", 1)[0]),
                 })
             except OSError as e:
                 logger.warning("skill 读取失败(%s): %s", entry, e)

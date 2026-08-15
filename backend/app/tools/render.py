@@ -48,6 +48,7 @@ async def tool_render(
     visual: dict = None,
     session_records: list[dict] | None = None,
     model: str | None = None,          # 会话模型（前端选择，None=默认）
+    skill_assets: dict | None = None,  # skill 模板资产（template.html/reference.css）
 ) -> dict:
     """生成HTML。返回html字符串+完整性标记。"""
     visual = visual or {}
@@ -56,6 +57,13 @@ async def tool_render(
         visual_block = f"参考CSS：\n{visual['reference_css'][:800]}"
     if visual.get("palette"):
         visual_block += f"\n色板：{', '.join(visual['palette'])}"
+    if skill_assets:
+        tpl = skill_assets.get("template.html")
+        if tpl:
+            visual_block += f"\n【参考页面骨架】按此结构组织内容（可自由发挥，不必逐字照抄）：\n{tpl[:2500]}"
+        css = skill_assets.get("reference.css")
+        if css:
+            visual_block += f"\n【参考排版系统】可借鉴其中的设计语言（色板/字号/间距）：\n{css[:2500]}"
 
     # 用 replace 而不是 format，避免 JSON 字符串中的 {} 被误解析
     prompt = (
@@ -92,6 +100,7 @@ async def tool_render_stream(
     visual: dict = None,
     session_records: list[dict] | None = None,
     model: str | None = None,          # 会话模型（前端选择，None=默认）
+    skill_assets: dict | None = None,  # skill 模板资产（template.html/reference.css）
 ):
     """流式生成HTML——逐段 yield，前端 iframe 实时看到页面"长出来"。
 
@@ -108,6 +117,13 @@ async def tool_render_stream(
         visual_block = f"参考CSS：\n{visual['reference_css'][:800]}"
     if visual.get("palette"):
         visual_block += f"\n色板：{', '.join(visual['palette'])}"
+    if skill_assets:
+        tpl = skill_assets.get("template.html")
+        if tpl:
+            visual_block += f"\n【参考页面骨架】按此结构组织内容（可自由发挥，不必逐字照抄）：\n{tpl[:2500]}"
+        css = skill_assets.get("reference.css")
+        if css:
+            visual_block += f"\n【参考排版系统】可借鉴其中的设计语言（色板/字号/间距）：\n{css[:2500]}"
 
     prompt = (
         RENDER_SYSTEM_PROMPT
@@ -170,6 +186,8 @@ class RenderAgent:
         content: dict,
         push=None,                    # 推消息到前端的回调
         session_records=None,         # token 记账（累加式）
+        model=None,                   # 会话模型（前端选择，None=默认）
+        skill_assets=None,            # skill 模板资产（template.html/reference.css）
     ) -> dict:
         """对外接口——和 tool_render 签名一致，orchestrator 无感。"""
 
@@ -194,7 +212,7 @@ class RenderAgent:
                 patched_design = self._patch_hint(patched_design, issues)
 
             # 生成 HTML（内部流式收集，不 push 前端）
-            html = await self._generate(patched_design, content, session_records)
+            html = await self._generate(patched_design, content, session_records, model, skill_assets)
             html = strip_fence(html)
             # 用 lstrip 防止换行/空格导致 startswith 失败，重复添加 DOCTYPE
             if not html.lstrip().lower().startswith("<!doctype"):
@@ -238,7 +256,7 @@ class RenderAgent:
         except Exception as e:
             logger.warning("RenderAgent=push_failed | %s", e)
 
-    async def _generate(self, design, content, session_records) -> str:
+    async def _generate(self, design, content, session_records, model=None, skill_assets=None) -> str:
         """流式收集完整 HTML，不 push 前端（等自检通过再推）。
 
         依赖事实：tool_render_stream 的 frame["html"] 是**全量累计**内容，
@@ -249,6 +267,8 @@ class RenderAgent:
             async for frame in tool_render_stream(
                 design, content,
                 session_records=session_records,
+                model=model,
+                skill_assets=skill_assets,
             ):
                 if frame.get("complete"):
                     return frame.get("html", accumulated)

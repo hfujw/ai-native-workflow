@@ -16,6 +16,19 @@ from app.tools.verify import tool_verify
 logger = logging.getLogger(__name__)
 
 
+def _skill_assets_for(skill_id: str | None) -> dict | None:
+    """按 skill_id 加载模板资产（template.html/reference.css）。"""
+    if not skill_id:
+        return None
+    try:
+        from app.skills import load_skill
+        skill = load_skill(skill_id)
+        return (skill or {}).get("assets") or None
+    except Exception as e:
+        logger.debug("skill 资产加载失败(%s): %s", skill_id, e)
+        return None
+
+
 # 工具 → Agent 映射（加新工具只需加一行）。
 # handler 签名：handler(ctx, bus, params)——params 是 LLM 决策携带的参数（如 search 的 query）。
 TOOL_HANDLERS = {
@@ -23,6 +36,7 @@ TOOL_HANDLERS = {
         topic=(params or {}).get("query") or ctx.get("user_input", ""),
         existing_material=ctx.get("material", []),
         session_records=ctx.get("cost_records"),
+        model=ctx.get("model"),
     ),
     "design":  lambda ctx, bus, params: DesignerAgent().run(
         ctx.get("material", []), ctx.get("user_input", ""),
@@ -40,6 +54,7 @@ TOOL_HANDLERS = {
         ctx.get("design") or {}, ctx.get("content") or {},
         push=ctx.get("_push"), session_records=ctx.get("cost_records"),
         model=ctx.get("model"),
+        skill_assets=_skill_assets_for(ctx.get("skill_id")),
     ),
     "verify":  lambda ctx, bus, params: _sync_wrap(
         tool_verify(ctx.get("html", ""), ctx.get("content") or {})

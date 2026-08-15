@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     circuit_failure_threshold: int = Field(3, ge=1)
     circuit_recovery_timeout: int = Field(30, ge=5)
 
+    # ── 质量审查（四维对抗：事实/覆盖/可读/美学）──
+    judge_enabled: bool = Field(True, description="生成后执行质量审查（额外一次 LLM 调用）")
+    judge_max_retries: int = Field(2, ge=0, le=5, description="审查不通过的最大回退轮数，超限诚实交付")
+
     # ── 工具级参数（不同工具不同行为——调试就是改这里，不是改代码）──
     tool_decide_temperature: float = Field(0.5, ge=0, le=2)
     tool_decide_max_tokens: int = Field(2048, ge=100, le=16384)

@@ -79,6 +79,8 @@ def apply_gen_params(ctx: dict, params: dict | None) -> None:
     ctx["search_enabled"] = bool(p.get("searchEnabled", True))
     if p.get("llmSteps") is not None:
         ctx["llm_steps"] = min(100, max(1, int(p["llmSteps"])))
+    if p.get("skillId"):
+        ctx["skill_id"] = str(p["skillId"])  # 风格 skill（模板资产注入渲染）
 
 
 async def orchestrator_node(state: dict) -> dict:
@@ -275,21 +277,59 @@ async def orchestrator_node(state: dict) -> dict:
             ctx["passed"] = result.get("passed", False)
             ctx["issues"] = result.get("issues", [])
             if ctx["passed"] or ctx.get("honest_mode"):
+                # ── 诚实模式：直接交付（素材不足已降级，不做美学批评）──
                 if ctx.get("honest_mode"):
                     logger.info("orchestrator=pass | session=%s | mode=honest", ctx["session_id"])
-                else:
-                    logger.info("orchestrator=pass | session=%s | steps=%d | cost=¥%.4f",
-                                ctx["session_id"], ctx["steps"], ctx["budget_spent"])
-                if push:
-                    await push({"type": "complete", "html": ctx.get("html", ""),
-                                "steps": ctx["steps"], "budget": ctx["budget_spent"]})
-                    if ctx.get("honest_mode"):
+                    if push:
+                        await push({"type": "complete", "html": ctx.get("html", ""),
+                                    "steps": ctx["steps"], "budget": ctx["budget_spent"]})
                         await push({"type": "thinking", "step": ctx["steps"],
                                     "thought": "这是基于现有资料的诚实呈现，已标注信息局限。",
                                     "tool": "system", "budget": ctx["budget_spent"]})
+                    return {"status": "success", "html": ctx.get("html", ""),
+                            "steps": ctx["steps"], "budget": ctx["budget_spent"],
+                            "honest_mode": True,
+                            "tool_history": ctx["tool_history"],
+                            "design": ctx.get("design"), "content": ctx.get("content"),
+                            "material": ctx.get("material")}
+
+                # ── 正常模式：verify 通过 → 四维质量审查（事实/覆盖/可读/美学）──
+                if settings.judge_enabled:
+                    from app.llm.judge import judge_page, pick_rollback
+                    if push:
+                        await push({"type": "thinking", "step": ctx["steps"] + 1,
+                                    "thought": "页面结构与事实通过验证，进入质量审查…",
+                                    "tool": "judge", "budget": ctx["budget_spent"]})
+                    verdict = await judge_page(
+                        ctx["user_input"], ctx.get("design"), ctx.get("content"),
+                        ctx.get("material", []), ctx.get("html", ""),
+                        session_records=ctx.get("cost_records"), model=ctx.get("model"),
+                    )
+                    if not verdict["passed"] and ctx.get("judge_fail_count", 0) < settings.judge_max_retries:
+                        ctx["judge_fail_count"] = ctx.get("judge_fail_count", 0) + 1
+                        target = pick_rollback(verdict["issues"])
+                        logger.info("orchestrator=judge_retry | session=%s | round=%d | target=%s",
+                                    ctx["session_id"], ctx["judge_fail_count"], target)
+                        if push:
+                            await push({"type": "thinking", "step": ctx["steps"] + 1,
+                                        "thought": f"质量审查发现 {len(verdict['issues'])} 个问题，退回「{target}」重做。",
+                                        "tool": "judge", "budget": ctx["budget_spent"]})
+                        ctx["force_next_tool"] = target
+                        continue
+                    if not verdict["passed"]:
+                        if push:
+                            await push({"type": "thinking", "step": ctx["steps"] + 1,
+                                        "thought": "质量审查多轮未通过，诚实交付当前版本。",
+                                        "tool": "system", "budget": ctx["budget_spent"]})
+
+                logger.info("orchestrator=pass | session=%s | steps=%d | cost=¥%.4f",
+                            ctx["session_id"], ctx["steps"], ctx["budget_spent"])
+                if push:
+                    await push({"type": "complete", "html": ctx.get("html", ""),
+                                "steps": ctx["steps"], "budget": ctx["budget_spent"]})
                 return {"status": "success", "html": ctx.get("html", ""),
                         "steps": ctx["steps"], "budget": ctx["budget_spent"],
-                        "honest_mode": ctx.get("honest_mode", False),
+                        "honest_mode": False,
                         "tool_history": ctx["tool_history"],
                         # 多轮迭代需要复用
                         "design": ctx.get("design"), "content": ctx.get("content"),
@@ -415,24 +455,18 @@ HTML长度：{len(ctx.get('html',''))}字符 | 上次验证：{'通过' if ctx['
 
 
 def _real_cost_delta(ctx: dict) -> float:
-    """自上次结算以来新增的 LLM token 真实成本（DeepSeek v4-flash 费率 + 缓存拆分）。
+    """自上次结算以来新增的 LLM token 真实成本（按模型费率表计价，见 llm/pricing.py）。
 
     cost_records 是会话账本，累积所有 chat/chat_stream 的 token。
     只算增量——包含上一轮 decide 决策 + 本轮工具的 LLM 调用。
     """
-    from app.llm.client import INPUT_CACHE_HIT, INPUT_CACHE_MISS, OUTPUT_RATE
+    from app.llm.pricing import compute_cost
 
     records = ctx.get("cost_records", [])
     start = ctx.get("_last_cost_len", 0)
     ctx["_last_cost_len"] = len(records)
     new = records[start:]
-    total_in = sum(r.get("input_tokens", 0) for r in new)
-    total_cache_hit = sum(r.get("cache_hit_tokens", 0) for r in new)
-    total_out = sum(r.get("output_tokens", 0) for r in new)
-    in_miss = max(0, total_in - total_cache_hit)
-    return round(total_cache_hit / 1_000_000 * INPUT_CACHE_HIT
-                 + in_miss / 1_000_000 * INPUT_CACHE_MISS
-                 + total_out / 1_000_000 * OUTPUT_RATE, 6)
+    return round(compute_cost(new), 6)
 
 
 async def _execute_tool(tool_name: str, params: dict, ctx: dict) -> dict:
