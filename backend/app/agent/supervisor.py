@@ -36,7 +36,7 @@ TOOL_HANDLERS = {
         topic=(params or {}).get("query") or ctx.get("user_input", ""),
         existing_material=ctx.get("material", []),
         session_records=ctx.get("cost_records"),
-        model=ctx.get("search_model") or ctx.get("model"),  # 搜索换词可用独立模型（省 token）
+        model=ctx.get("model"),
         max_requery=ctx.get("llm_steps"),  # LLM 步数：换词上限
     ),
     "design":  lambda ctx, bus, params: DesignerAgent().run(
