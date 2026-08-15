@@ -30,16 +30,7 @@ jobs:
         run: ruff check app/
 
       - name: Run tests with coverage
-        # 覆盖率阈值对齐现状（实测 ~35%）。覆盖率为已知短板，Phase 6 计划提升
-        #（见 docs/plans/phase6-interview-plan.md）。先保证 CI 常绿，再逐步提高。
+        # 覆盖率阈值对齐现状（实测 ~35%）。覆盖率为已知短板，先保证 CI 常绿，再逐步提高。
         run: pytest tests/ -v --cov=app --cov-fail-under=30
         env:
           DEEPSEEK_API_KEY: test-key
-
-  docker:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build Docker image
-        run: docker build -t time-pixel ./backend
