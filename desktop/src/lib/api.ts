@@ -105,6 +105,17 @@ export type ModelItem = {
   removable: boolean;
 };
 
+/** 按提供方分组（DSH ModelDirectory：provider → models，设置页与 Composer 共用） */
+export function groupModelsByProvider(models: ModelItem[]): { provider: string; models: ModelItem[] }[] {
+  const map = new Map<string, ModelItem[]>();
+  for (const m of models) {
+    const p = m.provider || "自定义";
+    if (!map.has(p)) map.set(p, []);
+    map.get(p)!.push(m);
+  }
+  return [...map.entries()].map(([provider, models]) => ({ provider, models }));
+}
+
 /* ── 对话消息类型（App / ToolCard / 会话存储共用） ── */
 
 /** 工具标识（含 think——思考卡片；judge——质量审查） */

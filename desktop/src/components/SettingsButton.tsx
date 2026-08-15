@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
 import { useDropdown } from "../hooks/useDropdown";
 import { usePersistentState } from "../hooks/usePersistentState";
-import type { GenParams, ModelItem } from "../lib/api";
+import { groupModelsByProvider, type GenParams, type ModelItem } from "../lib/api";
 import type { IconProps } from "./icons";
 import {
   IconChevronDown,
@@ -126,11 +126,15 @@ export default function SettingsButton({
   const [activePreset, setActivePreset] = usePersistentState("lumen.preset", "storyteller");
   const [customPresets, setCustomPresets] = usePersistentState<Preset[]>("lumen.customPresets", []);
 
-  // 模型页（DSH ModelsSection：行卡片 + 行内编辑器 + 添加卡片）
+  // 模型页（DSH ModelsSection：provider 行 + 一次一张编辑卡片 + 添加提供方）
+  // 展开的 provider（null=收起全部；一次只展开一张）
+  const [editingProvider, setEditingProvider] = useState<string | null>(null);
+  // 卡片内正在编辑的模型 id（行内编辑 modelId/name）
   const [editingModel, setEditingModel] = useState<string | null>(null);
   const [editModelId, setEditModelId] = useState("");
   const [editModelName, setEditModelName] = useState("");
-  const [addingModel, setAddingModel] = useState(false);
+  // 添加提供方卡片（DSH dormant-provider select）
+  const [addingProvider, setAddingProvider] = useState(false);
   // 凭证：全局单一（不属于任何单个模型）。已填时 DOM 里不出现完整 key——
   // 只显示掩码文本（不可复制），编辑 = 换新 key（不显示旧值）。
   const [editingKey, setEditingKey] = useState(false);
@@ -174,16 +178,6 @@ export default function SettingsButton({
     setKeyInput("");
   };
 
-  const toggleEdit = (id: string) => {
-    if (editingModel === id) {
-      setEditingModel(null);
-      return;
-    }
-    const m = models.find((x) => x.id === id);
-    setEditModelId(m?.modelId ?? "");
-    setEditModelName(m?.name ?? "");
-    setEditingModel(id);
-  };
   /** 保存编辑：模型 ID + 显示名称写回列表（受控 + 持久化），凭证独立不受影响 */
   const saveEdit = (id: string) => {
     onModelsChange(
@@ -238,8 +232,29 @@ export default function SettingsButton({
         removable: true,
       },
     ]);
-    setAddingModel(false);
+    setAddingProvider(false);
     setNewDisplayName("");
+  };
+
+  /** 按 provider 分组（DSH ModelDirectory：provider 行 → 卡片内模型列表） */
+  const providerGroups = useMemo(() => groupModelsByProvider(models), [models]);
+
+  /** 展开/收起 provider 编辑卡片（一次只展开一张，DSH 同款） */
+  const toggleProvider = (provider: string) => {
+    setEditingProvider((cur) => (cur === provider ? null : provider));
+    setEditingModel(null);
+    setAddingProvider(false);
+  };
+
+  /** 卡片内模型行内编辑：打开时预填当前值 */
+  const toggleModelEdit = (m: ModelItem) => {
+    if (editingModel === m.id) {
+      setEditingModel(null);
+      return;
+    }
+    setEditModelId(m.modelId);
+    setEditModelName(m.name);
+    setEditingModel(m.id);
   };
 
   // ESC 关闭设置模态
@@ -400,7 +415,7 @@ export default function SettingsButton({
                 {tab === "models" && (
                   <>
                     <h2 className="model-page-title">模型</h2>
-                    <p className="model-page-intro">管理可用的生成模型与连接凭证</p>
+                    <p className="model-page-intro">管理连接凭证与各提供方的模型</p>
 
                     {/* ── 连接凭证（全局单一；已填 key 只显示掩码，不可复制） ── */}
                     <div className="credential-block">
@@ -447,44 +462,80 @@ export default function SettingsButton({
                       </div>
                     </div>
 
+                    {/* ── 提供方行（DSH ModelsSection：一行一个 provider，展开管理模型） ── */}
+                    <div className="setting-section-title">提供方</div>
                     <ul className="model-rows">
-                      {models.map((m) => (
-                        <li key={m.id} className="model-row-card">
-                          <div className="model-row-head">
+                      {providerGroups.map((g) => (
+                        <li key={g.provider} className={`model-row-card ${editingProvider === g.provider ? "expanded" : ""}`}>
+                          <div className="model-row-head" onClick={() => toggleProvider(g.provider)}>
                             <span className="model-row-identity">
-                              <span className="model-row-name">{m.name}</span>
-                              {m.provider && <span className="model-row-provider">{m.provider}</span>}
-                              <span className="model-row-tag">{m.modelId}</span>
+                              <span className="model-row-name">{g.provider}</span>
+                              <span className="model-row-count">{g.models.length} 个模型</span>
                               <span
                                 className={`credential-dot ${apiKey ? "configured" : "missing"}`}
                                 title={apiKey ? "已配置自定义 Key（全局凭证）" : "未配置 Key（生成用后端 .env）"}
                               />
                             </span>
-                            <span className="model-row-actions">
-                              <button className="btn-secondary" onClick={() => toggleEdit(m.id)}>编辑</button>
-                              {m.removable && (
-                                <button className="btn-danger" onClick={() => removeModel(m.id)}>移除</button>
-                              )}
+                            <span className="model-row-actions" onClick={(e) => e.stopPropagation()}>
+                              <button className="btn-secondary" onClick={() => toggleProvider(g.provider)}>
+                                {editingProvider === g.provider ? "收起" : "编辑"}
+                              </button>
                             </span>
                           </div>
 
-                          {editingModel === m.id && (
+                          {/* 展开卡片：该 provider 的模型列表（DSH ProviderEditor 结构） */}
+                          {editingProvider === g.provider && (
                             <div className="model-editor">
                               <div className="model-editor-header">
-                                <span className="model-editor-title">{m.name}</span>
-                                <span className="model-editor-route">{m.modelId}</span>
+                                <span className="model-editor-title">{g.provider}</span>
+                                <span className="model-editor-route">{g.models.length} 个模型</span>
                               </div>
-                              <div className="model-field">
-                                <label className="model-field-label">显示名称</label>
-                                <input className="setting-input" value={editModelName} onChange={(e) => setEditModelName(e.target.value)} />
+                              <div className="model-editor-models">
+                                {g.models.map((m) => (
+                                  <div key={m.id} className="provider-model-row">
+                                    {editingModel === m.id ? (
+                                      <>
+                                        <div className="provider-model-fields">
+                                          <input
+                                            className="setting-input"
+                                            placeholder="显示名称"
+                                            value={editModelName}
+                                            onChange={(e) => setEditModelName(e.target.value)}
+                                          />
+                                          <input
+                                            className="setting-input"
+                                            placeholder="模型 ID"
+                                            value={editModelId}
+                                            onChange={(e) => setEditModelId(e.target.value)}
+                                          />
+                                        </div>
+                                        <span className="provider-model-actions">
+                                          <button className="btn-secondary" onClick={() => setEditingModel(null)}>取消</button>
+                                          <button className="btn-primary" onClick={() => saveEdit(m.id)}>保存</button>
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span className="provider-model-info">
+                                          <span className="provider-model-name">{m.name}</span>
+                                          <span className="provider-model-id">{m.modelId}</span>
+                                          {!m.removable && <span className="model-row-provider">内置</span>}
+                                        </span>
+                                        <span className="provider-model-actions">
+                                          <button className="btn-secondary" onClick={() => toggleModelEdit(m)}>编辑</button>
+                                          {m.removable && (
+                                            <button className="btn-danger" onClick={() => removeModel(m.id)}>删除</button>
+                                          )}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                ))}
                               </div>
-                              <div className="model-field">
-                                <label className="model-field-label">模型 ID</label>
-                                <input className="setting-input" value={editModelId} onChange={(e) => setEditModelId(e.target.value)} />
-                              </div>
-                              <div className="model-editor-actions">
-                                <button className="btn-secondary" onClick={() => setEditingModel(null)}>取消</button>
-                                <button className="btn-primary" onClick={() => saveEdit(m.id)}>保存</button>
+                              <div className="model-editor-add-model">
+                                <button className="model-add-btn" onClick={() => { setNewProvider(g.provider); setNewModelId(""); setNewDisplayName(""); setAddingProvider(true); }}>
+                                  <IconPlus size={14} /> 添加模型到 {g.provider}
+                                </button>
                               </div>
                             </div>
                           )}
@@ -492,20 +543,24 @@ export default function SettingsButton({
                       ))}
                     </ul>
 
+                    {/* ── 添加提供方（DSH dormant-provider select 卡片） ── */}
                     <div className="model-add-block">
-                      {addingModel ? (
+                      {addingProvider ? (
                         <div className="model-add-card">
                           <div className="model-editor-header">
                             <span className="model-editor-title">添加模型</span>
+                            {editingProvider && <span className="model-editor-route">归属 {editingProvider}</span>}
                           </div>
-                          <div className="model-field">
-                            <label className="model-field-label">协议</label>
-                            <select className="model-select-input" value={newProvider} onChange={(e) => pickProvider(e.target.value)}>
-                              {Object.keys(PROVIDERS).map((p) => (
-                                <option key={p} value={p}>{p}</option>
-                              ))}
-                            </select>
-                          </div>
+                          {!editingProvider && (
+                            <div className="model-field">
+                              <label className="model-field-label">协议</label>
+                              <select className="model-select-input" value={newProvider} onChange={(e) => pickProvider(e.target.value)}>
+                                {Object.keys(PROVIDERS).map((p) => (
+                                  <option key={p} value={p}>{p}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
                           <div className="model-field">
                             <label className="model-field-label">模型 ID</label>
                             <input className="setting-input" placeholder="如 gpt-4o / claude-3-5-sonnet" value={newModelId} onChange={(e) => setNewModelId(e.target.value)} />
@@ -515,13 +570,16 @@ export default function SettingsButton({
                             <input className="setting-input" placeholder="如 OpenAI" value={newDisplayName} onChange={(e) => setNewDisplayName(e.target.value)} />
                           </div>
                           <div className="model-editor-actions">
-                            <button className="btn-secondary" onClick={() => setAddingModel(false)}>取消</button>
+                            <button className="btn-secondary" onClick={() => setAddingProvider(false)}>取消</button>
                             <button className="btn-primary" onClick={addModel}>保存</button>
                           </div>
                         </div>
                       ) : (
                         <div className="model-add-actions">
-                          <button className="model-add-btn" onClick={() => { setAddingModel(true); setEditingModel(null); }}>
+                          <button
+                            className="model-add-btn"
+                            onClick={() => { setAddingProvider(true); setEditingProvider(null); setEditingModel(null); }}
+                          >
                             <IconPlus size={14} /> 添加模型
                           </button>
                         </div>
