@@ -803,6 +803,18 @@ export default function SettingsButton({
                     <SettingRow title="联网搜索" desc="允许 Lumen 联网检索素材">
                       <button className={`toggle ${params.searchEnabled ? "on" : ""}`} onClick={() => onParamsChange({ ...params, searchEnabled: !params.searchEnabled })} />
                     </SettingRow>
+                    <SettingRow title="搜索模型" desc="换词决策用的模型——建议选便宜的（如 deepseek-Flash），主生成仍用 Composer 选的模型">
+                      <select
+                        className="model-select-input"
+                        value={params.searchModel ?? ""}
+                        onChange={(e) => onParamsChange({ ...params, searchModel: e.target.value || undefined })}
+                      >
+                        <option value="">跟随主模型</option>
+                        {models.map((m) => (
+                          <option key={m.id} value={m.modelId}>{m.name}（{m.modelId}）</option>
+                        ))}
+                      </select>
+                    </SettingRow>
                   </>
                 )}
               </div>
