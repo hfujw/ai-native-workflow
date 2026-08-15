@@ -75,8 +75,8 @@ function upsertCall(calls: ToolCall[], next: ToolCall): ToolCall[] {
 
 /** 默认模型（首次启动；不可移除——保证输入框永远有模型可选） */
 const DEFAULT_MODELS: ModelItem[] = [
-  { id: "flash", name: "deepseek-Flash", modelId: "deepseek-chat", removable: false },
-  { id: "pro", name: "deepseek-Pro", modelId: "deepseek-reasoner", removable: false },
+  { id: "flash", name: "deepseek-Flash", modelId: "deepseek-chat", provider: "DeepSeek", removable: false },
+  { id: "pro", name: "deepseek-Pro", modelId: "deepseek-reasoner", provider: "DeepSeek", removable: false },
 ];
 
 export default function App() {
@@ -109,11 +109,15 @@ export default function App() {
   const [models, setModels] = usePersistentState<ModelItem[]>("lumen.models", DEFAULT_MODELS);
   // 选中的模型（持久化；发送时解析成后端模型 ID 随 WS 传递）
   const [composerModel, setComposerModel] = usePersistentState("lumen.composerModel", "flash");
-  // 保证默认模型永远存在：旧的持久化里删过/为空也补回（不可移除）
+  // 保证默认模型永远存在且带 provider：旧的持久化里删过/为空/缺 provider 都修
   useEffect(() => {
     setModels((ms) => {
       const missing = DEFAULT_MODELS.filter((d) => !ms.some((m) => m.id === d.id));
-      return missing.length ? [...ms, ...missing] : ms;
+      const needProvider = ms
+        .filter((m) => !m.provider && DEFAULT_MODELS.some((d) => d.id === m.id))
+        .map((m) => ({ ...m, provider: "DeepSeek" }));
+      if (!missing.length && !needProvider.length) return ms;
+      return [...needProvider, ...ms.filter((m) => !needProvider.some((n) => n.id === m.id)), ...missing];
     });
   }, [setModels]);
   const [sidebarOpen, setSidebarOpen] = usePersistentState("lumen.sidebar", true);

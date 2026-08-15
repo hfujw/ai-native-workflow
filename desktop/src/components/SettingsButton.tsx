@@ -129,6 +129,7 @@ export default function SettingsButton({
   // 模型页（DSH ModelsSection：行卡片 + 行内编辑器 + 添加卡片）
   const [editingModel, setEditingModel] = useState<string | null>(null);
   const [editModelId, setEditModelId] = useState("");
+  const [editModelName, setEditModelName] = useState("");
   const [addingModel, setAddingModel] = useState(false);
   // 凭证：全局单一（不属于任何单个模型）。已填时 DOM 里不出现完整 key——
   // 只显示掩码文本（不可复制），编辑 = 换新 key（不显示旧值）。
@@ -180,12 +181,21 @@ export default function SettingsButton({
     }
     const m = models.find((x) => x.id === id);
     setEditModelId(m?.modelId ?? "");
+    setEditModelName(m?.name ?? "");
     setEditingModel(id);
   };
-  /** 保存编辑：模型 ID 写回列表（受控 + 持久化），API 配置已持久化 */
+  /** 保存编辑：模型 ID + 显示名称写回列表（受控 + 持久化），凭证独立不受影响 */
   const saveEdit = (id: string) => {
     onModelsChange(
-      models.map((x) => (x.id === id ? { ...x, modelId: editModelId.trim() || x.modelId } : x))
+      models.map((x) =>
+        x.id === id
+          ? {
+              ...x,
+              modelId: editModelId.trim() || x.modelId,
+              name: editModelName.trim() || x.name,
+            }
+          : x
+      )
     );
     setEditingModel(null);
   };
@@ -222,8 +232,9 @@ export default function SettingsButton({
       ...models,
       {
         id: `m${Date.now()}`,
-        name: newDisplayName.trim() || newProvider,
+        name: newDisplayName.trim() || newModelId.trim(),
         modelId: newModelId.trim(),
+        provider: newProvider,
         removable: true,
       },
     ]);
@@ -442,6 +453,7 @@ export default function SettingsButton({
                           <div className="model-row-head">
                             <span className="model-row-identity">
                               <span className="model-row-name">{m.name}</span>
+                              {m.provider && <span className="model-row-provider">{m.provider}</span>}
                               <span className="model-row-tag">{m.modelId}</span>
                               <span
                                 className={`credential-dot ${apiKey ? "configured" : "missing"}`}
@@ -461,6 +473,10 @@ export default function SettingsButton({
                               <div className="model-editor-header">
                                 <span className="model-editor-title">{m.name}</span>
                                 <span className="model-editor-route">{m.modelId}</span>
+                              </div>
+                              <div className="model-field">
+                                <label className="model-field-label">显示名称</label>
+                                <input className="setting-input" value={editModelName} onChange={(e) => setEditModelName(e.target.value)} />
                               </div>
                               <div className="model-field">
                                 <label className="model-field-label">模型 ID</label>

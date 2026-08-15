@@ -1,7 +1,18 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useDropdown } from "../hooks/useDropdown";
 import { IconCheck, IconChevronDown, IconSend } from "./icons";
 import type { ModelItem } from "../lib/api";
+
+/** 按提供方分组（DSH ModelDirectory：group → models，组标题 + 组内模型） */
+function groupByProvider(models: ModelItem[]): { provider: string; models: ModelItem[] }[] {
+  const map = new Map<string, ModelItem[]>();
+  for (const m of models) {
+    const p = m.provider || "自定义";
+    if (!map.has(p)) map.set(p, []);
+    map.get(p)!.push(m);
+  }
+  return [...map.entries()].map(([provider, models]) => ({ provider, models }));
+}
 
 /** 输入栏 —— DSH InputBar 样式：上输入区 + 下行右侧 [模型选择][发送] */
 export default function Composer({
@@ -27,6 +38,7 @@ export default function Composer({
   const modelDrop = useDropdown();
 
   const current = models.find((m) => m.id === modelId) ?? models[0];
+  const groups = useMemo(() => groupByProvider(models), [models]);
 
   const send = () => {
     if (sending) return;
@@ -64,23 +76,32 @@ export default function Composer({
             title="选择模型"
             disabled={models.length === 0}
           >
-            {current?.name ?? "无可用模型"}
+            <span className="model-select-name">{current?.name ?? "无可用模型"}</span>
+            {current?.provider && (
+              <span className="model-select-provider">{current.provider}</span>
+            )}
             <IconChevronDown className={`chev ${modelDrop.open ? "open" : ""}`} size={13} />
           </button>
           {modelDrop.portal(
             <div className="model-menu">
-              {models.map((m) => (
-                <button
-                  key={m.id}
-                  className={`model-option ${m.id === current?.id ? "selected" : ""}`}
-                  onClick={() => { onModelIdChange(m.id); modelDrop.close(); }}
-                >
-                  <div className="model-option-copy">
-                    <span className="model-option-name">{m.name}</span>
-                    <span className="model-option-desc">{m.modelId}</span>
-                  </div>
-                  {m.id === current?.id && <IconCheck size={15} />}
-                </button>
+              {groups.map((g) => (
+                <section key={g.provider} className="model-group" role="group" aria-label={g.provider}>
+                  <div className="model-group-title">{g.provider}</div>
+                  {g.models.map((m) => (
+                    <button
+                      key={m.id}
+                      className={`model-option ${m.id === current?.id ? "selected" : ""}`}
+                      onClick={() => { onModelIdChange(m.id); modelDrop.close(); }}
+                      title={m.modelId}
+                    >
+                      <div className="model-option-copy">
+                        <span className="model-option-name">{m.name}</span>
+                        <span className="model-option-desc">{m.modelId}</span>
+                      </div>
+                      {m.id === current?.id && <IconCheck size={15} />}
+                    </button>
+                  ))}
+                </section>
               ))}
             </div>
           )}
