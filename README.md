@@ -84,18 +84,14 @@ flowchart TD
 git clone https://github.com/hfujw/ai-native-workflow.git
 cd ai-native-workflow
 
-# 1. 配 Key
-cp backend/.env.example backend/.env
-# 编辑 backend/.env：DEEPSEEK_API_KEY=sk-xxxxxxxx
-
-# 2. 后端
+# 1. 后端（零配置启动——Key 全部在应用设置里填，不需要 .env）
 cd backend
 python -m venv venv
 venv\Scripts\pip install -r requirements.txt      # Windows
 # python3 -m venv venv && source venv/bin/pip install -r requirements.txt  # macOS/Linux
 venv\Scripts\python -m uvicorn app.main:app --port 8001
 
-# 3. 前端（Tauri 桌面应用，新终端）
+# 2. 前端（Tauri 桌面应用，新终端）
 cd desktop
 npm install
 npm run tauri dev
@@ -105,10 +101,12 @@ npm run tauri dev
 
 ### 首次启动说明
 
+- **不需要任何 .env 文件**——后端零配置启动
+- 打开应用后到 **设置 → 模型**：给所用提供方填 API Key/地址（如 DeepSeek）
+- 需要联网搜索？到 **设置 → 搜索服务**：给 Tavily（或自定义服务）填 Key
+- 没填 Key 也可以生成——生成时会明确提示"未配置 API Key"，绝不静默
 - ChromaDB 中文模型（~400MB）首次自动从 `hf-mirror.com` 下载，国内镜像不需代理
 - 下载失败不影响使用——语义检索不可用，关键词 + LLM 自身知识仍然工作
-- Tavily Key 不配也没关系——搜索返回空，LLM 用自己的知识
-- 不想用后端 .env 的 Key？设置里填自己的 API Key/Base，生成时会话级生效
 
 ---
 
