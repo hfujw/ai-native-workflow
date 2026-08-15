@@ -51,7 +51,7 @@ def _describe_llm_error(e: Exception) -> str:
 _session_client: contextvars.ContextVar = contextvars.ContextVar(
     "llm_session_client", default=None)
 
-DEFAULT_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+DEFAULT_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
 
 def bind_session_client(api_key: str | None = None, base_url: str | None = None) -> None:
@@ -191,10 +191,10 @@ async def chat_json(prompt: str, system: str = "", model: str = None,
     """异步 JSON 调用——优先 DeepSeek 结构化输出（json_object），失败降级普通调用。
 
     结构化输出能显著降低"LLM 返回围栏/多余文字导致 json.loads 失败"的概率。
-    ⚠️ deepseek-reasoner 不支持 response_format=json_object（H2 修复）——
-    reasoner 下直接走普通调用，靠 prompt 要求 JSON + safe_parse_json 兜底。
+    ⚠️ 推理模型（deepseek-reasoner / deepseek-v4-pro）不支持 response_format=json_object
+    （H2 修复）——推理模型下直接走普通调用，靠 prompt 要求 JSON + safe_parse_json 兜底。
     """
-    if model and "reasoner" in model:
+    if model and ("reasoner" in model or "v4-pro" in model or "v4-pro" in str(model)):
         # 推理模型：不传 response_format（会被拒），prompt 内已有 JSON 要求
         return await chat(prompt, system=system, model=model, temperature=0.1,
                           session_records=session_records)

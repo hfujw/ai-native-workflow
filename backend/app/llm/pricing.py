@@ -6,11 +6,14 @@
 """
 
 # 每百万 token 价格（元）
-# deepseek-chat = DeepSeek V3（v4-flash 对应款）
+# 官方现行命名（2026）：deepseek-v4-flash（原 deepseek-chat 对应款）、
+# deepseek-v4-pro（原 deepseek-reasoner 对应款）。旧名保留作兼容（同价）。
 PRICING: dict[str, dict[str, float]] = {
-    "deepseek-chat": {"input_cached": 0.02, "input_miss": 1.0, "output": 2.0},
-    # TODO: 官网核对 deepseek-reasoner 真实费率，当前为保守占位
-    "deepseek-reasoner": {"input_cached": 0.02, "input_miss": 2.0, "output": 8.0},
+    "deepseek-v4-flash": {"input_cached": 0.02, "input_miss": 1.0, "output": 2.0},
+    "deepseek-chat": {"input_cached": 0.02, "input_miss": 1.0, "output": 2.0},  # 旧名兼容
+    # TODO: 官网核对 deepseek-v4-pro 真实费率，当前沿用 reasoner 保守占位
+    "deepseek-v4-pro": {"input_cached": 0.02, "input_miss": 2.0, "output": 8.0},
+    "deepseek-reasoner": {"input_cached": 0.02, "input_miss": 2.0, "output": 8.0},  # 旧名兼容
 }
 
 # 未知模型兜底（按较高价，预算更安全）
