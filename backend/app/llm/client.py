@@ -1,6 +1,7 @@
 """LLM 客户端 — DeepSeek API 异步封装。"""
 
 import asyncio
+import contextvars
 import logging
 import os
 import time
@@ -17,23 +18,44 @@ _api_key = os.getenv("DEEPSEEK_API_KEY")
 if not _api_key:
     raise RuntimeError("DEEPSEEK_API_KEY 环境变量未设置")
 
-client = AsyncOpenAI(
+_default_client = AsyncOpenAI(
     api_key=_api_key,
     base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
     timeout=DEFAULT_TIMEOUT,
 )
 
+# 会话级客户端：用户自定义 API Key/Base（contextvars——只影响当前任务及其子任务，
+# 不污染其他连接；不绑定则回落 _default_client）
+_session_client: contextvars.ContextVar = contextvars.ContextVar(
+    "llm_session_client", default=None)
+
 DEFAULT_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
-# DeepSeek v4-flash（deepseek-chat 对应）2026 真实费率（元/百万 token）
-# 来源：https://api-docs.deepseek.com/quick_start/pricing
-INPUT_CACHE_HIT = 0.02   # 输入缓存命中
-INPUT_CACHE_MISS = 1.0   # 输入缓存未命中
-OUTPUT_RATE = 2.0        # 输出
+
+def bind_session_client(api_key: str | None = None, base_url: str | None = None) -> None:
+    """绑定当前会话的 LLM 客户端（用户自定义 API Key 生效）。
+
+    必须在 asyncio.create_task 之前调用——contextvars 在创建任务时复制，
+    子任务（orchestrator）才能继承绑定。传 None 的字段回落环境变量默认值。
+    """
+    _session_client.set(AsyncOpenAI(
+        api_key=api_key or _api_key,
+        base_url=base_url or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+        timeout=DEFAULT_TIMEOUT,
+    ))
+
+
+def clear_session_client() -> None:
+    """清除当前会话绑定，回落默认客户端。"""
+    _session_client.set(None)
+
+
+def _get_client() -> AsyncOpenAI:
+    return _session_client.get() or _default_client
 
 
 def get_cost_summary(records: list[dict]) -> dict:
-    """计算费用——按 DeepSeek v4-flash 真实费率 + 缓存命中拆分。"""
+    """计算费用——按模型费率表计价（见 llm/pricing.py），未知模型兜底。"""
     # 防御：个别账本条目缺 token 字段时按 0 计，并打日志暴露问题记录
     for r in records:
         if "input_tokens" not in r or "output_tokens" not in r:
@@ -41,10 +63,8 @@ def get_cost_summary(records: list[dict]) -> dict:
     total_input = sum(r.get("input_tokens", 0) for r in records)
     total_output = sum(r.get("output_tokens", 0) for r in records)
     total_cache_hit = sum(r.get("cache_hit_tokens", 0) for r in records)
-    total_in_miss = max(0, total_input - total_cache_hit)
-    cost = (total_cache_hit / 1_000_000 * INPUT_CACHE_HIT
-            + total_in_miss / 1_000_000 * INPUT_CACHE_MISS
-            + total_output / 1_000_000 * OUTPUT_RATE)
+    from app.llm.pricing import compute_cost
+    cost = compute_cost(records)
     return {
         "calls": len(records),
         "total_input_tokens": total_input,
@@ -82,7 +102,7 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
             if response_format:
                 create_kwargs["response_format"] = response_format
             response = await llm_breaker.call(
-                client.chat.completions.create(**create_kwargs)
+                _get_client().chat.completions.create(**create_kwargs)
             )
 
             content = response.choices[0].message.content
@@ -159,7 +179,7 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
     try:
         # DeepSeek 兼容层不一定支持 stream_options——报错就降级
         try:
-            response = await client.chat.completions.create(
+            response = await _get_client().chat.completions.create(
                 model=model or DEFAULT_MODEL,
                 messages=messages,
                 temperature=temperature,
@@ -169,7 +189,7 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
             )
         except Exception as e:
             logger.debug("stream_options 不支持，降级重试: %s", e)
-            response = await client.chat.completions.create(
+            response = await _get_client().chat.completions.create(
                 model=model or DEFAULT_MODEL,
                 messages=messages,
                 temperature=temperature,

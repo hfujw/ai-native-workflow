@@ -101,7 +101,7 @@ async def test_chat_without_session_records_no_nameerror():
         async def call(self, coro):
             return await coro
 
-    with patch.object(llm_client.client.chat.completions, "create",
+    with patch.object(llm_client._default_client.chat.completions, "create",
                       AsyncMock(side_effect=fake_create)), \
          patch.object(cb, "llm_breaker", _PassThroughBreaker()):
         text = await llm_client.chat("你好", session_records=None)
@@ -132,7 +132,7 @@ async def test_chat_stream_without_session_records_no_nameerror():
             yield _Chunk()
         return gen()
 
-    with patch.object(llm_client.client.chat.completions, "create",
+    with patch.object(llm_client._default_client.chat.completions, "create",
                       AsyncMock(side_effect=fake_stream_create)):
         chunks = [c async for c in llm_client.chat_stream("你好", session_records=None)]
 
