@@ -16,7 +16,7 @@ import {
   renameProject,
 } from "./lib/api";
 import type { GenParams, ModelItem, Msg, ProviderCreds, SearchService, ToolCall, ToolId } from "./lib/api";
-import { deleteSession, loadSessions, saveSession } from "./lib/sessions";
+import { dedupeSessions, deleteSession, loadSessions, saveSession } from "./lib/sessions";
 import type { SavedSession } from "./lib/sessions";
 import {
   IconClose,
@@ -111,7 +111,8 @@ export default function App() {
   // 选中的模型（持久化；发送时解析成后端模型 ID 随 WS 传递）
   const [composerModel, setComposerModel] = usePersistentState("lumen.composerModel", "flash");
   // 保证默认模型永远存在且带 provider：旧的持久化里删过/为空/缺 provider 都修；
-  // 旧 modelId（deepseek-chat/reasoner）自动迁移到官方新命名（v4-flash/v4-pro）
+  // 旧 modelId（deepseek / deepseek-Flash / deepseek-Chat / deepseek-Pro / deepseek-reasoner）
+  // 迁移到官方新命名（v4-flash / v4-pro）——后端也有归一化兜底，这里保证 UI 显示正确
   useEffect(() => {
     setModels((ms) => {
       const missing = DEFAULT_MODELS.filter((d) => !ms.some((m) => m.id === d.id));
@@ -119,10 +120,17 @@ export default function App() {
         .filter((m) => !m.provider && DEFAULT_MODELS.some((d) => d.id === m.id))
         .map((m) => ({ ...m, provider: "DeepSeek" }));
       const renameOld = ms
-        .filter((m) => m.modelId === "deepseek-chat" || m.modelId === "deepseek-reasoner")
+        .filter((m) => {
+          const id = String(m.modelId ?? "").toLowerCase();
+          return id.startsWith("deepseek") && !id.includes("v4-flash") && !id.includes("v4-pro");
+        })
         .map((m) => ({
           ...m,
-          modelId: m.modelId === "deepseek-chat" ? "deepseek-v4-flash" : "deepseek-v4-pro",
+          modelId:
+            String(m.modelId).toLowerCase().includes("pro") ||
+            String(m.modelId).toLowerCase().includes("reasoner")
+              ? "deepseek-v4-pro"
+              : "deepseek-v4-flash",
         }));
       const fixed = [...needProvider, ...renameOld];
       if (!missing.length && !fixed.length) return ms;
@@ -176,7 +184,19 @@ export default function App() {
   /** 空状态建议话题（来自后端知识库 /api/events） */
   const [starters, setStarters] = useState<string[]>([]);
   /** 历史对话（"新对话"时当前对话自动存档到这里，可找回） */
-  const [sessions, setSessions] = useState<SavedSession[]>(() => loadSessions());
+  const [sessions, setSessions] = useState<SavedSession[]>(() => {
+    // 旧数据迁移：早期版本同一对话可能被拆成多份 → 启动时按首条用户消息合并
+    const raw = loadSessions();
+    const merged = dedupeSessions(raw);
+    if (merged.length !== raw.length) {
+      try {
+        localStorage.setItem("lumen.savedSessions", JSON.stringify(merged));
+      } catch {
+        /* 静默 */
+      }
+    }
+    return merged;
+  });
 
   const historyRef = useRef<HTMLDivElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
@@ -230,7 +250,7 @@ export default function App() {
 
   /** 回看历史作品：先存档当前对话（防丢），再拉取记录显示 */
   const openHistory = async (id: string) => {
-    archiveCurrent();
+    resetCurrentSession();
     stop();
     setIterable(false);
     try {
@@ -292,13 +312,20 @@ export default function App() {
     }
   }, [theme]);
 
-  /** 存档当前对话（有内容才存） */
+  /** 当前对话的存档 id：稳定持有（ref）——同一对话多次存档只更新同一份，
+   *  不再"每次存档都新建一条"（修复对话被拆散 + 点击列表顶部多出条目的问题） */
+  const currentSessionIdRef = useRef<string | null>(null);
+
+  /** 存档当前对话（有内容才存；同一对话用同一 id，切换对话时重置） */
   const archiveCurrent = () => {
     if (messages.length === 0) return;
+    if (!currentSessionIdRef.current) {
+      currentSessionIdRef.current = `s${Date.now()}`;
+    }
     const title = messages.find((m) => m.role === "user")?.text ?? "对话";
     setSessions(
       saveSession({
-        id: `s${Date.now()}`,
+        id: currentSessionIdRef.current,
         title,
         updatedAt: Date.now(),
         messages,
@@ -306,9 +333,15 @@ export default function App() {
     );
   };
 
+  /** 切换对话：先存档当前（稳定 id），再清空 ref——下次存档开新条目 */
+  const resetCurrentSession = () => {
+    archiveCurrent();
+    currentSessionIdRef.current = null;
+  };
+
   /** 新对话：当前对话存档，另开一个空对话 */
   const startNewChat = () => {
-    archiveCurrent();
+    resetCurrentSession();
     stop(); // 关掉进行中的生成连接
     setIterable(false);
     setView("chat");
@@ -318,7 +351,7 @@ export default function App() {
 
   /** 打开历史对话：先存档当前（防丢），再加载目标会话 */
   const openSession = (s: SavedSession) => {
-    archiveCurrent();
+    resetCurrentSession();
     stop();
     setIterable(false);
     setMessages(s.messages);

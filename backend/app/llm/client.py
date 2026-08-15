@@ -53,6 +53,38 @@ _session_client: contextvars.ContextVar = contextvars.ContextVar(
 
 DEFAULT_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
+# 模型名归一化见 normalize_model()——DeepSeek 官方改名后（v4-flash/v4-pro），
+# 用户前端可能存着各种变体（大小写、简名、旧名），统一模糊映射到官方名。
+
+
+def normalize_model(model: str | None) -> str | None:
+    """把用户传来的模型名映射到官方名；未知模型原样透传。
+
+    DeepSeek 官方现行名：deepseek-v4-flash / deepseek-v4-pro。
+    用户可能填各种变体（大小写、简名、旧名）——只要以 deepseek 开头就模糊映射：
+      - 含 "pro" 或 "reasoner" → deepseek-v4-pro
+      - 其他（flash/chat/裸 deepseek）→ deepseek-v4-flash
+    """
+    if not model:
+        return model
+    key = str(model).strip()
+    low = key.lower()
+    if low.startswith("deepseek"):
+        if "pro" in low or "reasoner" in low:
+            return "deepseek-v4-pro"
+        return "deepseek-v4-flash"
+    return key  # 未知模型（gpt-4o 等自定义网关）原样透传
+
+
+def is_reasoning_model(model: str | None) -> bool:
+    """推理模型（不支持 response_format=json_object）。
+
+    注意：先归一化再判断——所有 pro/reasoner 变体都映射到 deepseek-v4-pro。
+    """
+    if not model:
+        return False
+    return normalize_model(model) == "deepseek-v4-pro"
+
 
 def bind_session_client(api_key: str | None = None, base_url: str | None = None) -> None:
     """绑定当前会话的 LLM 客户端（用户在前端设置的 API Key 生效）。
@@ -127,10 +159,11 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
 
     last_error = None
     from app.llm.circuit_breaker import llm_breaker, CircuitOpenError
+    effective_model = normalize_model(model) or DEFAULT_MODEL  # 统一官方名
     for attempt in range(MAX_RETRIES + 1):
         try:
             create_kwargs = dict(
-                model=model or DEFAULT_MODEL,
+                model=effective_model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -158,7 +191,7 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
                     "input_tokens": usage.prompt_tokens,
                     "output_tokens": usage.completion_tokens,
                     "cache_hit_tokens": getattr(usage, "prompt_cache_hit_tokens", None) or 0,
-                    "model": model or DEFAULT_MODEL,
+                    "model": effective_model,
                 }
                 # 会话账本：传入才记账；不传则不记（不再有全局账本）
                 if session_records is not None:
@@ -194,7 +227,7 @@ async def chat_json(prompt: str, system: str = "", model: str = None,
     ⚠️ 推理模型（deepseek-reasoner / deepseek-v4-pro）不支持 response_format=json_object
     （H2 修复）——推理模型下直接走普通调用，靠 prompt 要求 JSON + safe_parse_json 兜底。
     """
-    if model and ("reasoner" in model or "v4-pro" in model or "v4-pro" in str(model)):
+    if is_reasoning_model(model):
         # 推理模型：不传 response_format（会被拒），prompt 内已有 JSON 要求
         return await chat(prompt, system=system, model=model, temperature=0.1,
                           session_records=session_records)
@@ -225,11 +258,13 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
     # 配置错误不降级：没填 key → 立即抛 LLMNotConfiguredError
     _assert_configured()
 
+    effective_model = normalize_model(model) or DEFAULT_MODEL  # 统一官方名
+
     try:
         # DeepSeek 兼容层不一定支持 stream_options——报错就降级
         try:
             response = await _get_client().chat.completions.create(
-                model=model or DEFAULT_MODEL,
+                model=effective_model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -239,7 +274,7 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
         except Exception as e:
             logger.debug("stream_options 不支持，降级重试: %s", e)
             response = await _get_client().chat.completions.create(
-                model=model or DEFAULT_MODEL,
+                model=effective_model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -274,7 +309,7 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
             "input_tokens": prompt_tokens,
             "output_tokens": completion_tokens,
             "cache_hit_tokens": cache_hit_tokens,
-            "model": model or DEFAULT_MODEL,
+            "model": effective_model,
         }
         if session_records is not None:
             session_records.append(entry)
