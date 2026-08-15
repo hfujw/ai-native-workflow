@@ -153,7 +153,7 @@ export default function SettingsButton({
   const [addingProvider, setAddingProvider] = useState(false);
   // 添加表单
   const [newProvider, setNewProvider] = useState("DeepSeek");
-  const [newModelId, setNewModelId] = useState("deepseek-chat");
+  const [newModelId, setNewModelId] = useState("deepseek-v4-flash");
   const [newDisplayName, setNewDisplayName] = useState("");
 
   // 每个 provider 的凭证编辑态（正在换 key 的 provider + 新 key 输入；绝不预填旧值）
@@ -207,7 +207,7 @@ export default function SettingsButton({
     providerCreds[provider] ?? { apiKey: "", apiBase: "" };
 
   const PROVIDERS: Record<string, { base: string; defaultModel: string }> = {
-    DeepSeek: { base: "https://api.deepseek.com", defaultModel: "deepseek-chat" },
+    DeepSeek: { base: "https://api.deepseek.com", defaultModel: "deepseek-v4-flash" },
     OpenAI: { base: "https://api.openai.com/v1", defaultModel: "gpt-4o" },
     Anthropic: { base: "https://api.anthropic.com", defaultModel: "claude-3-5-sonnet" },
     通义千问: { base: "https://dashscope.aliyuncs.com/compatible-mode/v1", defaultModel: "qwen-plus" },

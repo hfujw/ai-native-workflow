@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # Key 全部来自前端设置（会话级绑定）——后端不读 .env 的 key。
     # 这里只保留默认端点/模型（前端没填时兜底）。
     deepseek_base_url: str = Field("https://api.deepseek.com")
-    deepseek_model: str = Field("deepseek-chat")
+    deepseek_model: str = Field("deepseek-v4-flash")
 
     # ── 搜索（用户在前端设置里填搜索服务的 Key——不回落 .env，没填 = 不联网） ──
 

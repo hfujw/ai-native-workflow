@@ -30,6 +30,23 @@ async def test_chat_json_skips_response_format_for_reasoner():
 
 
 @pytest.mark.asyncio
+async def test_chat_json_skips_response_format_for_v4_pro():
+    """官方新命名 deepseek-v4-pro（推理模型）→ 同样不传 response_format。"""
+    from app.llm import client as client_mod
+
+    captured = {}
+
+    async def fake_chat(prompt, system="", model=None, temperature=0.7,
+                        session_records=None, response_format=None, **kw):
+        captured["response_format"] = response_format
+        return '{"tool": "design"}'
+
+    with patch.object(client_mod, "chat", new=fake_chat):
+        out = await client_mod.chat_json("测试", model="deepseek-v4-pro")
+    assert captured["response_format"] is None
+
+
+@pytest.mark.asyncio
 async def test_chat_json_keeps_response_format_for_chat():
     """普通模型 → 仍传 json_object。"""
     from app.llm import client as client_mod

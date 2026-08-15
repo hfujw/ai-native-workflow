@@ -100,7 +100,7 @@ export type GenParams = {
 export type ModelItem = {
   id: string;
   name: string;      // 显示名称
-  modelId: string;   // 模型 ID（如 deepseek-chat / gpt-4o）
+  modelId: string;   // 模型 ID（如 deepseek-v4-flash / gpt-4o）
   provider: string;  // 提供方分组（DeepSeek / OpenAI / Anthropic / 通义千问 / 自定义）
   removable: boolean;
 };
