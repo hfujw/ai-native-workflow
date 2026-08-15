@@ -105,6 +105,12 @@ export type ModelItem = {
   removable: boolean;
 };
 
+/** 提供方连接凭证（每个 provider 独立——选哪个模型的模型，就用那个 provider 的 Key/地址） */
+export type ProviderCreds = {
+  apiKey: string;    // 已填时 UI 只显示掩码，DOM 不含完整值
+  apiBase: string;   // 如 https://api.deepseek.com
+};
+
 /** 按提供方分组（DSH ModelDirectory：provider → models，设置页与 Composer 共用） */
 export function groupModelsByProvider(models: ModelItem[]): { provider: string; models: ModelItem[] }[] {
   const map = new Map<string, ModelItem[]>();
