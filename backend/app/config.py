@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     max_steps: int = Field(20, ge=1, le=100)
     budget_total: float = Field(1.0, gt=0)
     search_max: int = Field(8, ge=0, le=20)
+    # LLM 步数 = 每类 LLM 内部决策循环（重试）的上限：
+    # render 自检重试 / design 重试 / search 换词 / 质量审查回退
+    llm_steps: int = Field(10, ge=1, le=100)
 
     # ── WebSocket ──
     max_connections: int = Field(20, ge=1)
@@ -55,7 +58,7 @@ class Settings(BaseSettings):
 
     # ── 质量审查（四维对抗：事实/覆盖/可读/美学）──
     judge_enabled: bool = Field(True, description="生成后执行质量审查（额外一次 LLM 调用）")
-    judge_max_retries: int = Field(2, ge=0, le=5, description="审查不通过的最大回退轮数，超限诚实交付")
+    # 审查回退轮数由 llm_steps 统一控制（见"预算"组）
 
     # ── 工具级参数（不同工具不同行为——调试就是改这里，不是改代码）──
     tool_decide_temperature: float = Field(0.5, ge=0, le=2)

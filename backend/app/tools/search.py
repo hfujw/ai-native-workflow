@@ -164,11 +164,13 @@ class ResearcherAgent:
         session_records=None,
         push=None,  # 推给前端的回调（可选）
         model=None,  # 会话模型（换词决策用）
+        max_requery: int | None = None,  # LLM 步数：换词重搜上限（None=默认 2）
     ) -> dict:
         """对外接口——返回 {results, count, level}。"""
         material = list(existing_material) if existing_material else []
         search_count = 0
         searched = [topic]  # 已搜词（LLM 换词不重复）
+        requery_max = max_requery or 2
 
         # 先试原始词
         if push:
@@ -188,8 +190,8 @@ class ResearcherAgent:
                             "tool": "search", "budget": 0})
             return self._done(material, evaluation, search_count)
 
-        # 换角度重搜（最多 2 次）：LLM 决策新词，失败回退固定词表
-        for i in range(2):
+        # 换角度重搜（上限由 LLM 步数控制）：LLM 决策新词，失败回退固定词表
+        for i in range(requery_max):
             alt_query = await _llm_next_query(topic, material, searched,
                                               session_records, model)
             if not alt_query:

@@ -89,7 +89,7 @@ export function fetchEvents(): Promise<{ events: EventItem[]; total: number }> {
 /** 生成参数（前端设置 → 会话级覆盖后端 orchestrator 配置） */
 export type GenParams = {
   agentSteps: number;      // Agent 决策循环步数
-  llmSteps: number;        // 单次 LLM 调用步数
+  llmSteps: number;        // LLM 步数：每类内部重试上限（渲染自检/换词/审查回退）
   budget: number;          // 单次生成成本上限（元）
   searchMax: number;       // 搜索轮数上限
   searchEnabled: boolean;  // 联网搜索开关

@@ -188,6 +188,7 @@ class RenderAgent:
         session_records=None,         # token 记账（累加式）
         model=None,                   # 会话模型（前端选择，None=默认）
         skill_assets=None,            # skill 模板资产（template.html/reference.css）
+        max_attempts: int | None = None,  # LLM 步数：自检重试上限（None=默认 2）
     ) -> dict:
         """对外接口——和 tool_render 签名一致，orchestrator 无感。"""
 
@@ -201,11 +202,12 @@ class RenderAgent:
             return {"tool": "render", "html": cached, "complete": True,
                     "length": len(cached), "cached": True}
 
-        # ── Step 2: 生成 + 自检循环 ──
+        # ── Step 2: 生成 + 自检循环（LLM 步数控制重试上限）──
         html = ""
         issues = []
+        attempts = max_attempts or 2
 
-        for attempt in range(2):
+        for attempt in range(attempts):
             # 深拷贝 design，防止 _patch_hint 污染 ctx["design"]
             patched_design = copy.deepcopy(design)
             if issues:
@@ -238,11 +240,11 @@ class RenderAgent:
 
             logger.info("RenderAgent=retry | attempt=%d | issues=%s", attempt + 1, issues)
 
-        # ── Step 3: 两次都没过 → push 最后一次结果，让 verify 兜底 ──
+        # ── Step 3: 全部尝试都没过 → push 最后一次结果，让 verify 兜底 ──
         # 即使没通过自检，也推给前端——用户看到"AI 在努力"比看到白屏好
         await self._safe_push(push, html)
         return {"tool": "render", "html": html, "complete": False,
-                "length": len(html), "attempts": 2,
+                "length": len(html), "attempts": attempts,
                 "self_check_issues": issues}
 
     # ─── 内部方法 ───

@@ -186,10 +186,12 @@ class DesignerAgent:
         bus=None,                     # Phase 4：消息总线（可选）
         preferences=None,             # Phase C：用户偏好（风格/组件），注入 design/compose
         model=None,                   # 会话模型（前端选择，None=默认）
+        max_attempts: int | None = None,  # LLM 步数：设计重试上限（None=默认 2）
     ) -> dict:
         mat_count = len(material)
+        attempts = max_attempts or 2
 
-        for attempt in range(2):
+        for attempt in range(attempts):
             design = await tool_design(material, user_input, session_records=session_records,
                                        preferences=preferences, model=model)
 

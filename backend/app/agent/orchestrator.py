@@ -67,7 +67,8 @@ def apply_gen_params(ctx: dict, params: dict | None) -> None:
     - budget      → budget_total（单次生成成本上限，元）
     - searchMax   → search_max（搜索轮数上限）
     - searchEnabled → search_enabled（False 时强制禁止搜索）
-    - llmSteps    → llm_steps（预留：单次 LLM 调用的步数语义，工具层参数化后接入）
+    - llmSteps    → llm_steps（每类 LLM 内部决策循环/重试的上限：
+                     render 自检 / design 重试 / search 换词 / 审查回退）
     """
     p = params or {}
     if p.get("agentSteps") is not None:
@@ -100,6 +101,7 @@ async def orchestrator_node(state: dict) -> dict:
     "steps": 0,
     "max_steps": settings.max_steps,
     "search_max": settings.search_max,
+    "llm_steps": settings.llm_steps,   # 每类 LLM 内部循环/重试的上限
     "search_enabled": True,
     "model": settings.deepseek_model,   # 会话模型（前端 Composer 选择可覆盖）
     "budget_spent": 0.0,
@@ -305,7 +307,7 @@ async def orchestrator_node(state: dict) -> dict:
                         ctx.get("material", []), ctx.get("html", ""),
                         session_records=ctx.get("cost_records"), model=ctx.get("model"),
                     )
-                    if not verdict["passed"] and ctx.get("judge_fail_count", 0) < settings.judge_max_retries:
+                    if not verdict["passed"] and ctx.get("judge_fail_count", 0) < ctx.get("llm_steps", settings.llm_steps):
                         ctx["judge_fail_count"] = ctx.get("judge_fail_count", 0) + 1
                         target = pick_rollback(verdict["issues"])
                         logger.info("orchestrator=judge_retry | session=%s | round=%d | target=%s",
