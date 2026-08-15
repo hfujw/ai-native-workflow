@@ -107,7 +107,7 @@ export type ModelItem = {
 /* ── 对话消息类型（App / ToolCard / 会话存储共用） ── */
 
 /** 工具标识（含 think——思考卡片；judge——质量审查） */
-export type ToolId = "think" | "search" | "design" | "compose" | "render" | "verify" | "judge";
+export type ToolId = "think" | "search" | "design" | "compose" | "render" | "verify" | "judge" | "brainstorm";
 export type ToolStatus = "pending" | "running" | "done" | "error";
 
 /** 一次工具调用（DSH 工具卡片语义） */

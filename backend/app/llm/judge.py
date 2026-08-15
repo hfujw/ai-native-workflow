@@ -39,6 +39,60 @@ JUDGE_SYSTEM_PROMPT = """你是严格的质检员，审查一个 AI 生成的知
 {"passed": true/false, "issues": [{"dimension": "fact|coverage|readability|aesthetic", "target": "research|design|compose|render", "desc": "具体缺陷描述"}]}"""
 
 
+CRITIQUE_SYSTEM_PROMPT = """你是方案批评家。设计还没开始做，你提前挑刺——找出方案里的结构性问题，让修改成本为零。
+
+审查维度：
+1. 形式是否合适：所选组件真的能表达这个主题吗？（比如没有时间顺序却用时间轴）
+2. 视觉是否具体：visual_hint 是具体的设计方向，还是"简洁大方"这种空话？
+3. 结构是否完整：页面从上到下讲得通吗？有没有明显的空洞？
+4. 素材是否匹配：方案要求的素材量，现有素材够吗？
+
+规则：
+- 只挑真问题，每条给出「怎么改」的具体建议
+- 找不到大问题就返回空列表（不要为了挑刺而挑刺）
+- 输出 JSON：{"issues": [{"dimension": "form|visual|structure|material", "problem": "问题", "fix": "改法"}]}
+- 最多 3 条，宁缺毋滥"""
+
+
+async def critique_design(
+    design: dict | None,
+    user_input: str,
+    material: list[dict],
+    session_records: list[dict] | None = None,
+    model: str | None = None,
+) -> list[dict]:
+    """设计阶段批评：render 前挑刺，返回 issues 列表（空=通过）。
+
+    失败时返回 []（批评不阻塞设计）。
+    """
+    if not design:
+        return []
+    try:
+        result = await chat_json(
+            f"用户想了解：{user_input}\n\n设计方案：\n{json.dumps(design, ensure_ascii=False)[:800]}\n\n素材：\n{_material_brief_for_critique(material)}",
+            system=CRITIQUE_SYSTEM_PROMPT,
+            session_records=session_records,
+            model=model,
+        )
+        parsed = safe_parse_json(result)
+        issues = parsed.get("issues", []) if isinstance(parsed, dict) else []
+        issues = [i for i in issues if isinstance(i, dict) and i.get("problem")][:3]
+        logger.info("critique=done | issues=%d", len(issues))
+        return issues
+    except Exception as e:
+        logger.warning("critique=failed | %s", e)
+        return []
+
+
+def _material_brief_for_critique(material: list[dict], limit: int = 5) -> str:
+    if not material:
+        return "(无素材)"
+    return "\n".join(
+        f"[{i+1}] {r.get('title', '')}: {r.get('snippet', r.get('content', ''))[:150]}"
+        for i, r in enumerate(material[:limit])
+    )
+
+
 def _html_meta(html: str) -> str:
     """HTML 的结构特征摘要（不塞全文——LLM 看源码评美学不靠谱，看特征）。"""
     if not html:

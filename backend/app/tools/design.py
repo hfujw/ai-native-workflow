@@ -10,6 +10,7 @@ import logging
 
 from app.llm.client import chat_json
 from app.llm.parser import safe_parse_json
+from app.agent.brainstorm import brainstorm_design
 from app.tools.search import ResearcherAgent
 
 logger = logging.getLogger(__name__)
@@ -192,8 +193,10 @@ class DesignerAgent:
         attempts = max_attempts or 2
 
         for attempt in range(attempts):
-            design = await tool_design(material, user_input, session_records=session_records,
-                                       preferences=preferences, model=model)
+            # 发散-收敛设计（Kimi 模式）：并行创意子脑 → 大脑综合
+            # 失败自动降级到单脑 tool_design（brainstorm 内部兜底）
+            design = await brainstorm_design(user_input, material, session_records=session_records,
+                                             model=model, preferences=preferences)
 
             # 素材不够？
             if not self._check_design_fit(design, mat_count):

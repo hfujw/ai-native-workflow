@@ -380,38 +380,41 @@ async def orchestrator_node(state: dict) -> dict:
 
 
 async def _decide(ctx: dict) -> dict:
-    """让LLM决定：下一步干什么。"""
-    # 构建简洁上下文
-    # 素材摘要（让LLM知道有什么内容）
+    """让LLM决定：下一步干什么。
+
+    严谨性设计（批次 C）：
+    - 前缀稳定：主题/步数/预算/状态段固定顺序不变（KV 缓存友好）
+    - 增量反馈：最近 2 步工具结果结构化回填（模型真正"看到"上一步）
+    - 容错：safe_parse_json（半截 JSON 重试一次，不再裸 json.loads 立即降级）
+    """
+    # ── 稳定前缀（不变，利于 KV 缓存复用）──
     material_brief = ""
     if ctx['material']:
-        titles = [r.get('title','')[:40] for r in ctx['material'][:5]]
+        titles = [r.get('title', '')[:40] for r in ctx['material'][:5]]
         material_brief = f"素材来源：{' | '.join(titles)}\n"
-
-    # 最近结果详情
-    recent_detail = ""
-    for h in ctx['tool_history'][-3:]:
-        recent_detail += f"  [{h['tool']}] {h.get('result_summary', '')[:80]}\n"
-
-    # 验证问题详情
-    issues_detail = ""
-    if ctx['issues']:
-        issues_detail = "\n".join(
-            f"  - [{i.get('severity','?')}] {i.get('description','')[:100]}"
-            for i in ctx['issues'][:3] if isinstance(i, dict)
-        )
 
     summary = f"""用户想了解的具体主题：{ctx['user_input']}
 ⚠️ 必须围绕这个主题生成，不要偏离或扩展。
 步骤：{ctx['steps']}/{ctx['max_steps']} | 预算：¥{ctx['budget_spent']:.2f}/¥{ctx['budget_total']:.0f}
 {material_brief}已有素材：{len(ctx['material'])}条 | 搜索次数：{sum(1 for h in ctx['tool_history'] if h['tool']=='search')}
 已设计：{ctx['design'] is not None} | 已写文案：{ctx['content'] is not None}
-HTML长度：{len(ctx.get('html',''))}字符 | 上次验证：{'通过' if ctx['passed'] else '未通过'}
-最近步骤：
-{recent_detail if recent_detail else '  （无）'}
-最近问题：
-{issues_detail if issues_detail else '  （无）'}
+HTML长度：{len(ctx.get('html', ''))}字符 | 上次验证：{'通过' if ctx['passed'] else '未通过'}
 """
+
+    # ── 增量尾部：最近 2 步的结构化反馈（模型"看到"上一步再决策）──
+    feedback = _step_feedback(ctx)
+    if feedback:
+        summary += f"最近执行反馈：\n{feedback}\n"
+
+    # 验证问题详情（尾部追加）
+    issues_detail = ""
+    if ctx['issues']:
+        issues_detail = "\n".join(
+            f"  - [{i.get('severity', '?')}] {i.get('description', '')[:100]}"
+            for i in ctx['issues'][:3] if isinstance(i, dict)
+        )
+    if issues_detail:
+        summary += f"最近问题：\n{issues_detail}\n"
 
     if ctx.get("force_strategy_change"):
         summary += "\n⚠️ 连续失败！必须换策略，不能重试同一个工具。"
@@ -441,7 +444,23 @@ HTML长度：{len(ctx.get('html',''))}字符 | 上次验证：{'通过' if ctx['
             accumulated += chunk
 
         result = strip_fence(accumulated)
-        decision = json.loads(result)
+        decision = safe_parse_json(result)
+        # 半截 JSON 容错：解析失败重试一次（带"必须输出完整 JSON"提示）
+        if decision is None:
+            logger.warning("decide=parse_failed 重试一次 | session=%s", ctx["session_id"])
+            retry = ""
+            async for chunk in chat_stream(
+                summary + "\n⚠️ 上次输出不是合法 JSON。这次只输出一个完整 JSON 对象，不要任何额外文字。",
+                system=ORCHESTRATOR_SYSTEM_PROMPT,
+                model=ctx.get("model"),
+                temperature=0.3,
+                session_records=ctx.get("cost_records"),
+                label="decide_retry",
+            ):
+                retry += chunk
+            decision = safe_parse_json(strip_fence(retry))
+        if decision is None or not isinstance(decision, dict) or not decision.get("tool"):
+            raise ValueError("decide 解析失败")
         decision["thought"] = clean_thought(
             decision.get("thought", ""), ctx["user_input"], ctx["steps"])
         return decision
@@ -456,6 +475,19 @@ HTML长度：{len(ctx.get('html',''))}字符 | 上次验证：{'通过' if ctx['
                     "params": {}}
         return {"thought": f"决策异常，降级搜索(第{ctx['_decide_fail_count']}次)", "tool": "search",
                 "params": {"query": ctx["user_input"], "reason": "初始搜索", "depth": "quick"}}
+
+
+def _step_feedback(ctx: dict) -> str:
+    """最近 2 步工具结果的增量反馈（结构化，让模型看到上一步再决策）。
+
+    每行固定格式：`[工具] 关键产出`——只取最近 2 步，控制 token 增量。
+    """
+    lines = []
+    for h in ctx['tool_history'][-2:]:
+        tool = h.get('tool', '?')
+        summary_text = h.get('result_summary', '')[:120]
+        lines.append(f"  [{tool}] {summary_text}")
+    return "\n".join(lines)
 
 
 def _real_cost_delta(ctx: dict) -> float:
