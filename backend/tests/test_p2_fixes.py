@@ -16,9 +16,9 @@ import pytest
 @pytest.mark.asyncio
 async def test_search_uses_llm_query_param():
     """LLM 决策的 search query 必须透传给 ResearcherAgent。"""
-    from app.agents.supervisor import dispatch
+    from app.agent.supervisor import dispatch
 
-    with patch("app.agents.supervisor.ResearcherAgent") as MockRA:
+    with patch("app.agent.supervisor.ResearcherAgent") as MockRA:
         instance = MockRA.return_value
         instance.run = AsyncMock(return_value={"tool": "search", "results": [], "count": 0, "level": "none"})
 
@@ -31,9 +31,9 @@ async def test_search_uses_llm_query_param():
 @pytest.mark.asyncio
 async def test_search_falls_back_to_user_input_without_params():
     """params 无 query 时退回原始主题。"""
-    from app.agents.supervisor import dispatch
+    from app.agent.supervisor import dispatch
 
-    with patch("app.agents.supervisor.ResearcherAgent") as MockRA:
+    with patch("app.agent.supervisor.ResearcherAgent") as MockRA:
         instance = MockRA.return_value
         instance.run = AsyncMock(return_value={"tool": "search", "results": [], "count": 0, "level": "none"})
 
@@ -50,7 +50,7 @@ async def test_search_falls_back_to_user_input_without_params():
 @pytest.mark.asyncio
 async def test_stats_returns_real_spent():
     """stats 必须反映真实累计花费，不是硬编码 0.0。"""
-    from app.network.rate_limiter import rate_limiter
+    from app.security.rate_limiter import rate_limiter
 
     await rate_limiter.record_cost(1.23)
     stats = await rate_limiter.stats()
@@ -66,8 +66,8 @@ async def test_stats_returns_real_spent():
 @pytest.mark.asyncio
 async def test_can_generate_fails_closed_when_backend_down():
     """Redis 宕机时限流必须 fail-closed，不静默放行。"""
-    import app.network.rate_limiter as rl
-    from app.network.rate_limiter import rate_limiter
+    import app.security.rate_limiter as rl
+    from app.security.rate_limiter import rate_limiter
 
     class _DownBackend:
         available = False

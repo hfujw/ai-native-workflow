@@ -10,13 +10,13 @@ import pytest
 @pytest.mark.asyncio
 async def test_refine_rerender_injects_hint():
     """rerender 路径：用户要求注入 visual_hint，重新渲染。"""
-    from app.agents.orchestrator import refine_page
+    from app.agent.orchestrator import refine_page
 
     async def fake_stream(*args, **kwargs):
         yield '{"action": "rerender", "hint": "换成暗色"}'
 
-    with patch("app.agents.orchestrator.chat_stream", fake_stream), \
-         patch("app.agents.render_agent.RenderAgent") as MockRA:
+    with patch("app.agent.orchestrator.chat_stream", fake_stream), \
+         patch("app.tools.render.RenderAgent") as MockRA:
         instance = MockRA.return_value
         instance.run = AsyncMock(return_value={"html": "<!DOCTYPE html><html></html>", "complete": True})
         result = await refine_page(
@@ -32,14 +32,14 @@ async def test_refine_rerender_injects_hint():
 @pytest.mark.asyncio
 async def test_refine_redesign_calls_designer():
     """redesign 路径：重设计+文案，再渲染。"""
-    from app.agents.orchestrator import refine_page
+    from app.agent.orchestrator import refine_page
 
     async def fake_stream(*args, **kwargs):
         yield '{"action": "redesign", "hint": "改成时间轴"}'
 
-    with patch("app.agents.orchestrator.chat_stream", fake_stream), \
-         patch("app.agents.designer_agent.DesignerAgent") as MockDA, \
-         patch("app.agents.render_agent.RenderAgent") as MockRA:
+    with patch("app.agent.orchestrator.chat_stream", fake_stream), \
+         patch("app.tools.design.DesignerAgent") as MockDA, \
+         patch("app.tools.render.RenderAgent") as MockRA:
         da_instance = MockDA.return_value
         da_instance.run = AsyncMock(return_value={
             "design": {"components": ["timeline"]}, "content": {"blocks": [{"component": "timeline"}]}})
@@ -56,13 +56,13 @@ async def test_refine_redesign_calls_designer():
 @pytest.mark.asyncio
 async def test_refine_falls_back_to_rerender_on_bad_decision():
     """refine 决策解析失败 → 默认 rerender，不崩。"""
-    from app.agents.orchestrator import refine_page
+    from app.agent.orchestrator import refine_page
 
     async def fake_stream(*args, **kwargs):
         yield "不是 JSON {{{"
 
-    with patch("app.agents.orchestrator.chat_stream", fake_stream), \
-         patch("app.agents.render_agent.RenderAgent") as MockRA:
+    with patch("app.agent.orchestrator.chat_stream", fake_stream), \
+         patch("app.tools.render.RenderAgent") as MockRA:
         instance = MockRA.return_value
         instance.run = AsyncMock(return_value={"html": "<html></html>", "complete": True})
         result = await refine_page({}, {"blocks": []}, [], "<html/>", "测试", "改一下", None, [])
@@ -75,7 +75,7 @@ async def test_refine_falls_back_to_rerender_on_bad_decision():
 # ═══════════════════════════════════════════════════════════════
 
 def test_extract_preferences_from_design():
-    from app.main import _extract_preferences
+    from app.api.generate import _extract_preferences
     prefs = _extract_preferences(
         {"visual_hint": "暗色极简风格", "components": ["timeline", "cards"]}, None)
     assert "暗色" in prefs["style_hints"]
@@ -84,7 +84,7 @@ def test_extract_preferences_from_design():
 
 
 def test_extract_preferences_empty():
-    from app.main import _extract_preferences
+    from app.api.generate import _extract_preferences
     prefs = _extract_preferences({"visual_hint": "随便", "components": []}, None)
     assert prefs["style_hints"] == []
     assert prefs["preferred_components"] == []

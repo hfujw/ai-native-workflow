@@ -113,7 +113,7 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
                                 usage.total_tokens,
                                 get_cost_summary(session_records)["estimated_cost_rmb"])
                 # Prometheus 指标
-                from app.core.metrics import LLM_LATENCY, LLM_REQUESTS
+                from app.observability.metrics import LLM_LATENCY, LLM_REQUESTS
                 LLM_LATENCY.labels(tool=label).observe(time.monotonic() - t0)
                 LLM_REQUESTS.labels(status="success", tool=label).inc()
             return content
@@ -127,7 +127,7 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
                 await asyncio.sleep(wait)
             else:
                 logger.error("LLM call failed after %d attempts: %s", MAX_RETRIES + 1, e)
-                from app.core.metrics import LLM_LATENCY, LLM_REQUESTS
+                from app.observability.metrics import LLM_LATENCY, LLM_REQUESTS
                 LLM_LATENCY.labels(tool=label).observe(time.monotonic() - t0)
                 LLM_REQUESTS.labels(status="error", tool=label).inc()
 
@@ -220,7 +220,7 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
             session_records.append(entry)
 
         # Prometheus 埋点
-        from app.core.metrics import LLM_LATENCY, LLM_REQUESTS
+        from app.observability.metrics import LLM_LATENCY, LLM_REQUESTS
         LLM_LATENCY.labels(tool=label).observe(_time.monotonic() - t0)
         LLM_REQUESTS.labels(status="success", tool=label).inc()
 
@@ -230,7 +230,7 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
                         get_cost_summary(session_records)["estimated_cost_rmb"])
 
     except Exception:
-        from app.core.metrics import LLM_LATENCY, LLM_REQUESTS
+        from app.observability.metrics import LLM_LATENCY, LLM_REQUESTS
         LLM_LATENCY.labels(tool=label).observe(_time.monotonic() - t0)
         LLM_REQUESTS.labels(status="error", tool=label).inc()
         raise

@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.core.trace import get_trace  # noqa: E402
+from app.observability.trace import get_trace  # noqa: E402
 
 
 def main(session_id: str) -> int:

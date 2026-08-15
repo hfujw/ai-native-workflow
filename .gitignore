@@ -29,9 +29,6 @@ _last_failed_game.html
 *.jpg
 *.jpeg
 
-# ── 大文件 ──
-frontend/public/bg.mp4
-
 # ── 工具状态（不提交）──
 .claude/
 .agents/

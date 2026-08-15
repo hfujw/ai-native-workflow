@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.tools.compose import tool_compose
+from app.tools.design import tool_compose
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ async def test_normal_compose(sample_material, sample_design):
         ]}
     ], "fact_notes": "确定"}, ensure_ascii=False)
 
-    with patch("app.tools.compose.chat_json", new_callable=AsyncMock) as mock_llm:
+    with patch("app.tools.design.chat_json", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = mock_response
         result = await tool_compose(sample_material, sample_design, "秦始皇")
 
@@ -38,7 +38,7 @@ async def test_normal_compose(sample_material, sample_design):
 async def test_compose_with_fence(sample_material, sample_design):
     mock_response = '```json\n{"title": "测试", "subtitle": "", "blocks": [], "fact_notes": ""}\n```'
 
-    with patch("app.tools.compose.chat_json", new_callable=AsyncMock) as mock_llm:
+    with patch("app.tools.design.chat_json", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = mock_response
         result = await tool_compose(sample_material, sample_design, "测试")
 
@@ -47,7 +47,7 @@ async def test_compose_with_fence(sample_material, sample_design):
 
 @pytest.mark.asyncio
 async def test_compose_invalid_json(sample_material, sample_design):
-    with patch("app.tools.compose.chat_json", new_callable=AsyncMock) as mock_llm:
+    with patch("app.tools.design.chat_json", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = "invalid json {{{"
         result = await tool_compose(sample_material, sample_design, "测试")
 
@@ -56,7 +56,7 @@ async def test_compose_invalid_json(sample_material, sample_design):
 
 @pytest.mark.asyncio
 async def test_compose_llm_error(sample_material, sample_design):
-    with patch("app.tools.compose.chat_json", new_callable=AsyncMock) as mock_llm:
+    with patch("app.tools.design.chat_json", new_callable=AsyncMock) as mock_llm:
         mock_llm.side_effect = TimeoutError("DeepSeek 超时")
         result = await tool_compose(sample_material, sample_design, "测试")
 

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 _collection = None
 _CHINESE_MODEL = "shibing624/text2vec-base-chinese"
 # P3：锚定项目目录，不随启动 CWD 漂移——否则从不同目录启动会重建向量库
-_CHROMA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "chroma_data")
+_CHROMA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "chroma_data")
 
 
 def _get_collection():

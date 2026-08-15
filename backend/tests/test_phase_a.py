@@ -66,8 +66,8 @@ async def test_design_missing_components_falls_back():
 
 @pytest.mark.asyncio
 async def test_compose_invalid_json_falls_back():
-    from app.tools.compose import tool_compose
-    with patch("app.tools.compose.chat_json", new_callable=AsyncMock, return_value="not json"):
+    from app.tools.design import tool_compose
+    with patch("app.tools.design.chat_json", new_callable=AsyncMock, return_value="not json"):
         result = await tool_compose([{"title": "x", "snippet": "y"}], {"components": ["cards"]}, "测试")
     assert result["blocks"] == []
 

@@ -17,9 +17,9 @@ import time
 # 确保能 import app
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.agents.orchestrator import orchestrator_node  # noqa: E402
-from app.core.eval_report import to_markdown, write_report  # noqa: E402
+from app.agent.orchestrator import orchestrator_node  # noqa: E402
 from app.demo import DEMO_TOPICS  # noqa: E402
+from app.observability.eval_report import to_markdown, write_report  # noqa: E402
 
 # 评测话题：5 个 demo + 5 个补充（10 个不同话题）
 TOPICS = DEMO_TOPICS + ["秦始皇统一六国", "长城修建", "兵马俑", "李白与唐诗", "嫦娥探月"]

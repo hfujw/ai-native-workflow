@@ -1,13 +1,23 @@
-# AI-Native Workflow · 时光像素
+# 时光像素 · 给 LLM 装可插拔 skill 的 AI 原生工作台
 
-> 输入任意主题 → LLM 自主决策每一步 → 生成交互式 HTML 页面
-> 不是"调了 LLM 的流水线"，是 **LLM 自己决定流程** 的 AI 原生系统
+> 你选 skill（风格 + 工具）、定模式（网页 / 游戏），LLM 自己决定流程把它做出来——全程透明、可迭代。
+> 不是"调了 LLM 的流水线"，是 **流程由 LLM 自己决定、能力由 skill 可插拔** 的 AI 原生系统。
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.13-blue)
 ![FastAPI](https://img.shields.io/badge/fastapi-0.141-green)
-![React](https://img.shields.io/badge/react-18-blue)
-![Tests](https://img.shields.io/badge/tests-62%20passed-brightgreen)
+![Tauri](https://img.shields.io/badge/tauri-2-purple)
+![Tests](https://img.shields.io/badge/tests-96%20passed-brightgreen)
+
+---
+
+## 它是什么
+
+三个关键词：
+
+1. **AI 原生编排** —— 流程不被人写死。LLM 自己决定：搜几次、跳过搜索直接用知识、审查不过退给谁。
+2. **可插拔 skill** —— 能力不被人写死。风格（像素 / 杂志 / 信息图）与工具（搜索 / 图表 / 图片）都是可选的 skill，你给 LLM 装什么手艺，它就会什么手艺。
+3. **全程透明** —— 每一步决策、每次工具调用、每分钱成本，实时可见、落盘可回放。
 
 ---
 
@@ -106,13 +116,13 @@ venv\Scripts\pip install -r requirements.txt      # Windows
 # python3 -m venv venv && source venv/bin/pip install -r requirements.txt  # macOS/Linux
 venv\Scripts\python -m uvicorn app.main:app --port 8001
 
-# 3. 前端（新终端）
-cd frontend
+# 3. 前端（Tauri 桌面应用，新终端）
+cd desktop
 npm install
-npm run dev
+npm run tauri dev
 ```
 
-浏览器打开 `http://localhost:5173`。
+会自动弹出桌面窗口。
 
 ### 首次启动说明
 
@@ -126,74 +136,58 @@ npm run dev
 
 ```
 backend/app/
-├── main.py                     🚪 FastAPI + WebSocket 入口
+├── main.py                     🚪 FastAPI 装配（日志 + app + 路由挂载）
+├── config.py                   ⚙️ 集中配置（pydantic-settings，.env 可覆盖）
+├── projects.py                 💾 生成历史持久化（含迭代版本）
+├── preferences.py              💾 用户偏好记忆
 ├── demo.py                     📦 Demo 页面管理
+├── api/                        🌐 路由层
+│   ├── generate.py             POST /api/generate + WS /ws/generate（主链路 + 多轮迭代）
+│   ├── history.py              生成历史列表 / 回看
+│   ├── preferences.py          用户偏好读写
+│   ├── demos.py                Demo 页面
+│   ├── health.py               health 探针 + /metrics + events + rate-limit + eval
+│   └── ws.py                   WebSocket 连接管理
 │
-├── core/                       🧱 基础设施
-│   ├── config.py               集中配置（pydantic-settings）
-│   ├── metrics.py              9 个 Prometheus 指标
-│   ├── trace.py                决策轨迹落盘（JSONL，可回放/评测）
-│   ├── projects.py             生成历史持久化
-│   ├── preferences.py          用户偏好记忆
-│   └── eval_report.py          评测报告生成
+├── agent/                      🧠 编排脑（LLM 自主决策）
+│   ├── orchestrator.py         ⭐ ReAct 主循环 + refine 多轮迭代
+│   ├── supervisor.py           工具注册表 + 分发
+│   ├── message_bus.py          Agent 间消息总线（asyncio.Queue）
+│   └── evaluate.py             素材质量评估（非 LLM 判定）
 │
+├── tools/                      🔧 工具（一能力一文件：原始操作 + Agent 决策包装）
+│   ├── search.py               tool_search + ResearcherAgent（换词重试 + 向量兜底）
+│   ├── design.py               tool_design + tool_compose + DesignerAgent（设计+文案）
+│   ├── render.py               tool_render(_stream) + RenderAgent（自检 + 缓存 + 重试）
+│   └── verify.py               tool_verify（Playwright 真执行）
+│
+├── skills/                     🎨 可插拔 skill：每个子目录一个（pixel / magazine / infographic）
 ├── llm/                        🤖 LLM 层
 │   ├── client.py               chat / chat_json / chat_stream
-│   ├── parser.py               strip_fence + clean_thought
+│   ├── parser.py               strip_fence + clean_thought + 注入检测
 │   └── circuit_breaker.py      三态断路器
-│
-├── network/                    🌐 网络层
-│   ├── ws_manager.py           WebSocket 连接管理
-│   └── rate_limiter.py         IP 限流 + 日预算帽
-│
-├── tools/                      🔧 工具实现
-│   ├── search.py               Tavily + 广告过滤 + 相关性检查
-│   ├── design.py               选叙事形式（7 种组件）
-│   ├── compose.py              写文案 + 来源标注
-│   ├── render.py               HTML 流式生成
-│   └── verify.py               Playwright 真执行
-│
-├── agents/                     🧠 编排 + 3 Agent
-│   ├── orchestrator.py         ⭐ ReAct 主循环 + refine 多轮迭代
-│   ├── researcher_agent.py    Phase 3：自主搜索（换词+向量+停止）
-│   ├── designer_agent.py      Phase 2：设计+文案合并（自循环）
-│   ├── render_agent.py         Phase 1：自检 + 缓存 + 重试
-│   ├── supervisor.py           Phase 4：消息总线编排器
-│   ├── message_bus.py          Phase 4：asyncio.Queue 消息总线
-│   └── evaluate.py             素材评估（非 LLM 判定）
 │
 ├── knowledge/                  📚 知识库
 │   ├── kb.py                   169 个示例话题 + 关键词匹配
 │   └── vector_store.py         ChromaDB 语义向量检索
 │
-└── state/                      💾 存储抽象（memory / redis 一行切换）
-    ├── base.py                 StateBackend ABC
-    ├── memory.py               MemoryBackend（单机）
-    └── redis.py                RedisBackend（多实例共享，STATE_BACKEND=redis）
+├── session/                    💾 状态后端（memory / redis 一行切换）
+│   ├── base.py                 StateBackend ABC
+│   ├── memory.py               MemoryBackend（单机）
+│   └── redis.py                RedisBackend（多实例共享，STATE_BACKEND=redis）
+├── security/                   🛡️ rate_limiter（IP 限流 + 日预算帽）
+└── observability/              📊 metrics / trace / eval_report
 
 backend/demos/                  预生成 HTML
 backend/scripts/eval_run.py     📊 端到端评测脚本（跑 N 话题出数字）
-backend/tests/                  94 个 pytest 用例
+backend/tests/                  96 个 pytest 用例
 
-frontend/src/
-├── App.jsx                     主布局（液态玻璃 + 光标聚光灯 + Sidebar 导航）
-├── components/
-│   ├── Sidebar.jsx             导航：生成 / 历史 / 偏好 / 评测
-│   ├── DecisionLog.tsx         AI 思考流程（步骤进度线 + 实时滚动）
-│   ├── StoryPanel.tsx          生成页面展示（显影动画 + 流式渲染）
-│   ├── SearchBubble.tsx        搜索输入框
-│   ├── EventTags.tsx           169 个示例话题标签云
-│   ├── RevealLayer.tsx         光标聚光灯 Canvas mask
-│   ├── FailureNotice.tsx       失败提示 + demo 引导
-│   ├── ErrorBoundary.tsx       React 错误边界
-│   ├── IterationBar.tsx        多轮迭代指令条（"再大胆点/换个配色"）
-│   ├── HistoryPanel.tsx        生成历史（卡片列表 + 回看）
-│   ├── PreferencesPanel.tsx    用户偏好（可编辑）
-│   └── EvalPanel.tsx           评测数字（通过率/步数/成本）
-└── hooks/
-    └── useWebSocket.js         WebSocket + 多轮迭代 + 历史/偏好/评测 API
+desktop/src/                    🖥️ Tauri 桌面前端（ChatGPT 式，接后端中）
+├── App.tsx                     主布局 + 决策流程/成品消息流
+├── components/                 Composer / Dropdown / LevelSelect / ProfileMenu / SkillPage
+└── hooks/                      useDropdown（自适应下拉）/ useClickOutside
 
-Caddyfile                       生产反代（自动 HTTPS + WebSocket + Gzip）
+Caddyfile                       生产反代（自动 HTTPS + /api /ws 反向代理）
 docker-compose.yml              一键部署
 ```
 
