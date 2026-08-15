@@ -80,6 +80,16 @@ function SettingRow({
   );
 }
 
+/** skill 名称 → id（预设推荐 → 生成时注入模板资产） */
+const SKILL_ID_BY_NAME: Record<string, string> = {
+  像素: "pixel",
+  杂志: "magazine",
+  信息图: "infographic",
+  搜索: "search",
+  图表: "chart",
+  "3D 场景": "3d",
+};
+
 /** 侧边栏底部设置入口：DSH 式居中模态（Agent 预设 / 外观 / 模型） */
 export default function SettingsButton({
   theme,
@@ -152,10 +162,11 @@ export default function SettingsButton({
   };
   const removeModel = (id: string) => onModelsChange(models.filter((m) => m.id !== id));
 
-  /** 应用预设：设为默认 + 套用一组编排参数（受控：写回 App） */
+  /** 应用预设：设为默认 + 套用一组编排参数 + 推荐的风格 skill */
   const applyPreset = (p: Preset) => {
     setActivePreset(p.id);
-    onParamsChange({ ...p.params });
+    const styleName = p.skills.find((s) => s !== "搜索" && s !== "图表");
+    onParamsChange({ ...p.params, skillId: styleName ? (SKILL_ID_BY_NAME[styleName] ?? "") : "" });
   };
 
   /** 基于当前默认预设复制一份到自定义组 */
