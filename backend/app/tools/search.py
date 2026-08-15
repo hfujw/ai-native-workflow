@@ -15,6 +15,7 @@ import httpx
 
 from app.agent.evaluate import evaluate_material
 from app.knowledge.kb import get_event_by_keyword
+from app.llm.circuit_breaker import CircuitOpenError
 from app.llm.parser import detect_injection
 
 logger = logging.getLogger(__name__)
@@ -181,6 +182,8 @@ async def _llm_next_query(
         if q and str(q).strip() and str(q).strip() not in searched:
             return str(q).strip()
         logger.info("ResearcherAgent=llm_query_invalid | raw=%s", str(result)[:80])
+    except CircuitOpenError:
+        raise  # 服务熔断中——不降级词表，让编排层快速失败
     except Exception as e:
         logger.warning("ResearcherAgent=llm_query_failed 回退词表: %s", e)
     return None
