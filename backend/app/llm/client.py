@@ -16,6 +16,17 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = 120
 MAX_RETRIES = 2
 
+
+class LLMNotConfiguredError(RuntimeError):
+    """未配置 API Key——配置错误，不是临时故障：不重试、不降级，直接上抛。"""
+
+
+def _assert_configured() -> None:
+    """入口检查：当前会话有没有可用的 LLM 客户端。没有 → 明确报错（没填就是没填）。"""
+    if _session_client.get() is None:
+        raise LLMNotConfiguredError(
+            "未配置 API Key——请在 Lumen 设置 → 模型 里填写所用模型的 API Key")
+
 # 会话级客户端：用户在前端设置的 Key/Base（contextvars——只影响当前任务及其子任务，
 # 不污染其他连接；不绑定则 _get_client 明确报错）
 _session_client: contextvars.ContextVar = contextvars.ContextVar(
@@ -88,6 +99,9 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
+
+    # 配置错误不重试：没填 key → 立即抛 LLMNotConfiguredError（入口检查）
+    _assert_configured()
 
     last_error = None
     from app.llm.circuit_breaker import llm_breaker
@@ -175,6 +189,9 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
+
+    # 配置错误不降级：没填 key → 立即抛 LLMNotConfiguredError
+    _assert_configured()
 
     try:
         # DeepSeek 兼容层不一定支持 stream_options——报错就降级
