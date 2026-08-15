@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from app.core.eval_report import summarize, to_markdown, write_report
+from app.observability.eval_report import summarize, to_markdown, write_report
 
 
 def test_summarize_calculates_metrics():

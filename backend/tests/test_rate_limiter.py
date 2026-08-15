@@ -1,7 +1,7 @@
 """测试 RateLimiter — IP 限流 + 日预算帽。"""
 import pytest
 
-from app.network.rate_limiter import RateLimiter
+from app.security.rate_limiter import RateLimiter
 
 
 @pytest.fixture
@@ -63,12 +63,12 @@ async def test_cost_tracking(limiter):
 @pytest.mark.asyncio
 async def test_daily_budget_resets_by_date():
     """日预算 key 带日期——新的一天自然归零（不依赖滑动 TTL）。"""
-    from app.network.rate_limiter import RateLimiter
+    from app.security.rate_limiter import RateLimiter
 
     limiter = RateLimiter()
     await limiter.record_cost(4.0)
     # 模拟"第二天"：直接写一个旧日期 key 不影响今天的额度
-    from app.state import state
-    await state.set(f"rate:daily_spent:2020-01-01", "4.9", ttl=86400)
+    from app.session import state
+    await state.set("rate:daily_spent:2020-01-01", "4.9", ttl=86400)
     allowed, _ = await limiter.can_generate("1.1.1.1")
     assert allowed  # 旧日期的高花费不影响今天

@@ -1,16 +1,18 @@
-"""5 个工具 — 编排 LLM 按需调用。每个工具独立、可单独测试。"""
+"""工具层 — 一能力一文件：search / design(+compose) / render / verify。
 
-from app.tools.compose import tool_compose
-from app.tools.design import tool_design
+每个文件包含「原始操作 + Agent 决策包装」：
+- search：tool_search + ResearcherAgent（换词重试 + 向量兜底）
+- design：tool_design + tool_compose + DesignerAgent（设计+文案 + 自循环）
+- render：tool_render(_stream) + RenderAgent（自检 + 缓存 + 重试）
+- verify：tool_verify（Playwright 真执行，无 Agent 包装）
+"""
+
+from app.tools.design import tool_compose, tool_design
 from app.tools.render import tool_render, tool_render_stream
 from app.tools.search import _filter_noise, tool_search
 from app.tools.verify import tool_verify
 
-# ── 预算（估算）──
-TOOL_COST = {"search": 0.03, "design": 0.13, "render": 0.15, "verify": 0.05}  # design = design+compose 合并
-
 __all__ = [
-    "TOOL_COST",
     "_filter_noise",
     "tool_compose",
     "tool_design",

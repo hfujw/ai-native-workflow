@@ -35,13 +35,13 @@ def _ctx_with_render_fail() -> dict:
 
 async def _decide(ctx: dict):
     """调用 orchestrator._decide，chat_stream mock 成固定 JSON。"""
-    from app.agents.orchestrator import _decide
+    from app.agent.orchestrator import _decide
     payload = json.dumps({"tool": "render", "thought": "重新渲染"})
 
     async def fake_stream(*args, **kwargs):
         yield payload
 
-    with patch("app.agents.orchestrator.chat_stream", fake_stream):
+    with patch("app.agent.orchestrator.chat_stream", fake_stream):
         return await _decide(ctx)
 
 

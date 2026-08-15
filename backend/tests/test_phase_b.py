@@ -1,8 +1,9 @@
 """Phase B 测试——持久化层（trace / 历史 / 偏好）。"""
 import pytest
 
-from app.core import projects, trace
-from app.core.preferences import get_preferences, update_preferences
+from app import projects
+from app.observability import trace
+from app.preferences import get_preferences, update_preferences
 
 # ═══════════════════════════════════════════════════════════════
 # B1: trace 落盘

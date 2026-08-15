@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 @pytest.fixture(autouse=True)
 async def _clear_state():
     """每个测试前清空 StateBackend，防止跨测试状态污染。"""
-    from app.state import state
+    from app.session import state
     state._data.clear()
     state._ttl.clear()
 

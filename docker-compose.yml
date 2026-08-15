@@ -1,7 +1,7 @@
 # 一键启动：docker-compose up -d
 # 一键停止：docker-compose down
 #
-# 注意：前端需先构建一次，否则 Caddy 挂载的 dist 为空 → cd frontend && npm run build
+# 说明：前端是 Tauri 桌面应用（desktop/），不在此托管；Caddy 仅反代 /api /ws /metrics。
 
 version: "3.8"
 
@@ -17,7 +17,6 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-      - ./frontend/dist:/app/frontend/dist:ro
       - caddy_logs:/var/log/caddy
 
   # ── 后端 ──

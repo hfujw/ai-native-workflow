@@ -1,5 +1,5 @@
 """测试 evaluate_material — 素材相关性评估。"""
-from app.agents.evaluate import evaluate_material
+from app.agent.evaluate import evaluate_material
 
 
 def test_no_material_returns_none():
