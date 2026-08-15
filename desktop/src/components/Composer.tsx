@@ -1,18 +1,7 @@
 import { useMemo, useState } from "react";
 import { useDropdown } from "../hooks/useDropdown";
 import { IconCheck, IconChevronDown, IconSend } from "./icons";
-import type { ModelItem } from "../lib/api";
-
-/** 按提供方分组（DSH ModelDirectory：group → models，组标题 + 组内模型） */
-function groupByProvider(models: ModelItem[]): { provider: string; models: ModelItem[] }[] {
-  const map = new Map<string, ModelItem[]>();
-  for (const m of models) {
-    const p = m.provider || "自定义";
-    if (!map.has(p)) map.set(p, []);
-    map.get(p)!.push(m);
-  }
-  return [...map.entries()].map(([provider, models]) => ({ provider, models }));
-}
+import { groupModelsByProvider, type ModelItem } from "../lib/api";
 
 /** 输入栏 —— DSH InputBar 样式：上输入区 + 下行右侧 [模型选择][发送] */
 export default function Composer({
@@ -38,7 +27,7 @@ export default function Composer({
   const modelDrop = useDropdown();
 
   const current = models.find((m) => m.id === modelId) ?? models[0];
-  const groups = useMemo(() => groupByProvider(models), [models]);
+  const groups = useMemo(() => groupModelsByProvider(models), [models]);
 
   const send = () => {
     if (sending) return;
