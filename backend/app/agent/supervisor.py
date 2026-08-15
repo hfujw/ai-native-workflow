@@ -37,24 +37,28 @@ TOOL_HANDLERS = {
         existing_material=ctx.get("material", []),
         session_records=ctx.get("cost_records"),
         model=ctx.get("model"),
+        max_requery=ctx.get("llm_steps"),  # LLM 步数：换词上限
     ),
     "design":  lambda ctx, bus, params: DesignerAgent().run(
         ctx.get("material", []), ctx.get("user_input", ""),
         push=ctx.get("_push"), session_records=ctx.get("cost_records"),
         bus=bus, preferences=ctx.get("_preferences"),  # ← 用户偏好注入
         model=ctx.get("model"),  # ← 会话模型（前端选择）
+        max_attempts=ctx.get("llm_steps"),  # LLM 步数：设计重试上限
     ),
     "compose": lambda ctx, bus, params: DesignerAgent().run(
         ctx.get("material", []), ctx.get("user_input", ""),
         push=ctx.get("_push"), session_records=ctx.get("cost_records"),
         bus=bus, preferences=ctx.get("_preferences"),
         model=ctx.get("model"),
+        max_attempts=ctx.get("llm_steps"),
     ),
     "render":  lambda ctx, bus, params: RenderAgent().run(
         ctx.get("design") or {}, ctx.get("content") or {},
         push=ctx.get("_push"), session_records=ctx.get("cost_records"),
         model=ctx.get("model"),
         skill_assets=_skill_assets_for(ctx.get("skill_id")),
+        max_attempts=ctx.get("llm_steps"),  # LLM 步数：自检重试上限
     ),
     "verify":  lambda ctx, bus, params: _sync_wrap(
         tool_verify(ctx.get("html", ""), ctx.get("content") or {})

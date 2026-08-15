@@ -457,7 +457,7 @@ export default function SettingsButton({
                     <SettingRow title="Agent 步数" desc="Agent 自主决策的最大循环步数">
                       <input className="setting-input" type="number" value={params.agentSteps} onChange={(e) => onParamsChange({ ...params, agentSteps: parseInt(e.target.value) || 0 })} />
                     </SettingRow>
-                    <SettingRow title="LLM 步数" desc="单次 LLM 调用的最大步数（预留，后端接入中）">
+                    <SettingRow title="LLM 步数" desc="每类内部重试的上限：渲染自检 / 换词 / 审查回退">
                       <input className="setting-input" type="number" value={params.llmSteps} onChange={(e) => onParamsChange({ ...params, llmSteps: parseInt(e.target.value) || 0 })} />
                     </SettingRow>
                     <SettingRow title="单次预算" desc="单次生成成本上限（元）">
