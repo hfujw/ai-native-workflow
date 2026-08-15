@@ -2,8 +2,10 @@
 
 一能力一文件：原始操作 tool_search + 自主决策包装 ResearcherAgent。
 Tavily → 空返回 → LLM 用自身知识兜底；Agent 内部换词重试 + 向量兜底。
+Tavily 凭证与会话绑定（用户设置里独立配置，随 WS 发送）——不是 LLM 凭证，单独管理。
 """
 
+import contextvars
 import logging
 
 import httpx
@@ -13,6 +15,27 @@ from app.knowledge.kb import get_event_by_keyword
 from app.llm.parser import detect_injection
 
 logger = logging.getLogger(__name__)
+
+# 会话级 Tavily Key（contextvars——只影响当前任务及其子任务，不污染其他连接；
+# 未绑定则回落后端 .env 配置）。与 LLM 凭证分开：搜索是搜索，LLM 是 LLM。
+_tavily_key_ctx: contextvars.ContextVar = contextvars.ContextVar(
+    "tavily_api_key", default=None)
+
+
+def bind_tavily_key(api_key: str | None) -> None:
+    """绑定当前会话的 Tavily Key（用户设置里独立配置）。
+
+    必须在 asyncio.create_task 之前调用——contextvars 在创建任务时复制，
+    子任务（orchestrator/ResearcherAgent）才能继承绑定。
+    """
+    if api_key and api_key.strip():
+        _tavily_key_ctx.set(api_key.strip())
+
+
+def _effective_tavily_key() -> str:
+    """会话级 Key 优先，回落后端 .env 配置。"""
+    from app.config import settings
+    return _tavily_key_ctx.get() or settings.tavily_api_key.strip()
 
 # ── 素材过滤 ──
 _AD_NOISE = {"广告", "推广", "促销", "优惠", "团购", "门票", "攻略", "旅游团",
@@ -25,10 +48,11 @@ def _filter_noise(results: list[dict]) -> list[dict]:
 
 
 async def _search_tavily(query: str, max_results: int = 8) -> list[dict]:
-    """Tavily Search API——国内可直连，返回 JSON 已清洗文本。没配 Key 直接返回空。"""
-    from app.config import settings
+    """Tavily Search API——国内可直连，返回 JSON 已清洗文本。没配 Key 直接返回空。
 
-    key = settings.tavily_api_key.strip()
+    Key 优先级：会话级（用户设置）> 后端 .env。
+    """
+    key = _effective_tavily_key()
     if not key:
         return []
 

@@ -146,6 +146,8 @@ export default function App() {
     localStorage.removeItem("lumen.apiKey");
     localStorage.removeItem("lumen.apiBase");
   }, [legacyApiKey, legacyApiBase, setProviderCreds]);
+  // 搜索凭证（Tavily Key）——与 LLM 凭证独立管理；单一来源在 App，随 WS 发送
+  const [tavilyKey, setTavilyKey] = usePersistentState("lumen.tavilyKey", "");
   const [fullscreenHtml, setFullscreenHtml] = useState<string | null>(null);
   /** 空状态建议话题（来自后端知识库 /api/events） */
   const [starters, setStarters] = useState<string[]>([]);
@@ -414,6 +416,7 @@ export default function App() {
       model: currentModel?.modelId,
       apiKey: creds?.apiKey || undefined,
       apiBase: creds?.apiBase || undefined,
+      tavilyKey: tavilyKey || undefined,
       onMessage: applyGenMsg,
       onError: (reason) => {
         const t = targetIdRef.current;
@@ -639,6 +642,8 @@ export default function App() {
             onModelsChange={setModels}
             providerCreds={providerCreds}
             onProviderCredsChange={setProviderCreds}
+            tavilyKey={tavilyKey}
+            onTavilyKeyChange={setTavilyKey}
           />
         </div>
       </aside>
