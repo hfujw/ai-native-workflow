@@ -1874,6 +1874,12 @@ body {
 }
 .send-btn:hover { background: var(--accent-hover); }
 .send-btn:disabled { background: var(--surface-3); cursor: not-allowed; opacity: 0.5; }
+/* 生成中：发送按钮变终止按钮（红色，点击立即停止） */
+.send-btn.stop {
+  background: color-mix(in srgb, var(--dsw-state-error) 85%, transparent);
+}
+.send-btn.stop:hover { background: var(--dsw-state-error); }
+.send-btn.stop:disabled { background: var(--surface-3); opacity: 0.5; cursor: not-allowed; }
 
 /* ── Skill 页 ── */
 .skill-page {
