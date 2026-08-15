@@ -141,6 +141,12 @@ async def orchestrator_node(state: dict) -> dict:
 
     while ctx["steps"] < ctx["max_steps"] and ctx["budget_spent"] < ctx["budget_total"]:
 
+        # 0. 断路器熔断检查：服务故障中 → 立即终止（不再每轮重试刷屏）
+        from app.llm.circuit_breaker import llm_breaker, State as _CBState
+        if llm_breaker.state == _CBState.OPEN:
+            ctx["_circuit_open"] = True
+            break
+
         # 0. 诚实模式 render 后强制 verify
         if ctx.get("force_verify"):
             ctx.pop("force_verify")
@@ -365,10 +371,16 @@ async def orchestrator_node(state: dict) -> dict:
             continue  # 跳到循环顶部，force_next_tool 块接管执行
 
     # 循环结束但没通过 → 推"死亡报告"到 DecisionLog
-    search_rounds = sum(1 for h in ctx['tool_history'] if h['tool'] == 'search')
-    reason = f"搜了 {search_rounds} 轮没找到直接素材" if search_rounds >= 2 else "多次生成尝试仍不满意"
-    logger.info("orchestrator=exhausted | session=%s | steps=%d | cost=¥%.4f | reason=%s",
-                ctx["session_id"], ctx["steps"], ctx["budget_spent"], reason)
+    if ctx.get("_circuit_open"):
+        # 断路器熔断：AI 服务故障中，快速失败（不是素材问题，重试只会刷屏）
+        reason = "AI 服务暂时不可用（连续失败已熔断），请稍后重试"
+        logger.warning("orchestrator=circuit_open | session=%s | steps=%d",
+                       ctx["session_id"], ctx["steps"])
+    else:
+        search_rounds = sum(1 for h in ctx['tool_history'] if h['tool'] == 'search')
+        reason = f"搜了 {search_rounds} 轮没找到直接素材" if search_rounds >= 2 else "多次生成尝试仍不满意"
+        logger.info("orchestrator=exhausted | session=%s | steps=%d | cost=¥%.4f | reason=%s",
+                    ctx["session_id"], ctx["steps"], ctx["budget_spent"], reason)
     if push:
         await push({"type": "thinking", "step": ctx["steps"],
                     "thought": f"⚠️ 无法完成「{ctx['user_input']}」：{reason}。建议换一个信息更充分的主题试试。",
@@ -376,7 +388,8 @@ async def orchestrator_node(state: dict) -> dict:
         await push({"type": "failed", "reason": reason,
                     "steps": ctx["steps"], "budget": ctx["budget_spent"]})
     return {"status": "failed", "steps": ctx["steps"], "budget": ctx["budget_spent"],
-            "issues": ctx["issues"], "tool_history": ctx["tool_history"]}
+            "issues": ctx["issues"], "tool_history": ctx["tool_history"],
+            "reason": reason}
 
 
 async def _decide(ctx: dict) -> dict:

@@ -14,6 +14,7 @@ import json
 import logging
 
 from app.llm.client import chat_json
+from app.llm.circuit_breaker import CircuitOpenError
 from app.llm.parser import safe_parse_json
 
 logger = logging.getLogger(__name__)
@@ -94,6 +95,8 @@ async def _one_creative(
         parsed["_angle_name"] = angle["name"]
         logger.info("creative=%s done | components=%s", angle["id"], parsed.get("components", []))
         return parsed
+    except CircuitOpenError:
+        raise  # 服务熔断中——不静默跳过，让编排层快速失败
     except Exception as e:
         logger.warning("creative=%s failed | %s", angle["id"], e)
         return None
@@ -180,6 +183,8 @@ async def synthesize_design(
         parsed["_synthesized"] = True
         logger.info("synthesize=done | components=%s", parsed.get("components", []))
         return parsed
+    except CircuitOpenError:
+        raise  # 服务熔断中——不降级第一视角，让编排层快速失败
     except Exception as e:
         logger.warning("synthesize failed, 用第一视角方案: %s", e)
         d = dict(plans[0])
@@ -248,6 +253,8 @@ async def _fix_design(
         parsed["tool"] = "design"
         parsed["_critic_fixed"] = True
         return parsed
+    except CircuitOpenError:
+        raise  # 服务熔断中——不静默跳过，让编排层快速失败
     except Exception as e:
         logger.warning("critic_fix=failed | %s", e)
         return None

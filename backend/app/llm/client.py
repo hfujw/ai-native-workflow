@@ -104,7 +104,7 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
     _assert_configured()
 
     last_error = None
-    from app.llm.circuit_breaker import llm_breaker
+    from app.llm.circuit_breaker import llm_breaker, CircuitOpenError
     for attempt in range(MAX_RETRIES + 1):
         try:
             create_kwargs = dict(
@@ -147,6 +147,9 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
                                 get_cost_summary(session_records)["estimated_cost_rmb"])
             return content
 
+        except CircuitOpenError:
+            # 断路器已熔断（服务故障中）→ 不再重试，直接上抛，让编排层快速失败
+            raise
         except Exception as e:
             last_error = e
             if attempt < MAX_RETRIES:

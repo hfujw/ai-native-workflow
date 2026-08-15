@@ -13,6 +13,7 @@ import time
 from typing import ClassVar
 
 from app.llm.client import chat, chat_stream
+from app.llm.circuit_breaker import CircuitOpenError
 from app.llm.parser import strip_fence
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,8 @@ async def tool_render(
         is_complete = "</html>" in code
         logger.info("工具=render | %d chars | 完整=%s", len(code), is_complete)
         return {"tool": "render", "html": code, "complete": is_complete, "length": len(code)}
+    except CircuitOpenError:
+        raise  # 服务熔断中——不降级，让编排层快速失败
     except Exception as e:
         logger.error("render失败: %s", e)
         return {"tool": "render", "html": "<!DOCTYPE html><html><body><h1>生成失败</h1><p>AI 暂时无法完成这个页面，请稍后重试。</p></body></html>",
@@ -159,6 +162,8 @@ async def tool_render_stream(
         logger.info("工具=render_stream | %d chars | 完整=%s", len(code), is_complete)
         yield {"tool": "render", "html": code, "complete": is_complete, "length": len(code)}
 
+    except CircuitOpenError:
+        raise  # 服务熔断中——不降级，让编排层快速失败
     except Exception as e:
         logger.error("render流式失败: %s", e)
         yield {"tool": "render", "html": "<!DOCTYPE html><html><body><h1>生成失败</h1><p>请稍后重试</p></body></html>",
@@ -277,6 +282,8 @@ class RenderAgent:
                     return frame.get("html", accumulated)
                 else:
                     accumulated = frame.get("html", accumulated)
+        except CircuitOpenError:
+            raise  # 服务熔断中——不降级，让编排层快速失败
         except Exception as e:
             logger.error("RenderAgent=_generate_failed | %s", e)
         return accumulated  # 返回已收集的碎片，让自检决定能不能用

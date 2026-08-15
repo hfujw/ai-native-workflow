@@ -17,6 +17,7 @@ import json
 import logging
 
 from app.llm.client import chat_json
+from app.llm.circuit_breaker import CircuitOpenError
 from app.llm.parser import safe_parse_json
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,8 @@ async def critique_design(
         issues = [i for i in issues if isinstance(i, dict) and i.get("problem")][:3]
         logger.info("critique=done | issues=%d", len(issues))
         return issues
+    except CircuitOpenError:
+        raise  # 服务熔断中——不静默放行，让编排层快速失败
     except Exception as e:
         logger.warning("critique=failed | %s", e)
         return []
@@ -151,6 +154,8 @@ async def judge_page(
             prompt, system=JUDGE_SYSTEM_PROMPT,
             session_records=session_records, model=model,
         )
+    except CircuitOpenError:
+        raise  # 服务熔断中——不静默放行，让编排层快速失败
     except Exception as e:
         logger.warning("judge=call_failed | %s", e)
         return {"passed": True, "issues": []}

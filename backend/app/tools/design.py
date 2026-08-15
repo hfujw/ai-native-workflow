@@ -9,6 +9,7 @@ import json
 import logging
 
 from app.llm.client import chat_json
+from app.llm.circuit_breaker import CircuitOpenError
 from app.llm.parser import safe_parse_json
 from app.agent.brainstorm import brainstorm_design
 from app.tools.search import ResearcherAgent
@@ -92,6 +93,8 @@ async def tool_design(
         logger.info("工具=design | 组件=%s", design.get("components", []))
         design["tool"] = "design"
         return design
+    except CircuitOpenError:
+        raise  # 服务熔断中——不降级，让编排层快速失败
     except Exception as e:
         logger.warning("design失败: %s", e)
         return {**_DESIGN_FALLBACK, "rationale": f"LLM异常({e})，降级为百科条目"}
@@ -164,6 +167,8 @@ async def tool_compose(
         logger.info("工具=compose | blocks=%d", len(content.get("blocks", [])))
         content["tool"] = "compose"
         return content
+    except CircuitOpenError:
+        raise  # 服务熔断中——不降级，让编排层快速失败
     except Exception as e:
         logger.warning("compose失败: %s", e)
         return {**_COMPOSE_FALLBACK, "subtitle": str(e)}
