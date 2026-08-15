@@ -117,10 +117,10 @@ export default function App() {
     });
   }, [setModels]);
   const [sidebarOpen, setSidebarOpen] = usePersistentState("lumen.sidebar", true);
-  // 用户自定义 LLM 接入（设置页填写；随 WS 发送 → 后端绑定会话级客户端）
-  // 与 SettingsButton 共用同一个 localStorage key（lumen.apiKey / lumen.apiBase）
-  const [apiKey] = usePersistentState("lumen.apiKey", "");
-  const [apiBase] = usePersistentState("lumen.apiBase", "https://api.deepseek.com");
+  // 用户自定义 LLM 接入（单一来源：App 持有，传 SettingsButton 受控编辑；
+  // 生成时随 WS 发送 → 后端绑定会话级客户端）
+  const [apiKey, setApiKey] = usePersistentState("lumen.apiKey", "");
+  const [apiBase, setApiBase] = usePersistentState("lumen.apiBase", "https://api.deepseek.com");
   const [fullscreenHtml, setFullscreenHtml] = useState<string | null>(null);
   /** 空状态建议话题（来自后端知识库 /api/events） */
   const [starters, setStarters] = useState<string[]>([]);
@@ -610,6 +610,10 @@ export default function App() {
             onParamsChange={setGenParams}
             models={models}
             onModelsChange={setModels}
+            apiKey={apiKey}
+            onApiKeyChange={setApiKey}
+            apiBase={apiBase}
+            onApiBaseChange={setApiBase}
           />
         </div>
       </aside>
