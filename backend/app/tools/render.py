@@ -47,6 +47,7 @@ async def tool_render(
     content: dict,
     visual: dict = None,
     session_records: list[dict] | None = None,
+    model: str | None = None,          # 会话模型（前端选择，None=默认）
 ) -> dict:
     """生成HTML。返回html字符串+完整性标记。"""
     visual = visual or {}
@@ -70,6 +71,7 @@ async def tool_render(
             system="你是前端工程师。直接输出完整HTML。",
             temperature=0.3,
             session_records=session_records,
+            model=model,
         )
         code = strip_fence(code)
         if not code.lower().startswith("<!doctype"):
@@ -89,6 +91,7 @@ async def tool_render_stream(
     content: dict,
     visual: dict = None,
     session_records: list[dict] | None = None,
+    model: str | None = None,          # 会话模型（前端选择，None=默认）
 ):
     """流式生成HTML——逐段 yield，前端 iframe 实时看到页面"长出来"。
 
@@ -175,8 +178,6 @@ class RenderAgent:
         cached = self._cache_get(cache_key)
         if cached is not None:
             logger.info("RenderAgent=cache_hit | key=%s", cache_key)
-            from app.observability.metrics import RENDER_CACHE_HITS
-            RENDER_CACHE_HITS.inc()
             # 缓存命中也要推给前端（否则用户看不到页面）
             await self._safe_push(push, cached)
             return {"tool": "render", "html": cached, "complete": True,
@@ -211,8 +212,6 @@ class RenderAgent:
             if not issues:
                 # 通过 → 缓存 + push + 返回
                 logger.info("RenderAgent=pass | attempt=%d | len=%d", attempt + 1, len(html))
-                from app.observability.metrics import RENDER_CACHE_MISSES
-                RENDER_CACHE_MISSES.inc()
                 self._cache_set(cache_key, html)
                 await self._safe_push(push, html)
                 return {"tool": "render", "html": html, "complete": True,
@@ -345,8 +344,6 @@ class RenderAgent:
         # 过期 → 清理
         self._cache.pop(key, None)
         self._cache_time.pop(key, None)
-        from app.observability.metrics import RENDER_CACHE_EVICTED
-        RENDER_CACHE_EVICTED.labels(reason="ttl_expired").inc()
         return None
 
     def _cache_set(self, key: str, html: str):
@@ -357,8 +354,6 @@ class RenderAgent:
 
         # 淘汰：达到 CACHE_MAX 条时，删除最老的那条
         if len(self._cache) >= CACHE_MAX:
-            from app.observability.metrics import RENDER_CACHE_EVICTED
             oldest_key = min(self._cache_time, key=lambda k: self._cache_time[k])
             self._cache.pop(oldest_key, None)
             self._cache_time.pop(oldest_key, None)
-            RENDER_CACHE_EVICTED.labels(reason="capacity_limit").inc()

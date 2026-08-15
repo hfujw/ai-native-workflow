@@ -1,43 +1,112 @@
-"""可插拔 skill 目录 — 每个子目录一个 skill，内含 skill.json 清单。
+"""可插拔 skill — 所有 skill 都在一个目录 `backend/skills/`（gitignored）。
 
-技能格式：{name, type: 风格|工具, desc, icon, prompt}。
-本轮只提供清单加载；生成流程接入留待后端整体整合。
+- 每个 skill 一个子目录，内含 SKILL.md（markdown-frontmatter：元数据 + 指令）
+- 内置的三个（像素/杂志/信息图）是**首次运行时播种**的默认内容，跟用户下载的
+  完全一样——都能被 `delete_skill` 整个删掉，删了不回来（目录存在即不重新播种）
+- 形式对齐 Claude skill 体系：frontmatter 放机器元数据，正文放注入 LLM 的指令
 """
 
-import json
 import logging
 import os
+import re
+import shutil
 
 logger = logging.getLogger(__name__)
 
-_SKILLS_DIR = os.path.dirname(__file__)
+_SKILLS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "skills")  # backend/skills
+
+# 内置默认 skill（播种源——写在代码里，随仓库发布；运行时生成进 skills/）
+_BUILTINS: dict[str, dict] = {
+    "pixel": {
+        "name": "像素风", "type": "风格", "icon": "🎮",
+        "desc": "复古像素游戏画面，适合解谜与怀旧题材",
+        "body": "低分辨率像素画面、有限色板、块状复古字体，主题围绕游戏化叙事",
+    },
+    "magazine": {
+        "name": "杂志长图", "type": "风格", "icon": "📰",
+        "desc": "编辑级杂志排版，图文混排长页",
+        "body": "编辑级杂志排版、网格系统、图文混排、大标题与留白",
+    },
+    "infographic": {
+        "name": "信息图", "type": "风格", "icon": "📊",
+        "desc": "数据可视化，图表 + 关键数字一眼看懂",
+        "body": "数据可视化优先、图表 + 关键数字突出、信息层次分明",
+    },
+}
 
 _cache: list[dict] | None = None
 
 
+# ── 内部 ──
+
+def _render_skill_md(meta: dict) -> str:
+    return (f"---\nname: {meta['name']}\ntype: {meta['type']}\n"
+            f"icon: {meta['icon']}\ndesc: {meta['desc']}\n---\n{meta['body']}")
+
+
+def _ensure_seeded() -> None:
+    """首次运行播种内置 skill。只当目录整体不存在时播种——删过单个不重建。"""
+    if os.path.isdir(_SKILLS_DIR):
+        return
+    os.makedirs(_SKILLS_DIR, exist_ok=True)
+    for sid, meta in _BUILTINS.items():
+        skill_dir = os.path.join(_SKILLS_DIR, sid)
+        os.makedirs(skill_dir, exist_ok=True)
+        with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write(_render_skill_md(meta))
+    logger.info("已播种 %d 个内置 skill → %s", len(_BUILTINS), _SKILLS_DIR)
+
+
+def _parse_frontmatter(text: str) -> tuple[dict, str]:
+    """解析 SKILL.md：--- 之间的 key: value frontmatter + 正文指令。不引 YAML 依赖。"""
+    meta: dict = {}
+    body = text.strip()
+    m = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", text, re.S)
+    if m:
+        for line in m.group(1).splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                meta[k.strip()] = v.strip()
+        body = m.group(2).strip()
+    return meta, body
+
+
 def _load_all() -> list[dict]:
-    """惰性加载全部 skill——glob 各子目录的 skill.json，损坏的降级跳过。"""
+    """惰性加载：播种后扫描唯一目录。"""
     global _cache
     if _cache is not None:
         return _cache
-    skills = []
-    for entry in sorted(os.listdir(_SKILLS_DIR)):
-        path = os.path.join(_SKILLS_DIR, entry, "skill.json")
-        if not os.path.isfile(path):
-            continue
-        try:
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-            if not isinstance(data, dict) or not data.get("name"):
-                logger.warning("skill 清单缺 name，跳过: %s", entry)
+    _ensure_seeded()
+    found: list[dict] = []
+    if os.path.isdir(_SKILLS_DIR):
+        for entry in sorted(os.listdir(_SKILLS_DIR)):
+            path = os.path.join(_SKILLS_DIR, entry, "SKILL.md")
+            if not os.path.isfile(path):
                 continue
-            data["id"] = entry
-            skills.append(data)
-        except (json.JSONDecodeError, OSError) as e:
-            logger.warning("skill 加载失败(%s): %s", entry, e)
-    _cache = skills
-    return skills
+            try:
+                with open(path, encoding="utf-8") as f:
+                    text = f.read()
+                text = text.lstrip("\ufeff")  # 容忍 UTF-8 BOM（某些编辑器会写）
+                meta, body = _parse_frontmatter(text)
+                if not meta.get("name"):
+                    logger.warning("skill 缺 name，跳过: %s", entry)
+                    continue
+                found.append({
+                    "id": entry,
+                    "name": meta.get("name", entry),
+                    "type": meta.get("type", "风格"),
+                    "icon": meta.get("icon", "🧩"),
+                    "desc": meta.get("desc", ""),
+                    "prompt": body,
+                    "builtin": entry in _BUILTINS,  # 内置标记（前端"我的 Skill"区分）
+                })
+            except OSError as e:
+                logger.warning("skill 读取失败(%s): %s", entry, e)
+    _cache = found
+    return found
 
+
+# ── 公开接口 ──
 
 def list_skills(skill_type: str | None = None) -> list[dict]:
     """列出全部 skill，可按类型（风格/工具）过滤。"""
@@ -53,3 +122,30 @@ def load_skill(name: str) -> dict | None:
         if s.get("id") == name:
             return s
     return None
+
+
+def reload_skills() -> None:
+    """清缓存——安装/删除后调用，让 list_skills 重新扫描。"""
+    global _cache
+    _cache = None
+
+
+def delete_skill(name: str) -> bool:
+    """删除整个 skill 目录（前端删除 = 全删，不残留）。不存在返回 False。"""
+    path = os.path.join(_SKILLS_DIR, name)
+    if not os.path.isdir(path):
+        return False
+    shutil.rmtree(path, ignore_errors=True)
+    reload_skills()
+    return True
+
+
+def install_skill(skill_id: str, markdown: str) -> dict | None:
+    """写入一个 skill（DeepSeek 下载用）：把 markdown 存到 skills/<id>/SKILL.md。
+    返回解析后的 skill；格式非法（缺 name）返回 None。"""
+    skill_dir = os.path.join(_SKILLS_DIR, skill_id)
+    os.makedirs(skill_dir, exist_ok=True)
+    with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write(markdown)
+    reload_skills()
+    return load_skill(skill_id)

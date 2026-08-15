@@ -49,6 +49,7 @@ async def tool_design(
     user_input: str = "",
     session_records: list[dict] | None = None,
     preferences: dict | None = None,   # Phase C：用户偏好注入
+    model: str | None = None,          # 会话模型（前端选择，None=默认）
 ) -> dict:
     """分析素材，决定用什么叙事形式。"""
     if not material:
@@ -75,6 +76,7 @@ async def tool_design(
             f"素材：\n{brief}{topic_hint}{pref_hint}",
             system=DESIGN_SYSTEM_PROMPT,
             session_records=session_records,
+            model=model,
         )
         parsed = safe_parse_json(result)
         if parsed is None:
@@ -125,6 +127,7 @@ async def tool_compose(
     user_input: str = "",
     session_records: list[dict] | None = None,
     preferences: dict | None = None,   # Phase C：用户偏好注入
+    model: str | None = None,          # 会话模型（前端选择，None=默认）
 ) -> dict:
     """写叙事文案+来源标注。"""
     brief = "\n\n".join(
@@ -147,7 +150,8 @@ async def tool_compose(
 为每个组件写内容。每个数字/年份/人名必须标注来源。"""
 
     try:
-        result = await chat_json(prompt, system=COMPOSE_SYSTEM_PROMPT, session_records=session_records)
+        result = await chat_json(prompt, system=COMPOSE_SYSTEM_PROMPT, session_records=session_records,
+                                 model=model)
         parsed = safe_parse_json(result)
         if parsed is None:
             content = dict(_COMPOSE_FALLBACK)
@@ -181,12 +185,13 @@ class DesignerAgent:
         session_records=None,
         bus=None,                     # Phase 4：消息总线（可选）
         preferences=None,             # Phase C：用户偏好（风格/组件），注入 design/compose
+        model=None,                   # 会话模型（前端选择，None=默认）
     ) -> dict:
         mat_count = len(material)
 
         for attempt in range(2):
             design = await tool_design(material, user_input, session_records=session_records,
-                                       preferences=preferences)
+                                       preferences=preferences, model=model)
 
             # 素材不够？
             if not self._check_design_fit(design, mat_count):
@@ -235,7 +240,7 @@ class DesignerAgent:
                                            preferences=preferences)
 
             content = await tool_compose(material, design, user_input, session_records=session_records,
-                                         preferences=preferences)
+                                         preferences=preferences, model=model)
 
             coverage = self._source_coverage(content)
             if coverage >= 0.3:

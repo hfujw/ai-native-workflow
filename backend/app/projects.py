@@ -44,6 +44,17 @@ def _ensure_versions(project: dict) -> dict:
     return project
 
 
+def _write(projects: list[dict]) -> None:
+    """统一落盘（保留最近 100 条）。"""
+    projects = projects[:_MAX_PROJECTS]
+    try:
+        os.makedirs(os.path.dirname(_PROJECTS_FILE), exist_ok=True)
+        with open(_PROJECTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(projects, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.warning("project 保存失败: %s", e)
+
+
 def save_project(project: dict) -> None:
     """保存 project——同 id 合并，html 变化时追加新版本（迭代历史不丢）。"""
     projects = _load()
@@ -74,13 +85,41 @@ def save_project(project: dict) -> None:
         _ensure_versions(project)
         projects.insert(0, project)
 
-    projects = projects[:_MAX_PROJECTS]
-    try:
-        os.makedirs(os.path.dirname(_PROJECTS_FILE), exist_ok=True)
-        with open(_PROJECTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(projects, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        logger.warning("project 保存失败: %s", e)
+    _write(projects)
+
+
+def rename_project(project_id: str, new_topic: str) -> bool:
+    """重命名历史作品。返回是否找到并改名。"""
+    projects = _load()
+    p = next((x for x in projects if x.get("id") == project_id), None)
+    if p is None:
+        return False
+    p["topic"] = new_topic
+    _write(projects)
+    return True
+
+
+def pin_project(project_id: str) -> bool:
+    """置顶历史作品（移到列表最前）。返回是否找到。"""
+    projects = _load()
+    p = next((x for x in projects if x.get("id") == project_id), None)
+    if p is None:
+        return False
+    projects.remove(p)
+    projects.insert(0, p)
+    _write(projects)
+    return True
+
+
+def delete_project(project_id: str) -> bool:
+    """删除历史作品。返回是否真的删掉了。"""
+    projects = _load()
+    before = len(projects)
+    projects = [p for p in projects if p.get("id") != project_id]
+    if len(projects) == before:
+        return False
+    _write(projects)
+    return True
 
 
 def get_projects() -> list[dict]:

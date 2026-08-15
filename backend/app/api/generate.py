@@ -1,6 +1,7 @@
 """生成端点 — REST /api/generate + WebSocket /ws/generate（含多轮迭代）。
 
 这是产品主链路：接收主题 → 编排 Agent 生成 → 实时推送 → 多轮迭代 → 落盘历史。
+本地桌面端工具：无 IP 限流 / 日预算帽 / Prometheus 指标（公网部署准备已移除）。
 """
 
 import asyncio
@@ -8,13 +9,13 @@ import logging
 import time
 import uuid
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.api.ws import ws_manager
 from app.demo import DEMO_TOPICS
 from app.llm.client import get_cost_summary
-from app.security.rate_limiter import rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -40,35 +41,6 @@ def _friendly_error(e: Exception) -> str:
     return "生成过程中出现意外错误，请刷新页面后重试"
 
 
-def _get_client_ip(websocket: WebSocket) -> str:
-    """从 WebSocket 获取真实客户端 IP。
-
-    仅在配置了反向代理（TRUST_PROXY=true，如 docker-compose + Caddy）时信任
-    X-Forwarded-For，否则直接取 TCP 对端 IP——防止客户端伪造 XFF 绕过 IP 限流。
-    取最后一个值：Caddy 会把真实客户端 IP 追加到 XFF 末尾，客户端塞在开头的伪造值被忽略。
-    """
-    from app.config import settings
-    if settings.trust_proxy:
-        forwarded = websocket.headers.get("x-forwarded-for", "")
-        if forwarded:
-            return forwarded.split(",")[-1].strip()
-    return websocket.client.host if websocket.client else "unknown"
-
-
-def _get_request_ip(request: Request) -> str:
-    """REST 用 IP——与 WS 一致：trust_proxy 时信任 XFF 最后一个值，否则取 TCP 对端。
-
-    P3：旧版 /api/generate 直接用 request.client.host，代理后全是代理 IP，
-    导致 IP 限流全落在代理上。统一走 XFF 逻辑。
-    """
-    from app.config import settings
-    if settings.trust_proxy:
-        forwarded = request.headers.get("x-forwarded-for", "")
-        if forwarded:
-            return forwarded.split(",")[-1].strip()
-    return request.client.host if request.client else "unknown"
-
-
 # ── Phase C：偏好提取 ──
 _PREF_KEYWORDS = ["暗色", "深色", "浅色", "亮色", "极简", "复古", "现代", "黑金", "水墨"]
 
@@ -83,21 +55,21 @@ def _extract_preferences(design: dict | None, content: dict | None) -> dict:
 
 class _GenerateRequest(BaseModel):
     topic: str
+    params: dict | None = None  # 前端设置里的生成参数（会话级覆盖）
+    model: str | None = None    # 前端 Composer 选择的模型（None=后端默认）
 
 
 @router.post("/api/generate")
-async def generate_api(req: _GenerateRequest, request: Request):
+async def generate_api(req: _GenerateRequest):
     """程序化生成——POST 一个话题，同步返回 HTML（复用 orchestrator，无 WS）。"""
     from app.config import settings
     topic = req.topic.strip()
     if not topic or len(topic) > settings.input_max_length:
-        return {"error": f"话题不能为空且不超过 {settings.input_max_length} 字"}, 400
-
-    # 限流（REST 也受 IP 试用/日预算约束）——P3：统一走 XFF 逻辑
-    ip = _get_request_ip(request)
-    allowed, reason = await rate_limiter.can_generate(ip)
-    if not allowed:
-        return {"error": reason}, 429
+        # 注意：新版 FastAPI 不再支持 (dict, status) 元组返回——必须用 JSONResponse
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"话题不能为空且不超过 {settings.input_max_length} 字"},
+        )
 
     session_id = str(uuid.uuid4())[:8]
     records: list[dict] = []
@@ -106,18 +78,11 @@ async def generate_api(req: _GenerateRequest, request: Request):
         result = await orchestrator_node({
             "session_id": session_id, "user_input": topic,
             "_push": None, "_cost_records": records, "_preferences": {},
+            "_params": req.params, "_model": req.model,
         })
     except Exception:
-        # 生成抛异常 → 释放预留的试用名额（成本也先不记——异常多半没消耗 token）
-        await rate_limiter.release_trial(ip)
         raise
     cost = get_cost_summary(records)["estimated_cost_rmb"]
-    await rate_limiter.record_cost(cost)
-    if result.get("status") == "success":
-        await rate_limiter.record_success(ip)
-    else:
-        # 生成失败 → 释放名额，让用户可以重试
-        await rate_limiter.release_trial(ip)
 
     from app.projects import save_project
     save_project({
@@ -139,14 +104,11 @@ async def generate_api(req: _GenerateRequest, request: Request):
 async def generate_page(websocket: WebSocket):
     """WebSocket 端点——接收用户输入，触发 Agent Pipeline，实时推送进度。"""
     session_id = str(uuid.uuid4())[:8]
-    client_ip = _get_client_ip(websocket)
-    if not await ws_manager.connect(session_id, websocket, client_ip):
+    client_ip = websocket.client.host if websocket.client else ""
+    if not await ws_manager.connect(session_id, websocket):
         return  # 连接被拒绝（超上限等），不做后续处理
 
     session_cost_records: list[dict] = []  # 本连接独立记账，不碰全局
-    t_start = None  # 用于记录生成开始时间（GENERATION_DURATION 埋点）
-    trial_reserved = False  # can_generate 是否已原子占用试用名额
-    generation_ok = False   # 是否成功完成（失败时释放名额）
 
     try:
         # 接收用户输入（加超时，防止连接挂起）
@@ -157,12 +119,14 @@ async def generate_page(websocket: WebSocket):
             return
 
         user_input = data.get("event", "").strip()
+        gen_params = data.get("params") or None  # 前端设置里的生成参数（会话级覆盖）
+        gen_model = data.get("model") or None    # 前端 Composer 选择的模型（None=后端默认）
 
         if not user_input:
             await ws_manager.send_failed(session_id, "请输入一个主题", [])
             return
 
-        # P0 安全修复：输入长度限制——防止恶意长文本耗尽 API 预算
+        # 输入长度限制——防止误粘贴超长文本耗尽 API 预算
         from app.config import settings
         if len(user_input) > settings.input_max_length:
             logger.warning("输入过长拒绝 [%s] len=%d max=%d", session_id, len(user_input), settings.input_max_length)
@@ -172,14 +136,6 @@ async def generate_page(websocket: WebSocket):
                 DEMO_TOPICS,
             )
             return
-
-        # ── 速率限制 ──
-        allowed, reason = await rate_limiter.can_generate(client_ip)
-        if not allowed:
-            logger.info("限流拒绝 [%s] IP=%s reason=%s", session_id, client_ip, reason)
-            await ws_manager.send_failed(session_id, reason, DEMO_TOPICS)
-            return
-        trial_reserved = True  # can_generate 已原子占用试用名额——失败时 finally 里释放
 
         logger.info("新请求 | session=%s | topic=%s | ip=%s", session_id, user_input, client_ip)
 
@@ -194,7 +150,6 @@ async def generate_page(websocket: WebSocket):
 
         # 运行编排Agent（包成 Task，断开时能取消）
         import time as _time
-        t_start = _time.monotonic()
         from app.agent.orchestrator import orchestrator_node
 
         failed_sent = False  # 防止双重失败推送
@@ -244,7 +199,6 @@ async def generate_page(websocket: WebSocket):
             prefs = {}
 
         # 把独立账本传给编排器（包 Task + 全局超时）
-        from app.config import settings
         orch_task = asyncio.create_task(
             orchestrator_node({
                 "session_id": session_id,
@@ -252,6 +206,8 @@ async def generate_page(websocket: WebSocket):
                 "_push": push,
                 "_cost_records": session_cost_records,
                 "_preferences": prefs,
+                "_params": gen_params,
+                "_model": gen_model,
             })
         )
         try:
@@ -267,9 +223,6 @@ async def generate_page(websocket: WebSocket):
                     session_id, result.get("status"), result.get("steps"),
                     cost["estimated_cost_rmb"], cost["calls"])
 
-        # 记录花费（在生成结束后累加，用于日预算帽）
-        await rate_limiter.record_cost(cost["estimated_cost_rmb"])
-
         # 保存生成历史（可回看/续，Phase C 更新迭代数）
         from app.projects import save_project
         save_project({
@@ -284,28 +237,13 @@ async def generate_page(websocket: WebSocket):
             "trace_path": f"logs/traces/{session_id}.jsonl",
         })
 
-        from app.observability.metrics import (
-            GENERATION_DURATION,
-            GENERATION_STEPS,
-            GENERATIONS,
-        )
-        GENERATIONS.labels(status=result.get("status", "unknown")).inc()
-        if t_start:
-            GENERATION_DURATION.observe(_time.monotonic() - t_start)
-            GENERATION_STEPS.observe(result.get("steps", 0))
-
         if result.get("status") == "success":
-            generation_ok = True
-            # 成功——名额保留（can_generate 已占用）
-            await rate_limiter.record_success(client_ip)
-
             # ── Phase C：提取偏好 + 多轮迭代 ──
             prefs = _extract_preferences(result.get("design"), result.get("content"))
             if prefs["style_hints"] or prefs["preferred_components"]:
                 from app.preferences import update_preferences
                 await update_preferences(prefs)
             iterations = 1
-            last_cost = cost["estimated_cost_rmb"]  # 首轮成本已记入日预算
             MAX_ITERATIONS = 6  # 迭代上限（首轮 + 最多 5 次修改），防无限烧 token
             while iterations < MAX_ITERATIONS:
                 try:
@@ -315,7 +253,7 @@ async def generate_page(websocket: WebSocket):
                 instruction = (follow.get("instruction") or "").strip()
                 if not instruction:
                     break
-                # P0 安全：指令同样限长——防超长 prompt 烧 token（topic 已有校验，指令此前无）
+                # 指令同样限长——防超长 prompt 烧 token（topic 已有校验，指令此前无）
                 if len(instruction) > settings.input_max_length:
                     await ws_manager.send_json(session_id, {
                         "type": "thinking", "step": 0,
@@ -323,7 +261,7 @@ async def generate_page(websocket: WebSocket):
                         "tool": "system", "budget": 0,
                     })
                     continue
-                # P2：迭代计入本次预算上限——防单会话迭代无限烧 token（orchestrator 只罩首轮）
+                # 迭代计入本次预算上限——防单会话迭代无限烧 token（orchestrator 只罩首轮）
                 if get_cost_summary(session_cost_records)["estimated_cost_rmb"] >= settings.budget_total:
                     await ws_manager.send_json(session_id, {
                         "type": "thinking", "step": 0,
@@ -339,6 +277,7 @@ async def generate_page(websocket: WebSocket):
                         result.get("material"), result.get("html", ""),
                         user_input, instruction, push, session_cost_records,
                         preferences=prefs,
+                        model=gen_model,
                     )
                 except Exception as e:
                     logger.warning("迭代失败 | session=%s | error=%s", session_id, e)
@@ -351,11 +290,6 @@ async def generate_page(websocket: WebSocket):
                 result["content"] = ref.get("content")
                 result["material"] = ref.get("material")
                 result["html"] = ref.get("html", "")
-                # 记录本轮迭代成本到日预算（防白嫖 token）
-                new_cost = get_cost_summary(session_cost_records)["estimated_cost_rmb"]
-                if new_cost > last_cost:
-                    await rate_limiter.record_cost(new_cost - last_cost)
-                    last_cost = new_cost
                 # 本轮偏好更新
                 prefs = _extract_preferences(ref.get("design"), ref.get("content"))
                 if prefs["style_hints"] or prefs["preferred_components"]:
@@ -405,7 +339,4 @@ async def generate_page(websocket: WebSocket):
         except Exception:
             pass
     finally:
-        # 生成失败/超时/断开 → 释放预留的试用名额（成功时名额保留）
-        if trial_reserved and not generation_ok:
-            await rate_limiter.release_trial(client_ip)
-        await ws_manager.disconnect(session_id, client_ip)
+        await ws_manager.disconnect(session_id)
