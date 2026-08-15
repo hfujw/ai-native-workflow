@@ -465,6 +465,11 @@ HTML长度：{len(ctx.get('html', ''))}字符 | 上次验证：{'通过' if ctx[
             decision.get("thought", ""), ctx["user_input"], ctx["steps"])
         return decision
     except Exception as e:
+        # 配置错误（未填 API Key）→ 直接上抛，让 generate.py 快速失败并提示用户
+        # （不是临时故障，降级/重试只会卡到超时）
+        from app.llm.client import LLMNotConfiguredError
+        if isinstance(e, LLMNotConfiguredError):
+            raise
         ctx["_decide_fail_count"] = ctx.get("_decide_fail_count", 0) + 1
         logger.warning("decide=fail | session=%s | fail_count=%d | error=%s",
                        ctx["session_id"], ctx["_decide_fail_count"], e)

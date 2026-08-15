@@ -89,7 +89,11 @@ async def generate_api(req: _GenerateRequest):
             "_push": None, "_cost_records": records, "_preferences": {},
             "_params": req.params, "_model": req.model,
         })
-    except Exception:
+    except Exception as e:
+        # 未配置 API Key → 快速 400 提示，不转圈
+        from app.llm.client import LLMNotConfiguredError
+        if isinstance(e, LLMNotConfiguredError):
+            return JSONResponse(status_code=400, content={"error": str(e)})
         raise
     cost = get_cost_summary(records)["estimated_cost_rmb"]
 
@@ -358,6 +362,15 @@ async def generate_page(websocket: WebSocket):
             orch_task.cancel()
             logger.info("用户断开，取消生成 | session=%s", session_id)
     except Exception as e:
+        from app.llm.client import LLMNotConfiguredError
+        if isinstance(e, LLMNotConfiguredError):
+            # 未配置 API Key → 快速失败并明确提示（不转圈到超时）
+            logger.warning("生成失败（未配置 API Key）| session=%s", session_id)
+            try:
+                await ws_manager.send_failed(session_id, str(e), [])
+            except Exception:
+                pass
+            return
         logger.exception("生成流程异常")
         try:
             await ws_manager.send_failed(session_id, _friendly_error(e), [])
