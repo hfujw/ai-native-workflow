@@ -841,6 +841,16 @@ body {
   font-size: 11px;
   line-height: 16px;
 }
+/* 模型行的提供方标签（DSH provider 标识） */
+.model-row-provider {
+  background: var(--surface-3);
+  color: var(--text-2);
+  border-radius: 4px;
+  flex: none;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 16px;
+}
 .model-row-actions {
   margin-left: auto;
   display: inline-flex;
@@ -1561,6 +1571,19 @@ body {
 .model-select:hover { background: var(--surface-3); }
 .model-select:disabled { opacity: 0.5; cursor: default; }
 .model-select:disabled:hover { background: transparent; }
+.model-select-name {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+/* 触发器上的提供方标签（DSH triggerEffort 同款小字） */
+.model-select-provider {
+  color: var(--text-3);
+  flex: none;
+  font-size: 11px;
+  font-weight: 400;
+}
 .model-select .chev {
   color: var(--text-3);
   flex: none;
@@ -1568,7 +1591,7 @@ body {
 }
 .model-select .chev.open { transform: rotate(180deg); }
 
-/* 模型菜单（DSH：12px 圆角 + 名称/描述/勾选） */
+/* 模型菜单（DSH：12px 圆角 + 分组标题 + 名称/描述/勾选） */
 .model-menu {
   width: min(240px, 100vw - 32px);
   background: var(--surface-2);
@@ -1576,6 +1599,17 @@ body {
   border-radius: 12px;
   padding: 4px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+/* 按提供方分组（DSH ModelDirectory group → models） */
+.model-group + .model-group { border-top: 1px solid var(--border-medium); margin-top: 4px; padding-top: 4px; }
+.model-group-title {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-3);
+  padding: 4px 8px 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .model-option {
   width: 100%;
