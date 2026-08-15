@@ -109,6 +109,42 @@ async def tool_search(query: str, reason: str = "", depth: str = "quick", existi
 # ── ResearcherAgent：搜索升级为自主决策 ──
 _ALT_ANGLES = ["历史", "起源", "发展", "影响", "人物", "事件", "技术", "原理"]
 
+_NEXT_QUERY_PROMPT = """用户想了解「{topic}」，已经搜过这些词：{searched}。
+
+现有素材标题：
+{brief}
+
+素材还不够。给 1 个新的搜索词——不要重复已搜词，换个角度（背景/人物/细节/争议/案例）。
+输出 JSON：{{"query": "新搜索词"}}"""
+
+
+async def _llm_next_query(
+    topic: str,
+    material: list[dict],
+    searched: list[str],
+    session_records: list[dict] | None = None,
+    model: str | None = None,
+) -> str | None:
+    """LLM 决策下一个搜索词（对抗固定词表）。失败返回 None → 调用方回退词表。"""
+    from app.llm.client import chat_json
+    from app.llm.parser import safe_parse_json
+
+    brief = "\n".join(f"- {r.get('title', '')}" for r in material[:5]) or "(无)"
+    try:
+        result = await chat_json(
+            _NEXT_QUERY_PROMPT.format(topic=topic, searched="、".join(searched), brief=brief),
+            system="你是搜索策略专家。",
+            session_records=session_records, model=model,
+        )
+        parsed = safe_parse_json(result)
+        q = (parsed or {}).get("query")
+        if q and str(q).strip() and str(q).strip() not in searched:
+            return str(q).strip()
+        logger.info("ResearcherAgent=llm_query_invalid | raw=%s", str(result)[:80])
+    except Exception as e:
+        logger.warning("ResearcherAgent=llm_query_failed 回退词表: %s", e)
+    return None
+
 
 class ResearcherAgent:
     """搜索 Agent —— 自主决定搜索策略。
@@ -127,10 +163,12 @@ class ResearcherAgent:
         existing_material: list[dict] | None = None,
         session_records=None,
         push=None,  # 推给前端的回调（可选）
+        model=None,  # 会话模型（换词决策用）
     ) -> dict:
         """对外接口——返回 {results, count, level}。"""
         material = list(existing_material) if existing_material else []
         search_count = 0
+        searched = [topic]  # 已搜词（LLM 换词不重复）
 
         # 先试原始词
         if push:
@@ -150,14 +188,18 @@ class ResearcherAgent:
                             "tool": "search", "budget": 0})
             return self._done(material, evaluation, search_count)
 
-        # 换角度重搜（最多 2 次）
-        for angle in _ALT_ANGLES[:2]:
-            alt_query = f"{topic} {angle}"
+        # 换角度重搜（最多 2 次）：LLM 决策新词，失败回退固定词表
+        for i in range(2):
+            alt_query = await _llm_next_query(topic, material, searched,
+                                              session_records, model)
+            if not alt_query:
+                alt_query = f"{topic} {_ALT_ANGLES[i]}"  # 兜底词表
+            searched.append(alt_query)
             if push:
                 await push({"type": "thinking", "step": 0,
                             "thought": f"🔍 ResearcherAgent：换个角度搜「{alt_query}」…",
                             "tool": "search", "budget": 0})
-            result = await tool_search(alt_query, reason=f"换角度: {angle}", depth="quick",
+            result = await tool_search(alt_query, reason="换角度", depth="quick",
                                        existing_material=material)
             new_count = len(result.get("results", []))
             material.extend(result.get("results", []))
@@ -228,6 +270,7 @@ class ResearcherAgent:
                     existing_material=msg.get("existing_material"),
                     session_records=msg.get("session_records"),
                     push=msg.get("push"),  # 推消息给前端
+                    model=msg.get("model"),
                 )
                 await bus.send(msg.get("reply_to", "designer"), {
                     "type": "search_result",

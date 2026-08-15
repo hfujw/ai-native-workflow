@@ -62,6 +62,7 @@ const TOOL_TITLES: Record<string, string> = {
   compose: "文案",
   render: "渲染",
   verify: "验证",
+  judge: "质量审查",
 };
 
 /** 按 id 更新或追加工具卡片 */
@@ -102,6 +103,7 @@ export default function App() {
     budget: 1.0,
     searchMax: 8,
     searchEnabled: true,
+    skillId: "magazine",  // 默认预设（知识探险家）推荐的风格 skill
   });
   const [models, setModels] = usePersistentState<ModelItem[]>("lumen.models", DEFAULT_MODELS);
   // 选中的模型（持久化；发送时解析成后端模型 ID 随 WS 传递）
@@ -114,6 +116,10 @@ export default function App() {
     });
   }, [setModels]);
   const [sidebarOpen, setSidebarOpen] = usePersistentState("lumen.sidebar", true);
+  // 用户自定义 LLM 接入（设置页填写；随 WS 发送 → 后端绑定会话级客户端）
+  // 与 SettingsButton 共用同一个 localStorage key（lumen.apiKey / lumen.apiBase）
+  const [apiKey] = usePersistentState("lumen.apiKey", "");
+  const [apiBase] = usePersistentState("lumen.apiBase", "https://api.deepseek.com");
   const [fullscreenHtml, setFullscreenHtml] = useState<string | null>(null);
   /** 空状态建议话题（来自后端知识库 /api/events） */
   const [starters, setStarters] = useState<string[]>([]);
@@ -378,6 +384,8 @@ export default function App() {
     send(text, {
       params: genParams,
       model: models.find((m) => m.id === composerModel)?.modelId,
+      apiKey: apiKey || undefined,
+      apiBase: apiBase || undefined,
       onMessage: applyGenMsg,
       onError: (reason) => {
         const t = targetIdRef.current;

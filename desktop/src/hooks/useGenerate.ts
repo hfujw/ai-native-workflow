@@ -12,6 +12,10 @@ type SendOptions = {
   params?: GenParams;
   /** 前端 Composer 选中的模型（会话级覆盖后端默认模型） */
   model?: string;
+  /** 用户自定义 API Key（会话级覆盖后端默认） */
+  apiKey?: string;
+  /** 用户自定义 Base URL（会话级覆盖后端默认） */
+  apiBase?: string;
   /** 每条 WS 消息（已 JSON.parse） */
   onMessage: (msg: Record<string, unknown>) => void;
   /** 连接失败 / 中途断开 */
@@ -40,6 +44,8 @@ export function useGenerate() {
       const payload: Record<string, unknown> = { event };
       if (options.params) payload.params = options.params;
       if (options.model) payload.model = options.model;
+      if (options.apiKey) payload.apiKey = options.apiKey;
+      if (options.apiBase) payload.apiBase = options.apiBase;
       ws.send(JSON.stringify(payload));
     };
 
