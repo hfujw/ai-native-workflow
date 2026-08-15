@@ -59,6 +59,7 @@ type Work = {
 const TOOL_TITLES: Record<string, string> = {
   search: "搜索",
   design: "设计",
+  brainstorm: "创意发散",
   compose: "文案",
   render: "渲染",
   verify: "验证",

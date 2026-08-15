@@ -5,6 +5,7 @@ import type { ToolCall, ToolId } from "../lib/api";
 import {
   IconChevronDown,
   IconCode,
+  IconGrid,
   IconPencil,
   IconPenTool,
   IconSearch,
@@ -16,6 +17,7 @@ const TOOL_ICONS: Record<ToolId, ComponentType<IconProps>> = {
   think: IconSparkle,
   search: IconSearch,
   design: IconPenTool,
+  brainstorm: IconGrid,
   compose: IconPencil,
   render: IconCode,
   verify: IconShieldCheck,
