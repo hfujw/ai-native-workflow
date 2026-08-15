@@ -903,6 +903,17 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 选中的服务没配 Key：明确提示不联网（不再显示"使用中"误导） */
+.search-svc-unconfigured {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-state-warn);
+  border: 1px solid color-mix(in srgb, var(--dsw-state-warn) 40%, transparent);
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex: none;
+  white-space: nowrap;
+}
 .search-svc-editor {
   margin-top: 10px;
   padding-top: 10px;
