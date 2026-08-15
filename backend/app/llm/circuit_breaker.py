@@ -50,12 +50,16 @@ class CircuitBreaker:
                 logger.info("circuit_breaker=closed — 已恢复")
             return result
         except Exception as e:
-            # P3：认证错误（401/403）是 key 问题不是服务故障——不计数不熔断，
-            # 避免坏 key 把断路器熔断成"服务全挂"
+            # 认证错误（401/403）= key 问题；参数错误（400/422）= 调用方 bug。
+            # 都不是服务故障——不计数不熔断（重试也没用，熔断会误伤整个服务）
             if openai is not None and isinstance(
                 e, (openai.AuthenticationError, openai.PermissionDeniedError)
             ):
                 logger.warning("circuit_breaker=auth_error — 不熔断 | %s", type(e).__name__)
+                raise
+            status = getattr(e, "status_code", None)
+            if status in (400, 422):
+                logger.warning("circuit_breaker=param_error — 不熔断 | %s", _describe_error(e))
                 raise
             self.last_error = e  # 记住真实原因，熔断时报给用户
             self.failure_count += 1

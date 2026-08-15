@@ -64,6 +64,9 @@ def bind_session_client(api_key: str | None = None, base_url: str | None = None)
     if not key:
         _session_client.set(None)
         return
+    # 脱敏诊断日志：只记前 8 位 + 长度，帮定位"前端发的是完整 key 还是掩码"
+    logger.info("bind_session_client | key=%s*** | len=%d | base=%s",
+                key[:8], len(key), base_url or "(默认)")
     _session_client.set(AsyncOpenAI(
         api_key=key,
         base_url=base_url or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
@@ -188,7 +191,13 @@ async def chat_json(prompt: str, system: str = "", model: str = None,
     """异步 JSON 调用——优先 DeepSeek 结构化输出（json_object），失败降级普通调用。
 
     结构化输出能显著降低"LLM 返回围栏/多余文字导致 json.loads 失败"的概率。
+    ⚠️ deepseek-reasoner 不支持 response_format=json_object（H2 修复）——
+    reasoner 下直接走普通调用，靠 prompt 要求 JSON + safe_parse_json 兜底。
     """
+    if model and "reasoner" in model:
+        # 推理模型：不传 response_format（会被拒），prompt 内已有 JSON 要求
+        return await chat(prompt, system=system, model=model, temperature=0.1,
+                          session_records=session_records)
     try:
         return await chat(prompt, system=system, model=model, temperature=0.1,
                           session_records=session_records,
