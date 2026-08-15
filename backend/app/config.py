@@ -1,7 +1,7 @@
-"""集中配置管理 — pydantic-settings 从 .env + 环境变量加载。
+"""集中配置管理 — pydantic-settings 从环境变量加载（默认值兜底）。
 
-所有模块通过 `from app.config import settings` 获取配置，
-不再各自读 os.getenv() 或硬编码常量。
+Key 全部来自前端设置（会话级绑定），不在这里配置。
+所有字段都有默认值——不配任何环境变量也能零配置启动。
 """
 
 from functools import lru_cache
@@ -12,8 +12,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
         extra="ignore",  # 未定义的环境变量不报错
     )
 
