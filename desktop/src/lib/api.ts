@@ -39,6 +39,16 @@ export function renameProject(id: string, topic: string): Promise<{ ok: boolean 
   return request(`/api/history/${id}`, { method: "PATCH", body: JSON.stringify({ topic }) });
 }
 
+/** 后端环境变量凭证配置状态（只报有没有配，不含值——DSH describe 语义） */
+export type CredentialsStatus = {
+  llm_env_configured: boolean;
+  tavily_env_configured: boolean;
+};
+
+export function fetchCredentialsStatus(): Promise<CredentialsStatus> {
+  return request("/api/credentials/status");
+}
+
 /** 置顶历史作品 */
 export function pinProject(id: string): Promise<{ ok: boolean }> {
   return request(`/api/history/${id}/pin`, { method: "POST" });

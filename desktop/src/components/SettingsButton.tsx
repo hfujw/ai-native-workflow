@@ -2,7 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
 import { useDropdown } from "../hooks/useDropdown";
 import { usePersistentState } from "../hooks/usePersistentState";
-import { groupModelsByProvider, type GenParams, type ModelItem, type ProviderCreds } from "../lib/api";
+import {
+  fetchCredentialsStatus,
+  groupModelsByProvider,
+  type CredentialsStatus,
+  type GenParams,
+  type ModelItem,
+  type ProviderCreds,
+} from "../lib/api";
 import type { IconProps } from "./icons";
 import {
   IconChevronDown,
@@ -152,6 +159,28 @@ export default function SettingsButton({
   // 搜索凭证（Tavily）编辑态——与 LLM 凭证独立
   const [editingTavily, setEditingTavily] = useState(false);
   const [tavilyInput, setTavilyInput] = useState("");
+  // 后端环境变量凭证状态（只报有没有配，不含值）——显示"用户填 / 环境兜底"来源
+  const [envStatus, setEnvStatus] = useState<CredentialsStatus | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchCredentialsStatus()
+      .then((s) => {
+        if (!cancelled) setEnvStatus(s);
+      })
+      .catch(() => {
+        /* 后端未启动时静默 */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** 凭证来源徽标（DSH describe 语义：configured / source） */
+  const SourceBadge = ({ userConfigured, envConfigured }: { userConfigured: boolean; envConfigured: boolean }) => {
+    if (userConfigured) return <span className="credential-source user">用户配置</span>;
+    if (envConfigured) return <span className="credential-source env">环境变量兜底</span>;
+    return <span className="credential-source none">未配置</span>;
+  };
 
   const saveTavilyKey = () => {
     const v = tavilyInput.trim();
@@ -618,6 +647,12 @@ export default function SettingsButton({
                       <div className="setting-section-title">搜索凭证</div>
                       <div className="model-field">
                         <label className="model-field-label">Tavily API Key（联网搜索用）</label>
+                        <div className="credential-field-with-badge">
+                          <SourceBadge
+                            userConfigured={!!tavilyKey}
+                            envConfigured={!!envStatus?.tavily_env_configured}
+                          />
+                        </div>
                         {editingTavily ? (
                           <div className="credential-edit-row">
                             <input
@@ -685,6 +720,12 @@ export default function SettingsButton({
                                 {/* 该提供方的连接凭证（独立；已填只显示掩码，不可复制） */}
                                 <div className="model-field">
                                   <label className="model-field-label">API Key</label>
+                                  <div className="credential-field-with-badge">
+                                    <SourceBadge
+                                      userConfigured={!!creds.apiKey}
+                                      envConfigured={!!envStatus?.llm_env_configured && g.provider === "DeepSeek"}
+                                    />
+                                  </div>
                                   {editingKeyFor === g.provider ? (
                                     <div className="credential-edit-row">
                                       <input

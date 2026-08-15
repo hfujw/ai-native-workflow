@@ -37,3 +37,18 @@ async def get_eval():
     except (FileNotFoundError, json.JSONDecodeError):
         return {"status": "not_run",
                 "message": "评测还没跑过——用 `cd backend && ..\\venv\\Scripts\\python scripts/eval_run.py` 生成"}
+
+
+@router.get("/api/credentials/status")
+async def get_credentials_status():
+    """后端环境变量配置状态（只报有没有配，绝不返回值——DSH describe() 语义）。
+
+    前端用它显示凭证来源：用户填的（localStorage）优先，环境变量兜底；
+    两者都没配 = 未配置。
+    """
+    from app.config import settings
+
+    return {
+        "llm_env_configured": bool(settings.deepseek_api_key.strip()),
+        "tavily_env_configured": bool(settings.tavily_api_key.strip()),
+    }
