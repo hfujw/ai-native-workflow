@@ -11,10 +11,6 @@ dist/
 node_modules/
 .vite/
 
-# ── 环境变量（包含 API Key，绝对不能提交）──
-.env
-backend/.env
-
 # ── 运行时产物 ──
 backend/logs/
 backend/chroma_data/
