@@ -93,6 +93,7 @@ export type GenParams = {
   budget: number;          // 单次生成成本上限（元）
   searchMax: number;       // 搜索轮数上限
   searchEnabled: boolean;  // 联网搜索开关
+  skillId: string;         // 风格 skill（模板资产注入渲染；空=LLM 自由发挥）
 };
 
 /** 模型配置（设置页管理，Composer 选择） */
@@ -105,8 +106,8 @@ export type ModelItem = {
 
 /* ── 对话消息类型（App / ToolCard / 会话存储共用） ── */
 
-/** 工具标识（含 think——思考卡片） */
-export type ToolId = "think" | "search" | "design" | "compose" | "render" | "verify";
+/** 工具标识（含 think——思考卡片；judge——质量审查） */
+export type ToolId = "think" | "search" | "design" | "compose" | "render" | "verify" | "judge";
 export type ToolStatus = "pending" | "running" | "done" | "error";
 
 /** 一次工具调用（DSH 工具卡片语义） */

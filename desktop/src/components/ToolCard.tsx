@@ -19,6 +19,7 @@ const TOOL_ICONS: Record<ToolId, ComponentType<IconProps>> = {
   compose: IconPencil,
   render: IconCode,
   verify: IconShieldCheck,
+  judge: IconShieldCheck,
 };
 
 /**
