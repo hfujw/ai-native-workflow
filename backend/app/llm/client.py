@@ -14,14 +14,18 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = 120
 MAX_RETRIES = 2
 
-_api_key = os.getenv("DEEPSEEK_API_KEY")
-if not _api_key:
-    raise RuntimeError("DEEPSEEK_API_KEY 环境变量未设置")
+_api_key = (os.getenv("DEEPSEEK_API_KEY") or "").strip()
 
-_default_client = AsyncOpenAI(
-    api_key=_api_key,
-    base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-    timeout=DEFAULT_TIMEOUT,
+# 默认客户端：.env 有 key 才创建；没有 → None（用户在前端设置里填 key，
+# 会话级绑定优先；都没配 → 调用时报"未配置 API Key"，不静默、不让启动卡死）
+_default_client = (
+    AsyncOpenAI(
+        api_key=_api_key,
+        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+        timeout=DEFAULT_TIMEOUT,
+    )
+    if _api_key
+    else None
 )
 
 # 会话级客户端：用户自定义 API Key/Base（contextvars——只影响当前任务及其子任务，
@@ -37,9 +41,14 @@ def bind_session_client(api_key: str | None = None, base_url: str | None = None)
 
     必须在 asyncio.create_task 之前调用——contextvars 在创建任务时复制，
     子任务（orchestrator）才能继承绑定。传 None 的字段回落环境变量默认值。
+    没 key 可绑（api_key 空且 .env 也没有）→ 不绑定，调用时报"未配置 API Key"。
     """
+    key = (api_key or "").strip() or _api_key
+    if not key:
+        _session_client.set(None)
+        return
     _session_client.set(AsyncOpenAI(
-        api_key=api_key or _api_key,
+        api_key=key,
         base_url=base_url or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
         timeout=DEFAULT_TIMEOUT,
     ))
@@ -51,7 +60,11 @@ def clear_session_client() -> None:
 
 
 def _get_client() -> AsyncOpenAI:
-    return _session_client.get() or _default_client
+    """会话级客户端优先；没有则默认客户端；都没有 → 明确报错（没填就是没填）。"""
+    client = _session_client.get() or _default_client
+    if client is None:
+        raise RuntimeError("未配置 API Key——请在 Lumen 设置 → 模型 里填写所用模型的 API Key")
+    return client
 
 
 def get_cost_summary(records: list[dict]) -> dict:
