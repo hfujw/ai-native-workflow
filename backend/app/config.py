@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     )
 
     # ── LLM ──
-    deepseek_api_key: str = Field(..., description="DeepSeek API Key")
+    # 默认 API Key 可选：用户在前端设置里填（会话级绑定，优先于这里）；
+    # 这里没配、前端也没填 → 生成时报"未配置 API Key"（不静默、不让启动卡死）
+    deepseek_api_key: str = Field("", description="DeepSeek API Key（可选；前端填的优先）")
     deepseek_base_url: str = Field("https://api.deepseek.com")
     deepseek_model: str = Field("deepseek-chat")
 
@@ -76,13 +78,6 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return v.lower() in ("1", "true", "yes", "on")
         return bool(v)
-
-    @field_validator("deepseek_api_key")
-    @classmethod
-    def validate_key(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("DEEPSEEK_API_KEY 必须设置且不能为空")
-        return v.strip()
 
 
 @lru_cache
