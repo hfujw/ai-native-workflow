@@ -37,6 +37,7 @@ export function useGenerate() {
     }
 
     let settled = false;
+    let reachedTerminal = false; // 收到 page_ready/generation_failed 才算真正结束
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
     setStatus("connecting");
@@ -60,7 +61,12 @@ export function useGenerate() {
         return;
       }
       // page_ready：主生成完成、连接保持（后端在等迭代指令）→ 解锁输入
-      if (msg.type === "page_ready") setStatus("ready");
+      if (msg.type === "page_ready") {
+        reachedTerminal = true;
+        setStatus("ready");
+      } else if (msg.type === "generation_failed") {
+        reachedTerminal = true; // 失败也是终点——终止按钮随之隐藏是对的
+      }
       options.onMessage(msg);
     };
 
@@ -73,9 +79,11 @@ export function useGenerate() {
     };
 
     ws.onclose = () => {
+      // 已到终点（ready/失败）或用户主动 stop 过 → 不把状态回退成 done。
+      // 中途意外断开 → done（终止按钮隐藏，因为连接已死，无可停止）
       if (!settled) {
         settled = true;
-        setStatus("done");
+        setStatus((cur) => (reachedTerminal || cur === "idle" ? cur : "done"));
       }
       wsRef.current = null;
     };

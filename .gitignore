@@ -50,3 +50,6 @@ FULL_TRACE.md
 .idea/
 *.swp
 *.swo
+
+# 生成页面工作区（每个对话一页，便于分享/后续文件工具）
+backend/workspace/

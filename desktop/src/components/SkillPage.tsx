@@ -11,8 +11,10 @@ import {
   IconSearch,
   IconTrash,
 } from "./icons";
-import { deleteSkill, fetchSkills } from "../lib/api";
+import { deleteSkill, fetchSkills, installSkill } from "../lib/api";
 import type { Skill as ApiSkill } from "../lib/api";
+import { confirmDialog } from "../lib/confirm";
+import { toast } from "../lib/toast";
 
 type Skill = {
   id: string;
@@ -22,6 +24,8 @@ type Skill = {
   by: string;
   builtin: boolean;
   icon: ComponentType<IconProps>;
+  /** skill 给 AI 的系统指令（详情页 Prompt 预览用） */
+  prompt?: string;
 };
 
 /** skill id → 图标（未知 id 用网格兜底） */
@@ -32,10 +36,17 @@ const SKILL_ICONS: Record<string, ComponentType<IconProps>> = {
   search: IconSearch,
 };
 
+/** 系统人格 skill（编排/审查/批评家/迭代）——内置机制，不是用户可选的"风格"，不展示 */
+const PERSONA_IDS = new Set(["core", "judge", "critique", "refine"]);
+
 const TABS = ["精选", "我的 Skill", "分类"];
 const CATEGORIES = ["全部", "风格", "工具"];
 
-export default function SkillPage({ onBack }: { onBack: () => void }) {
+export default function SkillPage({
+  onBack,
+}: {
+  onBack: () => void;
+}) {
   const [tab, setTab] = useState("精选");
   const [search, setSearch] = useState("");
   const [detail, setDetail] = useState<Skill | null>(null);
@@ -43,6 +54,10 @@ export default function SkillPage({ onBack }: { onBack: () => void }) {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  // 下载 skill 表单
+  const [addingSkill, setAddingSkill] = useState(false);
+  const [newSkillId, setNewSkillId] = useState("");
+  const [newSkillMarkdown, setNewSkillMarkdown] = useState("");
 
   const reload = () => {
     setLoading(true);
@@ -50,15 +65,18 @@ export default function SkillPage({ onBack }: { onBack: () => void }) {
     fetchSkills()
       .then((data) => {
         setSkills(
-          (data.skills ?? []).map((s: ApiSkill) => ({
-            id: s.id,
-            name: s.name,
-            type: s.type,
-            desc: s.desc,
-            by: s.builtin ? "官方" : "自定义",
-            builtin: s.builtin,
-            icon: SKILL_ICONS[s.id] ?? IconGrid,
-          }))
+          (data.skills ?? [])
+            .filter((s) => !PERSONA_IDS.has(s.id)) // 系统人格不展示（不是可选的风格）
+            .map((s: ApiSkill) => ({
+              id: s.id,
+              name: s.name,
+              type: s.type,
+              desc: s.desc,
+              by: s.builtin ? "官方" : "自定义",
+              builtin: s.builtin,
+              icon: SKILL_ICONS[s.id] ?? IconGrid,
+              prompt: s.prompt,
+            }))
         );
         setLoading(false);
       })
@@ -72,13 +90,37 @@ export default function SkillPage({ onBack }: { onBack: () => void }) {
     reload();
   }, []);
 
-  /** 删除自定义 skill（内置不可删） */
+  /** 删除自定义 skill（内置不可删；⑤ 删除零确认 → 加确认） */
   const removeSkill = async (id: string) => {
+    const ok = await confirmDialog("确定删除这个 Skill？");
+    if (!ok) return;
     try {
       await deleteSkill(id);
+      if (detail?.id === id) setDetail(null); // 删除的是正在看的 → 回列表
       reload();
     } catch {
       /* 删除失败静默（内置/不存在等） */
+    }
+  };
+
+
+  /** 下载/安装 skill（粘贴 SKILL.md 的 markdown）——使用靠预设 + LLM，这里只是"有可用 skill"的来源 */
+  const addSkill = async () => {
+    const id = newSkillId.trim();
+    const md = newSkillMarkdown.trim();
+    if (!id || !md) {
+      toast("请填写 skill id 和 markdown 内容", "error");
+      return;
+    }
+    try {
+      const s = await installSkill(id, md);
+      toast(`已下载「${s.name}」`);
+      setAddingSkill(false);
+      setNewSkillId("");
+      setNewSkillMarkdown("");
+      reload();
+    } catch {
+      toast("下载失败：id 非法或格式缺 name", "error");
     }
   };
 
@@ -93,9 +135,25 @@ export default function SkillPage({ onBack }: { onBack: () => void }) {
         <div className="skill-detail">
           <div className="skill-detail-icon"><DetailIcon size={52} /></div>
           <h2 className="skill-detail-name">{detail.name}</h2>
-          <div className="skill-detail-by">作者 {detail.by}</div>
-          <button className="start-chat-btn" onClick={onBack}>开始生成</button>
+          <div className="skill-detail-by">作者 {detail.by} · 类型：{detail.type}</div>
           <p className="skill-detail-desc">{detail.desc}</p>
+
+          {/* Prompt 直接展示——Skill 的全部内容，不点不看 */}
+          {detail.prompt && (
+            <div className="skill-prompt-section">
+              <div className="skill-prompt-label">Prompt（这段指令定义了这个 Skill）</div>
+              <pre className="skill-prompt-code">{detail.prompt}</pre>
+            </div>
+          )}
+
+          {/* 已有 skill 只有删除（"下载"是拿新的，在列表页） */}
+          {!detail.builtin && (
+            <div className="skill-actions">
+              <button className="btn-danger" onClick={() => removeSkill(detail.id)}>
+                <IconTrash size={14} /> 删除
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -118,10 +176,38 @@ export default function SkillPage({ onBack }: { onBack: () => void }) {
           <IconSearch size={15} />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索 Skill..." />
         </div>
+        <button className="download-skill-btn" onClick={() => setAddingSkill((v) => !v)}>
+          {addingSkill ? "收起" : "下载新 Skill"}
+        </button>
         <button className="back-btn" onClick={onBack}>
           <IconClose size={16} />
         </button>
       </div>
+
+      {/* 下载 skill 表单：粘贴 SKILL.md 的 markdown */}
+      {addingSkill && (
+        <div className="skill-download-form">
+          <div className="skill-download-hint">从 GitHub 或任意来源下载新 Skill——把它的 SKILL.md 内容粘贴到这里，填个唯一 id</div>
+          <div className="model-field">
+            <label className="model-field-label">Skill id（唯一，如 my-style）</label>
+            <input className="setting-input" placeholder="my-style" value={newSkillId} onChange={(e) => setNewSkillId(e.target.value)} />
+          </div>
+          <div className="model-field">
+            <label className="model-field-label">SKILL.md 内容（frontmatter 需含 name）</label>
+            <textarea
+              className="skill-download-textarea"
+              placeholder={"---\nname: 我的风格\ntype: 风格\ndesc: 一句话\n---\n正文指令"}
+              value={newSkillMarkdown}
+              onChange={(e) => setNewSkillMarkdown(e.target.value)}
+              rows={6}
+            />
+          </div>
+          <div className="model-editor-actions">
+            <button className="btn-secondary" onClick={() => setAddingSkill(false)}>取消</button>
+            <button className="btn-primary" onClick={addSkill} disabled={!newSkillId.trim() || !newSkillMarkdown.trim()}>下载</button>
+          </div>
+        </div>
+      )}
 
       <div className="skill-tabs">
         {TABS.map((t) => (
@@ -148,8 +234,8 @@ export default function SkillPage({ onBack }: { onBack: () => void }) {
             <div className="my-skills-empty">
               <div className="my-skills-icon"><IconGrid size={44} /></div>
               <p>还没有下载的 Skill</p>
-              <p className="my-skills-hint">在对话里输入「帮我找 XX skill 并下载」，Lumen 会下载到这里；制作时它会自动选用合适的 skill</p>
-              <button className="new-skill-btn" onClick={onBack}>去对话找 Skill</button>
+              <p className="my-skills-hint">点上方"下载新 Skill"，从 GitHub 等来源粘贴 SKILL.md 添加；生成时用哪个风格由 Agent 预设与 LLM 自主选用</p>
+              <button className="new-skill-btn" onClick={onBack}>返回对话</button>
             </div>
           ) : (
             <div className="skill-grid">

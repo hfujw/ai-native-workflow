@@ -9,6 +9,7 @@ import { useGenerate } from "./hooks/useGenerate";
 import { usePersistentState } from "./hooks/usePersistentState";
 import {
   deleteProject,
+  deleteWorkspaceFile,
   fetchEvents,
   fetchHistory,
   fetchProject,
@@ -18,8 +19,11 @@ import {
 import type { GenParams, ModelItem, Msg, ProviderCreds, SearchService, ToolCall, ToolId } from "./lib/api";
 import { dedupeSessions, deleteSession, loadSessions, saveSession } from "./lib/sessions";
 import type { SavedSession } from "./lib/sessions";
+import { confirmDialog } from "./lib/confirm";
+import { toast } from "./lib/toast";
 import {
   IconClose,
+  IconCode,
   IconCopy,
   IconDownload,
   IconGrid,
@@ -38,6 +42,7 @@ import {
   IconTrash,
 } from "./components/icons";
 import "./App.css";
+import lumenLogo from "./assets/lumen.svg";
 
 const appWindow = getCurrentWindow();
 
@@ -47,10 +52,13 @@ type View = "chat" | "works" | "skill";
 /** 作品页作品（接后端后从当前对话的真实产出填充） */
 type Work = {
   id: string;
+  /** 对应对话里的消息 id（删除作品时移除该消息） */
+  msgId: number;
+  /** 工作区产物文件路径（删除作品时连带删文件） */
+  filePath: string;
   title: string;
   html: string;
   time: string;
-  cost: string;
   steps: number;
   tools: string[];
 };
@@ -71,6 +79,23 @@ function upsertCall(calls: ToolCall[], next: ToolCall): ToolCall[] {
   const idx = calls.findIndex((c) => c.id === next.id);
   if (idx < 0) return [...calls, next];
   return calls.map((c, i) => (i === idx ? { ...c, ...next } : c));
+}
+
+/** 收尾所有仍 running 的卡片——judge 内联审查 / refine 迭代都没有 tool_result，
+ *  全靠这里兜底，否则卡片"进行中"+ 光标永远闪下去。停止 / 失败 / 完成时同样清残留。 */
+function settleRunningCards(ms: Msg[], summary?: string): Msg[] {
+  return ms.map((m) =>
+    (m.calls ?? []).some((c) => c.status === "running")
+      ? {
+          ...m,
+          calls: (m.calls ?? []).map((c) =>
+            c.status === "running"
+              ? { ...c, status: "done" as const, summary: summary ?? c.summary }
+              : c
+          ),
+        }
+      : m
+  );
 }
 
 /** 默认模型（首次启动；不可移除——保证输入框永远有模型可选）
@@ -102,9 +127,9 @@ export default function App() {
   const [genParams, setGenParams] = usePersistentState<GenParams>("lumen.genParams", {
     agentSteps: 20,
     llmSteps: 10,
-    budget: 1.0,
     searchMax: 8,
     searchEnabled: true,
+    creativeSwarmSize: 3,
     skillId: "magazine",  // 默认预设（知识探险家）推荐的风格 skill
   });
   const [models, setModels] = usePersistentState<ModelItem[]>("lumen.models", DEFAULT_MODELS);
@@ -138,6 +163,11 @@ export default function App() {
       return [...fixed, ...ms.filter((m) => !fixedIds.has(m.id)), ...missing];
     });
   }, [setModels]);
+  // ① 删除模型后 composerModel 悬空修复：选中的模型已不在列表 → 重置为第一个
+  // （否则 Composer UI 显示 A，实际发送 model=undefined 走后端默认——UI 撒谎）
+  useEffect(() => {
+    setComposerModel((cur) => (models.some((m) => m.id === cur) ? cur : (models[0]?.id ?? "")));
+  }, [models, setComposerModel]);
   const [sidebarOpen, setSidebarOpen] = usePersistentState("lumen.sidebar", true);
   // 提供方连接凭证（每个 provider 独立——选哪个模型的模型，就用哪个 provider 的 Key/地址；
   // 发送时随 WS 传给后端 → 后端绑定会话级客户端）
@@ -181,8 +211,19 @@ export default function App() {
     localStorage.removeItem("lumen.tavilyKey");
   }, [legacyTavilyKey, setSearchServices]);
   const [fullscreenHtml, setFullscreenHtml] = useState<string | null>(null);
+  /** 源码视图：某条消息的成品卡切换到"看 HTML 代码流"（null=预览 iframe） */
+  const [codeMsgId, setCodeMsgId] = useState<number | null>(null);
+  const codeRef = useRef<HTMLPreElement>(null);
+  // 渲染流式：源码视图随 html 增长自动滚到底（看代码飞快上滑）
+  useEffect(() => {
+    if (codeMsgId != null && codeRef.current) {
+      codeRef.current.scrollTop = codeRef.current.scrollHeight;
+    }
+  }, [messages, codeMsgId]);
   /** 空状态建议话题（来自后端知识库 /api/events） */
   const [starters, setStarters] = useState<string[]>([]);
+  /** 后端连接状态（⑧：侧边栏状态点，定期 ping——正常桌面应用要有连接指示灯） */
+  const [backendOnline, setBackendOnline] = useState(false);
   /** 历史对话（"新对话"时当前对话自动存档到这里，可找回） */
   const [sessions, setSessions] = useState<SavedSession[]>(() => {
     // 旧数据迁移：早期版本同一对话可能被拆成多份 → 启动时按首条用户消息合并
@@ -248,24 +289,43 @@ export default function App() {
     };
   }, []);
 
+  // ⑧ 后端连接状态：挂载 ping 一次 + 每 15s 探测（用轻量 /api/events，不拉全量历史）
+  useEffect(() => {
+    let cancelled = false;
+    const ping = async () => {
+      try {
+        await fetchEvents();
+        if (!cancelled) setBackendOnline(true);
+      } catch {
+        if (!cancelled) setBackendOnline(false);
+      }
+    };
+    ping();
+    const iv = window.setInterval(ping, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(iv);
+    };
+  }, []);
+
   /** 回看历史作品：先存档当前对话（防丢），再拉取记录显示 */
   const openHistory = async (id: string) => {
     resetCurrentSession();
+    currentProjectIdRef.current = id; // 标记主窗口正在回看这个作品
     stop();
     setIterable(false);
     try {
       const p = await fetchProject(id);
       const versions = p.versions ?? [];
       const last = versions[versions.length - 1];
-      const cost = p.cost ?? 0;
       setMessages([
         { id: Date.now(), role: "user", text: p.topic },
         {
           id: Date.now() + 1,
           role: "assistant",
-          text: `历史作品回看 · 生成于 ${new Date(p.created_at * 1000).toLocaleString()} · ${p.steps} 步 · ¥${cost.toFixed(4)} · 共 ${p.iterations} 版`,
+          text: `历史作品回看 · 生成于 ${new Date(p.created_at * 1000).toLocaleString()} · ${p.steps} 步 · 共 ${p.iterations} 版`,
           html: last?.html ?? "",
-          cost,
+          finalized: true,
         },
       ]);
       setView("chat");
@@ -315,12 +375,20 @@ export default function App() {
   /** 当前对话的存档 id：稳定持有（ref）——同一对话多次存档只更新同一份，
    *  不再"每次存档都新建一条"（修复对话被拆散 + 点击列表顶部多出条目的问题） */
   const currentSessionIdRef = useRef<string | null>(null);
+  /** 正在主窗口回看的后端作品 id——删除作品时若正是它，主窗口要回到新对话 */
+  const currentProjectIdRef = useRef<string | null>(null);
 
-  /** 存档当前对话（有内容才存；同一对话用同一 id，切换对话时重置） */
+  /** 存档当前对话（有内容才存；同一对话用同一 id，切换对话时重置）。
+   *  ② ref 为空时先按"首条消息"找已存会话绑定——否则应用启动恢复的对话
+   *  会被用新 id 再存一份（数据重复=侧边栏增殖） */
   const archiveCurrent = () => {
     if (messages.length === 0) return;
     if (!currentSessionIdRef.current) {
-      currentSessionIdRef.current = `s${Date.now()}`;
+      const firstUser = messages.find((m) => m.role === "user")?.text ?? "";
+      const match = firstUser
+        ? sessions.find((s) => s.messages.find((m) => m.role === "user")?.text === firstUser)
+        : undefined;
+      currentSessionIdRef.current = match?.id ?? `s${Date.now()}`;
     }
     const title = messages.find((m) => m.role === "user")?.text ?? "对话";
     setSessions(
@@ -342,6 +410,7 @@ export default function App() {
   /** 新对话：当前对话存档，另开一个空对话 */
   const startNewChat = () => {
     resetCurrentSession();
+    currentProjectIdRef.current = null;
     stop(); // 关掉进行中的生成连接
     setIterable(false);
     setView("chat");
@@ -349,16 +418,55 @@ export default function App() {
     setHistorySearch("");
   };
 
-  /** 打开历史对话：先存档当前（防丢），再加载目标会话 */
+  /** 打开历史对话：先存档当前（防丢），再加载目标会话。
+   *  ⑥ 把当前会话 id 绑定到打开的会话——否则下次"新对话"存档会开新条目，同一对话重复两份 */
   const openSession = (s: SavedSession) => {
     resetCurrentSession();
+    currentProjectIdRef.current = null;
+    currentSessionIdRef.current = s.id;
     stop();
     setIterable(false);
     setMessages(s.messages);
     setView("chat");
   };
 
-  const removeSession = (id: string) => setSessions(deleteSession(id));
+  const removeSession = async (id: string) => {
+    // ⑤ 删除零确认 → 加确认（历史对话删了不可恢复）
+    const ok = await confirmDialog("确定删除这段历史对话？此操作不可恢复");
+    if (!ok) return;
+    const target = sessions.find((s) => s.id === id);
+    setSessions(deleteSession(id));
+    // 删的是主窗口正在查看/编辑的对话（按 ref 或首条消息匹配）→ 主窗口回到空的新对话。
+    // 覆盖两种情况：① openSession 绑定过 ref；② 应用启动从 lumen.messages 恢复、ref 为空但内容相同。
+    // 不清 ref 的话，下一步"新对话"的 archiveCurrent() 会把它原样存档回来——删除等于没删。
+    const targetFirst = target?.messages.find((m) => m.role === "user")?.text ?? "";
+    const currentFirst = messages.find((m) => m.role === "user")?.text ?? "";
+    const isDisplayed =
+      currentSessionIdRef.current === id || (targetFirst !== "" && targetFirst === currentFirst);
+    if (isDisplayed) {
+      currentSessionIdRef.current = null;
+      currentProjectIdRef.current = null;
+      stop();
+      setIterable(false);
+      setView("chat");
+      setMessages([]);
+      setHistorySearch("");
+    }
+  };
+
+  /** 清空当前对话（侧边栏"当前对话"条目的删除）——不存档，直接弃掉。 */
+  const clearCurrentChat = async () => {
+    const ok = await confirmDialog("确定清空当前对话？此操作不可恢复");
+    if (!ok) return;
+    stop();
+    currentSessionIdRef.current = null;
+    currentProjectIdRef.current = null;
+    runningCardRef.current = null;
+    setIterable(false);
+    setView("chat");
+    setMessages([]);
+    setHistorySearch("");
+  };
 
   // 生成/迭代消息流的卡片配对：按消息顺序配对（thinking 记当前卡片，tool_result 更新它）
   // ——不依赖后端 step 编号（迭代时 step 都是 0，会互相覆盖）
@@ -376,26 +484,87 @@ export default function App() {
         const tool = String(msg.tool ?? "");
         const title = TOOL_TITLES[tool];
         if (!title) return; // system 类提示不建卡片
+        const fullThought = String(msg.thought ?? "");
+        const streamCid = runningCardRef.current;
+        // 决策流式阶段建过"思考"卡 → 复用为真工具卡（换标题/工具名，thought 换完整版），一步一卡不重复
+        if (streamCid) {
+          setMessages((ms) =>
+            ms.map((m) =>
+              m.id === targetId
+                ? {
+                    ...m,
+                      calls: (m.calls ?? []).map((c) =>
+                      c.id === streamCid ? { ...c, tool: tool as ToolId, title, thought: fullThought } : c
+                    ),
+                  }
+                : m
+            )
+          );
+          break;
+        }
         seqRef.current += 1;
         const cid = `c${seqRef.current}`;
         runningCardRef.current = cid;
-        setMessages((ms) =>
-          ms.map((m) =>
+        setMessages((ms) => {
+          // 新步骤接管：先收尾旧 running 卡片（judge/迭代无 tool_result，防"进行中"滞留）
+          const settled = settleRunningCards(ms);
+          return settled.map((m) =>
             m.id === targetId
               ? {
                   ...m,
-                  cost: Number(msg.budget ?? m.cost ?? 0),
                   calls: upsertCall(m.calls ?? [], {
                     id: cid,
                     tool: tool as ToolId,
                     title,
                     status: "running",
-                    thought: String(msg.thought ?? ""),
+                    thought: fullThought,
                   }),
                 }
               : m
-          )
-        );
+          );
+        });
+        break;
+      }
+      case "thinking_stream": {
+        // 决策实时流：thought 边生成边长出来（后端从 JSON 渐进提取增量片段）
+        const chunk = String(msg.chunk ?? "");
+        if (!chunk) return;
+        if (!runningCardRef.current) {
+          seqRef.current += 1;
+          const cid = `c${seqRef.current}`;
+          runningCardRef.current = cid;
+          setMessages((ms) => {
+            const settled = settleRunningCards(ms);
+            return settled.map((m) =>
+              m.id === targetId
+                ? {
+                    ...m,
+                      calls: upsertCall(m.calls ?? [], {
+                      id: cid,
+                      tool: "think" as ToolId,
+                      title: "思考",
+                      status: "running",
+                      thought: chunk,
+                    }),
+                  }
+                : m
+            );
+          });
+        } else {
+          const cid = runningCardRef.current;
+          setMessages((ms) =>
+            ms.map((m) =>
+              m.id === targetId
+                ? {
+                    ...m,
+                      calls: (m.calls ?? []).map((c) =>
+                      c.id === cid ? { ...c, thought: (c.thought ?? "") + chunk } : c
+                    ),
+                  }
+                : m
+            )
+          );
+        }
         break;
       }
       case "tool_result": {
@@ -403,23 +572,25 @@ export default function App() {
         const title = TOOL_TITLES[tool] ?? tool;
         const cid = runningCardRef.current ?? `c${++seqRef.current}`;
         runningCardRef.current = null;
-        setMessages((ms) =>
-          ms.map((m) =>
+        setMessages((ms) => {
+          // 先清掉所有残留 running（同消息一次只该有一张），再标记本次结果
+          const settled = settleRunningCards(ms);
+          return settled.map((m) =>
             m.id === targetId
               ? {
                   ...m,
-                  cost: Number(msg.budget ?? m.cost ?? 0),
                   calls: upsertCall(m.calls ?? [], {
                     id: cid,
                     tool: (TOOL_TITLES[tool] ? tool : "think") as ToolId,
                     title,
                     status: "done",
                     summary: String(msg.summary ?? ""),
+                    detail: String(msg.detail ?? ""),
                   }),
                 }
               : m
-          )
-        );
+          );
+        });
         break;
       }
       case "html_chunk": {
@@ -431,9 +602,15 @@ export default function App() {
       }
       case "page_ready": {
         setMessages((ms) =>
-          ms.map((m) =>
+          settleRunningCards(ms).map((m) =>
             m.id === targetId
-              ? { ...m, html: String(msg.page_html ?? ""), text: "生成完成。" }
+              ? {
+                  ...m,
+                  html: String(msg.page_html ?? ""),
+                  text: "生成完成。",
+                  file_path: String(msg.file_path ?? m.file_path ?? ""),
+                  finalized: true, // 生成完成：主预览 iframe 此刻才渲染
+                }
               : m
           )
         );
@@ -443,8 +620,10 @@ export default function App() {
       }
       case "generation_failed": {
         setMessages((ms) =>
-          ms.map((m) =>
-            m.id === targetId ? { ...m, text: `生成失败：${String(msg.reason ?? "未知原因")}` } : m
+          settleRunningCards(ms).map((m) =>
+            m.id === targetId
+              ? { ...m, text: `生成失败：${String(msg.reason ?? "未知原因")}` }
+              : m
           )
         );
         setIterable(false);
@@ -459,6 +638,7 @@ export default function App() {
     const userMsgId = Date.now();
     const assistId = Date.now() + 1;
     targetIdRef.current = assistId;
+    runningCardRef.current = null; // 上一轮生成残留的流式卡引用清掉，避免串到本轮
     setMessages((ms) => [
       ...ms,
       { id: userMsgId, role: "user", text },
@@ -472,7 +652,12 @@ export default function App() {
     // （都没有 = 不联网——绝不回落任何隐藏配置）
     let searchSvc = searchServices.find((s) => s.id === activeSearchService);
     if (!searchSvc?.apiKey) {
-      searchSvc = searchServices.find((s) => s.apiKey) ?? undefined;
+      const picked = searchServices.find((s) => s.apiKey) ?? undefined;
+      // ② 搜索服务静默回退 → 明示：用户以为用选中的服务，实际可能换了别的
+      if (searchSvc && picked && picked.id !== searchSvc.id) {
+        toast(`「${searchSvc.name}」未配置 Key，已自动使用「${picked.name}」联网搜索`, "info");
+      }
+      searchSvc = picked;
     }
     send(text, {
       params: genParams,
@@ -514,8 +699,23 @@ export default function App() {
     startGeneration(text);
   };
 
+  /** 停止生成：关掉 WS 连接 + 清掉残留的"进行中"卡片 + 标"已停止"（stop 只关连接，不清理 UI） */
+  const handleStop = () => {
+    stop();
+    runningCardRef.current = null;
+    const t = targetIdRef.current;
+    setMessages((ms) => {
+      const settled = settleRunningCards(ms);
+      // ⑪ 停止后要有明确"已停止"状态——用户分得清是完成还是被自己打断
+      return t == null
+        ? settled
+        : settled.map((m) => (m.id === t ? { ...m, text: m.text ? `${m.text} 已停止。` : "已停止。" } : m));
+    });
+  };
+
   const copyText = (text: string) => {
     navigator.clipboard?.writeText(text);
+    toast("已复制"); // ⑩ 复制要有反馈，不然用户不知道成没成
   };
 
   const exportHtml = (html: string) => {
@@ -526,6 +726,7 @@ export default function App() {
     a.download = "page.html";
     a.click();
     URL.revokeObjectURL(url);
+    toast("已导出 page.html"); // ⑩ 导出同样要有反馈
   };
 
   /** 重命名 / 置顶 / 删除历史作品（真实调用后端） */
@@ -539,6 +740,21 @@ export default function App() {
       // 失败静默（下次刷新恢复）
     }
     setRenamingItem(null);
+  };
+
+  /** 删除作品卡：连带删工作区产物文件 + 移除对话里的该产物消息。 */
+  const deleteWork = async (w: Work) => {
+    const ok = await confirmDialog("确定删除这个作品？对应的工作区文件会一起删掉");
+    if (!ok) return;
+    const filename = w.filePath.split(/[\\/]/).pop() ?? "";
+    if (filename) {
+      try {
+        await deleteWorkspaceFile(filename);
+      } catch {
+        /* 文件删除失败不阻断（历史作品可能没有落盘文件） */
+      }
+    }
+    setMessages((ms) => ms.filter((m) => m.id !== w.msgId));
   };
 
   const pinHistoryItem = async (id: string) => {
@@ -555,11 +771,28 @@ export default function App() {
   };
 
   const deleteHistoryItem = async (id: string) => {
+    // ⑤ 删除零确认 → 加确认（作品删了不可恢复）
+    const ok = await confirmDialog("确定删除这个作品？此操作不可恢复");
+    if (!ok) {
+      setHistoryMenu(null);
+      return;
+    }
     try {
       await deleteProject(id);
       setHistory((h) => h.filter((x) => x.id !== id));
+      toast("作品已删除");
     } catch {
-      // 静默
+      toast("删除失败，请稍后重试", "error");
+    }
+    // 删的是主窗口正在回看的作品 → 主窗口回到空的新对话
+    if (currentProjectIdRef.current === id) {
+      currentProjectIdRef.current = null;
+      currentSessionIdRef.current = null;
+      stop();
+      setIterable(false);
+      setView("chat");
+      setMessages([]);
+      setHistorySearch("");
     }
     setHistoryMenu(null);
   };
@@ -572,19 +805,40 @@ export default function App() {
         : (messages.find((m) => m.role === "user")?.text ?? "新对话");
 
   const filteredHistory = history.filter((h) => h.topic.includes(historySearch.trim()));
+  // ⑮ 搜索框同时过滤历史对话——否则搜索词对上面那排对话列表完全无效（误导）
+  // ① 排除当前对话的内容（首条消息一致）——它已在"当前对话"条目显示，历史里不重复
+  //   （用内容而非仅 id，覆盖"应用启动恢复的会话 ref 为空"的场景，修"点击就增殖"）
+  const currentFirst = messages.find((m) => m.role === "user")?.text ?? "";
+  const filteredSessions = sessions.filter(
+    (s) =>
+      s.title.includes(historySearch.trim()) &&
+      (currentFirst === "" || s.messages.find((m) => m.role === "user")?.text !== currentFirst)
+  );
+  // ⑨ 首次引导：没有任何 provider 配置过 Key → 空状态提示去设置
+  const hasAnyApiKey = Object.values(providerCreds).some((c) => c.apiKey);
+  // 当前对话（侧边栏"当前对话"条目）：聊天时左侧创作区也能看到它，受搜索过滤
+  const currentTitle = messages.find((m) => m.role === "user")?.text ?? "新对话";
+  const showCurrent = messages.length > 0 && currentTitle.includes(historySearch.trim());
 
   // 作品页：当前对话的真实产出
+  // 标题取该作品前最近一条用户消息
   const works: Work[] = messages
     .filter((m) => m.role === "assistant" && m.html)
-    .map((m) => ({
-      id: `live-${m.id}`,
-      title: m.source ?? "未命名作品",
-      html: m.html!,
-      time: "刚刚",
-      cost: `¥${(m.cost ?? 0).toFixed(4)}`,
-      steps: m.calls?.length ?? 0,
-      tools: (m.calls ?? []).map((c) => c.title).filter((t) => t !== "Think"),
-    }));
+    .map((m) => {
+      const prevUser = [...messages.slice(0, messages.indexOf(m))]
+        .reverse()
+        .find((x) => x.role === "user");
+      return {
+        id: `live-${m.id}`,
+        msgId: m.id,
+        filePath: m.file_path ?? "",
+        title: prevUser?.text?.slice(0, 30) ?? "未命名作品",
+        html: m.html!,
+        time: "刚刚",
+        steps: m.calls?.length ?? 0,
+        tools: (m.calls ?? []).map((c) => c.title).filter((t) => t !== "Think"),
+      };
+    });
 
   return (
     <div className="app">
@@ -617,13 +871,37 @@ export default function App() {
           <IconPlus size={15} /> <span className="btn-label">新对话</span>
         </button>
 
-        {/* 创作区：历史对话 + 搜索 + 作品列表 */}
+        {/* 创作区：搜索 + 历史对话 + 作品列表 */}
         <div className="history">
           <div className="history-head">创作区</div>
-          {sessions.length > 0 && (
+          {/* 搜索框固定在顶部——同时过滤历史对话和作品 */}
+          <div className="history-search">
+            <IconSearch size={13} />
+            <input
+              value={historySearch}
+              onChange={(e) => setHistorySearch(e.target.value)}
+              placeholder="搜索对话 / 作品..."
+            />
+            {historySearch && (
+              <button className="history-search-clear" onClick={() => setHistorySearch("")}>
+                <IconClose size={12} />
+              </button>
+            )}
+          </div>
+          {(sessions.length > 0 || messages.length > 0) && (
             <>
               <div className="history-subhead">历史对话</div>
-              {sessions.map((s) => (
+              {/* 当前对话：聊天时左侧也能看到，标记为"当前"，可清空 */}
+              {showCurrent && (
+                <div className="history-item current">
+                  <IconMessageCircle size={12} className="history-item-icon" />
+                  <span className="history-text current-label" title="当前对话">{currentTitle}</span>
+                  <button className="history-more" onClick={clearCurrentChat} title="清空当前对话">
+                    <IconTrash size={13} />
+                  </button>
+                </div>
+              )}
+              {filteredSessions.map((s) => (
                 <div key={s.id} className="history-item" onMouseLeave={() => setHistoryMenu(null)}>
                   <IconHistory size={12} className="history-item-icon" />
                   <span className="history-text" onClick={() => openSession(s)}>{s.title}</span>
@@ -634,24 +912,15 @@ export default function App() {
               ))}
             </>
           )}
-          <div className="history-search">
-            <IconSearch size={13} />
-            <input
-              value={historySearch}
-              onChange={(e) => setHistorySearch(e.target.value)}
-              placeholder="搜索作品..."
-            />
-            {historySearch && (
-              <button className="history-search-clear" onClick={() => setHistorySearch("")}>
-                <IconClose size={12} />
-              </button>
-            )}
-          </div>
 
           <div className="history-list" ref={historyRef}>
             {filteredHistory.length === 0 ? (
               <div className="history-empty">
-                {history.length === 0 ? "还没有作品，开始第一个创作吧" : "没有匹配的作品"}
+                {history.length === 0
+                  ? sessions.length === 0
+                    ? "还没有作品，开始第一个创作吧"
+                    : "历史对话里还没有生成的作品"
+                  : "没有匹配的作品"}
               </div>
             ) : (
               filteredHistory.map((item) => (
@@ -659,6 +928,7 @@ export default function App() {
                   {renamingItem === item.id ? (
                     <input
                       className="history-rename-input"
+                      placeholder="重命名作品"
                       value={renameText}
                       onChange={(e) => setRenameText(e.target.value)}
                       autoFocus
@@ -697,8 +967,15 @@ export default function App() {
           <IconGrid size={15} /> <span className="btn-label">探索 Skill</span>
         </button>
 
-        {/* 底部：设置 */}
+        {/* 底部：后端状态 + 设置 */}
         <div className="sidebar-footer">
+          <div
+            className="backend-status"
+            title={backendOnline ? "后端已连接" : "后端未启动——请运行 uvicorn app.main:app --port 8001"}
+          >
+            <span className={`backend-dot ${backendOnline ? "online" : ""}`} />
+            <span>{backendOnline ? "后端已连接" : "后端未启动"}</span>
+          </div>
           <SettingsButton
             theme={theme}
             setTheme={setTheme}
@@ -764,13 +1041,24 @@ export default function App() {
                         ))}
                       </div>
                     )}
+                    {/* ⑨ 首次使用/后端未启动引导——正常桌面应用空状态要给明确下一步 */}
+                    {backendOnline && !hasAnyApiKey && (
+                      <p className="empty-setup-hint">
+                        首次使用？先在左下角 <b>设置 → 模型</b> 里填写所用模型的 API Key，Lumen 才能开始生成。
+                      </p>
+                    )}
+                    {!backendOnline && (
+                      <p className="empty-setup-hint">
+                        后端未启动——请运行 <code>uvicorn app.main:app --port 8001</code> 后再试。
+                      </p>
+                    )}
                   </div>
                 ) : (
                   messages.map((m) => (
                     <div key={m.id} className={`msg ${m.role}`}>
                       {m.role === "assistant" ? (
                         <>
-                          <div className="avatar ai" />
+                          <div className="avatar ai"><img src={lumenLogo} alt="Lumen" /></div>
                           <div className="bubble-wrap">
                             {/* 工具卡片流：思考与执行过程毫无保留 */}
                             {m.calls && m.calls.length > 0 && (
@@ -786,8 +1074,26 @@ export default function App() {
                             {m.html && (
                               <div className="preview-card">
                                 <div className="preview-bar">
-                                  <span>预览</span>
+                                  <span>成品</span>
                                   <div>
+                                    <button
+                                      className={codeMsgId === m.id ? "active" : ""}
+                                      onClick={() => setCodeMsgId(codeMsgId === m.id ? null : m.id)}
+                                      title={codeMsgId === m.id ? "切回渲染预览" : "查看 HTML 源码（渲染时实时滚动）"}
+                                    >
+                                      <IconCode size={13} /> {codeMsgId === m.id ? "预览" : "源码"}
+                                    </button>
+                                    {m.file_path && (
+                                      <button
+                                        title={m.file_path}
+                                        onClick={() => {
+                                          navigator.clipboard?.writeText(m.file_path!);
+                                          toast("已复制工作区路径");
+                                        }}
+                                      >
+                                        <IconCopy size={13} /> 复制路径
+                                      </button>
+                                    )}
                                     <button onClick={() => exportHtml(m.html!)}>
                                       <IconDownload size={13} /> 导出
                                     </button>
@@ -796,7 +1102,13 @@ export default function App() {
                                     </button>
                                   </div>
                                 </div>
-                                <iframe srcDoc={m.html} sandbox="allow-scripts" title="预览" />
+                                {codeMsgId === m.id ? (
+                                  <pre className="preview-code" ref={codeRef}>{m.html}</pre>
+                                ) : m.finalized ? (
+                                  <iframe srcDoc={m.html} sandbox="allow-scripts" title="预览" />
+                                ) : (
+                                  <div className="preview-pending">正在渲染…（切"源码"可看 HTML 实时生成）</div>
+                                )}
                               </div>
                             )}
                             <div className="msg-actions">
@@ -820,7 +1132,7 @@ export default function App() {
 
             <Composer
               onSend={handleSend}
-              onStop={stop}
+              onStop={handleStop}
               models={models}
               modelId={composerModel}
               onModelIdChange={setComposerModel}
@@ -849,7 +1161,6 @@ export default function App() {
                     <div className="work-title">{w.title}</div>
                     <div className="work-meta">
                       <span>{w.time}</span>
-                      <span>{w.cost}</span>
                       <span>{w.steps} 步</span>
                     </div>
                     {w.tools.length > 0 && (
@@ -860,8 +1171,13 @@ export default function App() {
                       </div>
                     )}
                   </div>
-                  <div className="work-open">
-                    <IconMaximize size={14} />
+                  <div className="work-actions" onClick={(e) => e.stopPropagation()}>
+                    <button className="work-delete" onClick={() => deleteWork(w)} title="删除作品">
+                      <IconTrash size={13} />
+                    </button>
+                    <button className="work-open" onClick={() => setFullscreenHtml(w.html)} title="全屏预览">
+                      <IconMaximize size={14} />
+                    </button>
                   </div>
                 </div>
               ))}

@@ -118,3 +118,57 @@ def test_step_feedback_only_recent_two():
     assert "search" not in fb
     assert "design" in fb
     assert "render" in fb
+
+
+# ── 决策实时流（thinking_stream）：thought 边生成边长出来 ──
+
+def test_extract_thought_none_before_key():
+    """还没看到 thought 键 → None（不推空片段）。"""
+    from app.agent.orchestrator import _extract_thought
+    assert _extract_thought('{"tool": "render"') is None
+
+
+def test_extract_thought_partial_and_closed():
+    """值未闭合 → 返回已见部分；闭合 → 返回完整。"""
+    from app.agent.orchestrator import _extract_thought
+    assert _extract_thought('{"thought": "素材') == "素材"
+    assert _extract_thought('{"thought": "素材足够，开始渲染页面"}') == "素材足够，开始渲染页面"
+
+
+def test_extract_thought_handles_escaped_quote():
+    """thought 内转义引号不误判为闭合。"""
+    from app.agent.orchestrator import _extract_thought
+    text = '{"thought": "他说\\"对\\"了"'
+    assert _extract_thought(text) == '他说\\"对\\"了'
+
+
+@pytest.mark.asyncio
+async def test_decide_streams_thought_deltas():
+    """_decide 期间把 thought 增量推给 push（拼起来 = 完整 thought）。"""
+    from app.agent.orchestrator import _decide
+
+    pushed = []
+
+    async def fake_push(msg):
+        pushed.append(msg)
+
+    # 逐字吐出 JSON：先 thought 前缀，再内容，再闭合
+    fragments = [
+        '{"tool": "render", "thought": "',
+        "素材",
+        "足够",
+        '，开始渲染页面"}',
+    ]
+
+    async def fake_stream(prompt, system="", model=None, temperature=0.5,
+                          session_records=None, label="decide"):
+        for f in fragments:
+            yield f
+
+    with patch("app.agent.orchestrator.chat_stream", new=fake_stream):
+        d = await _decide(_base_ctx(), push=fake_push)
+    assert d["tool"] == "render"
+    streams = [m for m in pushed if m["type"] == "thinking_stream"]
+    assert len(streams) >= 2
+    assert "".join(m["chunk"] for m in streams) == "素材足够，开始渲染页面"
+    assert all(m["tool"] == "think" for m in streams)

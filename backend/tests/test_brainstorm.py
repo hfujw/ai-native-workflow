@@ -116,6 +116,34 @@ async def test_synthesize_failure_uses_first_plan():
 
 
 @pytest.mark.asyncio
+async def test_spawn_respects_swarm_size():
+    """swarm_size 限制并行脑数量（人海战术可调，默认取配置值）。"""
+    from app.agent.brainstorm import spawn_creative_agents
+
+    async def fake_chat_json(prompt, system="", model=None, session_records=None):
+        return '{"angle": "x", "components": ["cards"], "structure": "S", "visual_hint": "黑金", "rationale": "R"}'
+
+    with patch("app.agent.brainstorm.chat_json", new=fake_chat_json), \
+         patch("app.config.settings.creative_swarm_size", 2):
+        plans = await spawn_creative_agents("恐龙", [], [], "m")  # 无 swarm_size → 用配置默认 2
+    assert len(plans) == 2
+
+
+def test_preselect_topk_prefers_concrete():
+    """Top-K 预选：visual_hint 具体的方案优先，且保持原始顺序。"""
+    from app.agent.brainstorm import _preselect_topk
+    plans = [
+        {"components": ["cards"], "visual_hint": "简洁大方", "rationale": "r"},
+        {"components": ["timeline", "cards"], "visual_hint": "黑金配色厚重历史", "rationale": "理由充分具体"},
+        {"components": ["cards"], "visual_hint": "极简留白", "rationale": "r"},
+    ]
+    top = _preselect_topk(plans, k=2)
+    assert len(top) == 2
+    assert top[0]["visual_hint"] == "黑金配色厚重历史"  # 分数最高
+    assert top[1]["visual_hint"] in ("简洁大方", "极简留白")  # 其余按原序
+
+
+@pytest.mark.asyncio
 async def test_designer_agent_uses_brainstorm():
     """DesignerAgent 主设计路径调用 brainstorm_design。"""
     from app.tools.design import DesignerAgent

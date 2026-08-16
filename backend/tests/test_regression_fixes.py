@@ -109,7 +109,7 @@ async def test_chat_without_session_records_no_nameerror():
 
     with patch.object(llm_client, "_get_client", return_value=fake_client), \
          patch.object(cb, "llm_breaker", _PassThroughBreaker()):
-        text = await llm_client.chat("你好", session_records=None)
+        text = await llm_client.chat("你好", model="deepseek-v4-flash", session_records=None)
 
     assert text == "ok"
 
@@ -143,6 +143,6 @@ async def test_chat_stream_without_session_records_no_nameerror():
     fake_client.chat.completions.create = AsyncMock(side_effect=fake_stream_create)
 
     with patch.object(llm_client, "_get_client", return_value=fake_client):
-        chunks = [c async for c in llm_client.chat_stream("你好", session_records=None)]
+        chunks = [c async for c in llm_client.chat_stream("你好", model="deepseek-v4-flash", session_records=None)]
 
     assert chunks == ["片段"]

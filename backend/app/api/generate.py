@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from app.api.ws import ws_manager
 from app.demo import DEMO_TOPICS
-from app.llm.client import get_cost_summary
+from app.workspace import save_page
 
 logger = logging.getLogger(__name__)
 
@@ -32,25 +32,13 @@ def _friendly_error(e: Exception) -> str:
     if "rate limit" in msg or "rate_limit" in msg:
         return "请求过于频繁，请稍等片刻再试"
     if "auth" in msg or "api key" in msg or "unauthorized" in msg:
-        return "AI 服务认证失败，请联系管理员"
+        return "AI 服务认证失败——请检查设置里的模型 API Key 是否正确"
     if "connection" in msg or "refused" in msg or "network" in msg or "unreachable" in msg:
         return "无法连接到 AI 服务，请检查网络后重试"
     if "json" in msg or "decode" in msg or "parse" in msg:
         return "AI 返回了异常响应，请重试"
     # 兜底：不暴露原始异常
     return "生成过程中出现意外错误，请刷新页面后重试"
-
-
-# ── Phase C：偏好提取 ──
-_PREF_KEYWORDS = ["暗色", "深色", "浅色", "亮色", "极简", "复古", "现代", "黑金", "水墨"]
-
-
-def _extract_preferences(design: dict | None, content: dict | None) -> dict:
-    """从生成结果抽取偏好信号（风格关键词 + 组件偏好）。"""
-    vh = (design or {}).get("visual_hint", "") or ""
-    hints = [k for k in _PREF_KEYWORDS if k in vh]
-    comps = (design or {}).get("components", []) or []
-    return {"style_hints": hints[:5], "preferred_components": comps[:3]}
 
 
 class _GenerateRequest(BaseModel):
@@ -86,7 +74,7 @@ async def generate_api(req: _GenerateRequest):
     try:
         result = await orchestrator_node({
             "session_id": session_id, "user_input": topic,
-            "_push": None, "_cost_records": records, "_preferences": {},
+            "_push": None, "_cost_records": records,
             "_params": req.params, "_model": req.model,
         })
     except Exception as e:
@@ -95,21 +83,21 @@ async def generate_api(req: _GenerateRequest):
         if isinstance(e, LLMNotConfiguredError):
             return JSONResponse(status_code=400, content={"error": str(e)})
         raise
-    cost = get_cost_summary(records)["estimated_cost_rmb"]
 
     from app.projects import save_project
     save_project({
         "id": session_id, "topic": topic, "created_at": int(time.time()),
         "status": result.get("status", "unknown"),
-        "steps": result.get("steps", 0), "cost": cost, "iterations": 1,
+        "steps": result.get("steps", 0), "cost": 0, "iterations": 1,
         "html": result.get("html", ""), "trace_path": f"logs/traces/{session_id}.jsonl",
+        "file_path": save_page(session_id, topic, result.get("html", ""), 1),
     })
     return {
         "project_id": session_id, "topic": topic,
         "status": result.get("status"),
         "html": result.get("html", ""),
         "steps": result.get("steps", 0),
-        "cost": cost,
+        "cost": 0,
     }
 
 
@@ -120,6 +108,10 @@ async def generate_page(websocket: WebSocket):
     client_ip = websocket.client.host if websocket.client else ""
     if not await ws_manager.connect(session_id, websocket):
         return  # 连接被拒绝（超上限等），不做后续处理
+
+    # 会话日志：本次生成的日志写进 logs/sessions/<session_id>.log
+    from app.observability.session_log import bind_session, unbind_session
+    _log_token = bind_session(session_id)
 
     session_cost_records: list[dict] = []  # 本连接独立记账，不碰全局
 
@@ -174,7 +166,6 @@ async def generate_page(websocket: WebSocket):
             "step": 0,
             "thought": f"收到主题「{user_input}」，准备策展...",
             "tool": "thinking",
-            "budget": 0,
         })
 
         # 运行编排Agent（包成 Task，断开时能取消）
@@ -183,6 +174,7 @@ async def generate_page(websocket: WebSocket):
 
         failed_sent = False  # 防止双重失败推送
         orch_task: asyncio.Task | None = None
+        saved_file = {"path": ""}  # 页面落盘路径（push complete 里写入，主流程取用）
 
         async def push(msg: dict):
             """实时推送到前端。"""
@@ -191,41 +183,34 @@ async def generate_page(websocket: WebSocket):
                 await ws_manager.send_json(session_id, {
                     "type": "thinking_stream", "step": msg.get("step", 0),
                     "chunk": msg.get("chunk", ""), "tool": msg.get("tool", ""),
-                    "budget": msg.get("budget", 0),
                 })
             elif msg.get("type") == "heartbeat":
                 await ws_manager.send_json(session_id, {
                     "type": "heartbeat", "tool": msg.get("tool", ""),
-                    "step": msg.get("step", 0), "budget": msg.get("budget", 0),
+                    "step": msg.get("step", 0),
                 })
             elif msg.get("type") == "thinking":
                 await ws_manager.send_json(session_id, {
                     "type": "thinking", "step": msg.get("step", 0),
                     "thought": msg.get("thought", ""), "tool": msg.get("tool", ""),
-                    "budget": msg.get("budget", 0),
                 })
             elif msg.get("type") == "tool_result":
                 await ws_manager.send_json(session_id, {
                     "type": "tool_result", "step": msg["step"],
                     "tool": msg["tool"], "summary": msg["summary"],
-                    "budget": msg["budget"],
+                    "detail": msg.get("detail", ""),
                 })
             elif msg.get("type") == "html_chunk":
                 await ws_manager.send_json(session_id, {
                     "type": "html_chunk", "html": msg["html"],
                 })
             elif msg.get("type") == "complete":
-                await ws_manager.send_page_ready(session_id, msg["html"])
+                # 首版产物落盘工作区（v1），路径随 page_ready 推给前端
+                saved_file["path"] = save_page(session_id, user_input, msg["html"], 1)
+                await ws_manager.send_page_ready(session_id, msg["html"], saved_file["path"])
             elif msg.get("type") == "failed":
                 await ws_manager.send_failed(session_id, msg["reason"], [])
                 failed_sent = True
-
-        # 读用户偏好（记忆注入）——失败不阻断生成
-        try:
-            from app.preferences import get_preferences
-            prefs = await get_preferences()
-        except Exception:
-            prefs = {}
 
         # 把独立账本传给编排器（包 Task + 全局超时）
         orch_task = asyncio.create_task(
@@ -234,23 +219,43 @@ async def generate_page(websocket: WebSocket):
                 "user_input": user_input,
                 "_push": push,
                 "_cost_records": session_cost_records,
-                "_preferences": prefs,
                 "_params": gen_params,
                 "_model": gen_model,
             })
         )
+
+        # ⚠️ 终止生效的关键：生成期间同时监听 WS 断开——
+        # 用户点"终止"→ 前端 close WS → 这里立刻感知 → 取消 orch_task。
+        # 之前只等 orch_task，断开后 LLM 调用仍继续跑（终止无效的根因）。
+        async def _watch_disconnect():
+            try:
+                # 生成期间前端不会发消息；收到任何消息/断开都会返回或抛错
+                await websocket.receive_json()
+            except Exception:
+                pass  # 断开（WebSocketDisconnect）或异常 → 取消生成
+            if not orch_task.done():
+                orch_task.cancel()
+                logger.info("WS 断开，取消生成 | session=%s", session_id)
+
+        watch_task = asyncio.create_task(_watch_disconnect())
         try:
             result = await asyncio.wait_for(orch_task, timeout=settings.generation_timeout)
+        except asyncio.CancelledError:
+            # WS 断开 → _watch_disconnect 取消了 orch_task → 这里收尾，不再往下跑
+            orch_task.cancel()
+            logger.info("生成被用户终止 | session=%s", session_id)
+            return
         except asyncio.TimeoutError:
             orch_task.cancel()
             logger.warning("生成超时 | session=%s | timeout=%ds", session_id, settings.generation_timeout)
             await ws_manager.send_failed(session_id, "生成超时，请稍后重试", DEMO_TOPICS)
             return
+        finally:
+            watch_task.cancel()  # 生成结束，断开监听不再需要
 
-        cost = get_cost_summary(session_cost_records)
-        logger.info("生成结束 | session=%s | status=%s | steps=%d | cost=¥%.4f | llm_calls=%d",
+        logger.info("生成结束 | session=%s | status=%s | steps=%d | llm_calls=%d",
                     session_id, result.get("status"), result.get("steps"),
-                    cost["estimated_cost_rmb"], cost["calls"])
+                    len(session_cost_records))
 
         # 保存生成历史（可回看/续，Phase C 更新迭代数）
         from app.projects import save_project
@@ -260,18 +265,15 @@ async def generate_page(websocket: WebSocket):
             "created_at": int(_time.time()),
             "status": result.get("status", "unknown"),
             "steps": result.get("steps", 0),
-            "cost": cost["estimated_cost_rmb"],
+            "cost": 0,
             "iterations": 1,
             "html": result.get("html", ""),
             "trace_path": f"logs/traces/{session_id}.jsonl",
+            "file_path": saved_file["path"],
         })
 
         if result.get("status") == "success":
-            # ── Phase C：提取偏好 + 多轮迭代 ──
-            prefs = _extract_preferences(result.get("design"), result.get("content"))
-            if prefs["style_hints"] or prefs["preferred_components"]:
-                from app.preferences import update_preferences
-                await update_preferences(prefs)
+            # ── 多轮迭代 ──
             iterations = 1
             MAX_ITERATIONS = 6  # 迭代上限（首轮 + 最多 5 次修改），防无限烧 token
             while iterations < MAX_ITERATIONS:
@@ -287,17 +289,10 @@ async def generate_page(websocket: WebSocket):
                     await ws_manager.send_json(session_id, {
                         "type": "thinking", "step": 0,
                         "thought": f"这条修改要求太长了（最多 {settings.input_max_length} 字），请精简后重试。",
-                        "tool": "system", "budget": 0,
+                        "tool": "system",
                     })
                     continue
-                # 迭代计入本次预算上限——防单会话迭代无限烧 token（orchestrator 只罩首轮）
-                if get_cost_summary(session_cost_records)["estimated_cost_rmb"] >= settings.budget_total:
-                    await ws_manager.send_json(session_id, {
-                        "type": "thinking", "step": 0,
-                        "thought": f"本次生成已达预算上限（¥{settings.budget_total}），迭代暂停。",
-                        "tool": "system", "budget": 0,
-                    })
-                    break
+                # 迭代次数上限（MAX_ITERATIONS）防无限烧 token——计费已砍，靠次数闸
                 iterations += 1
                 from app.agent.orchestrator import refine_page
                 try:
@@ -305,42 +300,40 @@ async def generate_page(websocket: WebSocket):
                         result.get("design"), result.get("content"),
                         result.get("material"), result.get("html", ""),
                         user_input, instruction, push, session_cost_records,
-                        preferences=prefs,
                         model=gen_model,
                     )
                 except Exception as e:
                     logger.warning("迭代失败 | session=%s | error=%s", session_id, e)
                     await ws_manager.send_json(session_id, {
                         "type": "thinking", "step": 0,
-                        "thought": "这步修改没成功，换个说法再试。", "tool": "system", "budget": 0,
+                        "thought": "这步修改没成功，换个说法再试。", "tool": "system",
                     })
                     continue
                 result["design"] = ref.get("design")
                 result["content"] = ref.get("content")
                 result["material"] = ref.get("material")
                 result["html"] = ref.get("html", "")
-                # 本轮偏好更新
-                prefs = _extract_preferences(ref.get("design"), ref.get("content"))
-                if prefs["style_hints"] or prefs["preferred_components"]:
-                    await update_preferences(prefs)
                 # 更新历史（同 id 覆盖，迭代数 +）
                 save_project({
                     "id": session_id, "topic": user_input,
                     "created_at": int(_time.time()),
                     "status": "success",
                     "steps": result.get("steps", 0),
-                    "cost": get_cost_summary(session_cost_records)["estimated_cost_rmb"],
+                    "cost": 0,
                     "iterations": iterations,
                     "html": result["html"],
                     "trace_path": f"logs/traces/{session_id}.jsonl",
+                    "file_path": saved_file["path"],
                 })
+                # 迭代新版本 = 新产物文件（v2/v3…，不覆盖旧版）
+                saved_file["path"] = save_page(session_id, user_input, result["html"], iterations)
                 # 推送新版本
-                await ws_manager.send_page_ready(session_id, result["html"])
+                await ws_manager.send_page_ready(session_id, result["html"], saved_file["path"])
             if iterations >= MAX_ITERATIONS:
                 await ws_manager.send_json(session_id, {
                     "type": "thinking", "step": 0,
                     "thought": "已达本轮修改上限，可换个新话题重新生成。",
-                    "tool": "system", "budget": 0,
+                    "tool": "system",
                 })
         elif not failed_sent:
             # orchestrator 已经把失败原因推进了 DecisionLog（via push），
@@ -378,3 +371,4 @@ async def generate_page(websocket: WebSocket):
             pass
     finally:
         await ws_manager.disconnect(session_id)
+        unbind_session(_log_token)

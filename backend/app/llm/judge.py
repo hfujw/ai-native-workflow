@@ -19,6 +19,7 @@ import logging
 from app.llm.client import chat_json
 from app.llm.circuit_breaker import CircuitOpenError
 from app.llm.parser import safe_parse_json
+from app.skills import skill_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +34,11 @@ JUDGE_SYSTEM_PROMPT = """你是严格的质检员，审查一个 AI 生成的知
 规则：
 - 至少找出 3 条具体缺陷；如果实在挑不出，则 passed=true
 - 每条 issue 必须给出：维度、建议回退到哪个环节、具体描述（位置+问题+改法）
-- 回退目标：事实/覆盖问题 → research 或 compose；可读性问题 → compose；美学问题 → design 或 render
+- 回退目标：事实/覆盖问题 → search 或 compose；可读性问题 → compose；美学问题 → design 或 render
 - passed=false **仅当**存在事实或覆盖的严重问题；纯可读/美学问题视为可优化，passed=true 但仍列出 issues
 
 输出 JSON：
-{"passed": true/false, "issues": [{"dimension": "fact|coverage|readability|aesthetic", "target": "research|design|compose|render", "desc": "具体缺陷描述"}]}"""
+{"passed": true/false, "issues": [{"dimension": "fact|coverage|readability|aesthetic", "target": "search|design|compose|render", "desc": "具体缺陷描述"}]}"""
 
 
 CRITIQUE_SYSTEM_PROMPT = """你是方案批评家。设计还没开始做，你提前挑刺——找出方案里的结构性问题，让修改成本为零。
@@ -71,7 +72,7 @@ async def critique_design(
     try:
         result = await chat_json(
             f"用户想了解：{user_input}\n\n设计方案：\n{json.dumps(design, ensure_ascii=False)[:800]}\n\n素材：\n{_material_brief_for_critique(material)}",
-            system=CRITIQUE_SYSTEM_PROMPT,
+            system=skill_prompt("critique", CRITIQUE_SYSTEM_PROMPT),
             session_records=session_records,
             model=model,
         )
@@ -151,7 +152,7 @@ async def judge_page(
 
     try:
         result = await chat_json(
-            prompt, system=JUDGE_SYSTEM_PROMPT,
+            prompt, system=skill_prompt("judge", JUDGE_SYSTEM_PROMPT),
             session_records=session_records, model=model,
         )
     except CircuitOpenError:
@@ -179,7 +180,7 @@ def pick_rollback(issues: list[dict]) -> str:
     # 事实/覆盖问题最严重，优先
     for i in issues:
         if i.get("dimension") in ("fact", "coverage"):
-            return i.get("target") or "research"
+            return i.get("target") or "search"
     # 否则选出现最多的 target
     counts: dict[str, int] = {}
     for i in issues:

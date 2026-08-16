@@ -49,6 +49,11 @@ export function deleteProject(id: string): Promise<{ ok: boolean }> {
   return request(`/api/history/${id}`, { method: "DELETE" });
 }
 
+/** 删除工作区里的一个产物文件（作品卡删除用） */
+export function deleteWorkspaceFile(filename: string): Promise<{ ok: boolean }> {
+  return request(`/api/workspace/${encodeURIComponent(filename)}`, { method: "DELETE" });
+}
+
 export type Skill = {
   id: string;
   name: string;
@@ -66,17 +71,17 @@ export function fetchSkills(skillType?: string): Promise<{ skills: Skill[] }> {
   return request(`/api/skills${q}`);
 }
 
-/** 安装 skill（"我的 Skill"下载用） */
+/** 删除 skill（内置不可删，后端拒绝） */
+export function deleteSkill(id: string): Promise<{ ok: boolean }> {
+  return request(`/api/skills/${id}`, { method: "DELETE" });
+}
+
+/** 安装/下载 skill：传 SKILL.md 的 markdown，存成 skills/<id>/SKILL.md */
 export function installSkill(id: string, markdown: string): Promise<Skill> {
   return request("/api/skills/install", {
     method: "POST",
     body: JSON.stringify({ id, markdown }),
   });
-}
-
-/** 删除 skill（内置不可删，后端拒绝） */
-export function deleteSkill(id: string): Promise<{ ok: boolean }> {
-  return request(`/api/skills/${id}`, { method: "DELETE" });
 }
 
 export type EventItem = { name: string; category: string };
@@ -86,14 +91,14 @@ export function fetchEvents(): Promise<{ events: EventItem[]; total: number }> {
   return request("/api/events");
 }
 
-/** 生成参数（前端设置 → 会话级覆盖后端 orchestrator 配置） */
+/** 生成参数（前端设置 → 会话级覆盖后端 orchestrator 配置；计费已砍，无 budget） */
 export type GenParams = {
-  agentSteps: number;      // Agent 决策循环步数
-  llmSteps: number;        // LLM 步数：每类内部重试上限（渲染自检/换词/审查回退）
-  budget: number;          // 单次生成成本上限（元）
-  searchMax: number;       // 搜索轮数上限
-  searchEnabled: boolean;  // 联网搜索开关（决定用不用联网）
-  skillId: string;         // 风格 skill（模板资产注入渲染；空=LLM 自由发挥）
+  agentSteps: number;         // Agent 决策循环步数
+  llmSteps: number;           // LLM 步数：每类内部重试上限（渲染自检/换词/审查回退）
+  searchMax: number;          // 搜索轮数上限
+  searchEnabled: boolean;     // 联网搜索开关（决定用不用联网）
+  creativeSwarmSize: number;  // 创意脑数量（创作阶段并行发散的子脑数，1-6）
+  skillId: string;            // 风格 skill（模板资产注入渲染；空=LLM 自由发挥）
 };
 
 /** 模型配置（设置页管理，Composer 选择） */
@@ -163,7 +168,9 @@ export type Msg = {
   html?: string;
   /** 工具调用序列（由后端决策日志实时填充） */
   calls?: ToolCall[];
-  /** 本次生成累计花费（来自后端 budget） */
   cost?: number;
-  source?: string;
+  /** 页面落盘到工作区的文件路径（page_ready 时带回） */
+  file_path?: string;
+  /** 生成是否完成（page_ready 置 true）——主预览 iframe 只在完成后渲染，不提前冒页面 */
+  finalized?: boolean;
 };

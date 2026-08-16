@@ -40,6 +40,10 @@ root.addHandler(_fh)
 for _n in ("uvicorn.access", "httpx", "httpcore", "openai"):
     logging.getLogger(_n).setLevel(logging.WARNING)
 
+# 会话日志：每次生成一个独立文件（logs/sessions/<id>.log），detail.log 只留非会话
+from app.observability.session_log import install as install_session_log
+install_session_log()
+
 logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════
@@ -50,7 +54,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import generate, history, meta, preferences, skills
+from app.api import generate, history, meta, skills, workspace
 from app.api.ws import ws_manager
 from app.config import settings as _settings
 
@@ -80,5 +84,5 @@ app.add_middleware(
 app.include_router(meta.router)
 app.include_router(generate.router)
 app.include_router(history.router)
-app.include_router(preferences.router)
 app.include_router(skills.router)
+app.include_router(workspace.router)

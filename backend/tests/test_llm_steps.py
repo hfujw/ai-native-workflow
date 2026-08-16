@@ -12,44 +12,50 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agent.orchestrator import apply_gen_params
-from app.agent.supervisor import dispatch
+from app.agent.supervisor import (
+    SAFE_DESIGN_ATTEMPTS,
+    SAFE_RENDER_ATTEMPTS,
+    SAFE_REQUERY_CAP,
+    dispatch,
+)
 from app.config import settings
 
 
 @pytest.mark.asyncio
 async def test_dispatch_passes_llm_steps_to_search():
-    """ctx.llm_steps → search 的 max_requery。"""
+    """ctx.llm_steps → search 的 max_requery，但受安全上限钳制（防烧 token）。"""
     with patch("app.agent.supervisor.ResearcherAgent") as MockRA:
         inst = MockRA.return_value
         inst.run = AsyncMock(return_value={"tool": "search", "results": [], "count": 0, "level": "none"})
         ctx = {"user_input": "恐龙", "material": [], "cost_records": [], "llm_steps": 7}
         await dispatch(ctx, "search", None)
-        assert inst.run.call_args.kwargs.get("max_requery") == 7
+        # llm_steps=7 但换词上限封顶 2——一次搜索 dispatch 不会烧 10 次 LLM 换词
+        assert inst.run.call_args.kwargs.get("max_requery") == min(7, SAFE_REQUERY_CAP) == 2
 
 
 @pytest.mark.asyncio
 async def test_dispatch_passes_llm_steps_to_design_and_compose():
-    """ctx.llm_steps → design/compose 的 max_attempts。"""
+    """ctx.llm_steps → design/compose 的 max_attempts，受安全上限钳制。"""
     with patch("app.agent.supervisor.DesignerAgent") as MockDA:
         inst = MockDA.return_value
         inst.run = AsyncMock(return_value={"tool": "design", "design": {}, "content": {"blocks": []}})
         ctx = {"user_input": "恐龙", "material": [], "cost_records": [], "llm_steps": 7}
         await dispatch(ctx, "design", None)
-        assert inst.run.call_args.kwargs.get("max_attempts") == 7
+        assert inst.run.call_args.kwargs.get("max_attempts") == min(7, SAFE_DESIGN_ATTEMPTS) == 2
         await dispatch(ctx, "compose", None)
-        assert inst.run.call_args.kwargs.get("max_attempts") == 7
+        assert inst.run.call_args.kwargs.get("max_attempts") == min(7, SAFE_DESIGN_ATTEMPTS) == 2
 
 
 @pytest.mark.asyncio
 async def test_dispatch_passes_llm_steps_to_render():
-    """ctx.llm_steps → render 的 max_attempts。"""
+    """ctx.llm_steps → render 的 max_attempts，受安全上限钳制。"""
     with patch("app.agent.supervisor.RenderAgent") as MockRA:
         inst = MockRA.return_value
         inst.run = AsyncMock(return_value={"tool": "render", "html": "<html></html>", "complete": True})
         ctx = {"user_input": "恐龙", "material": [], "cost_records": [], "llm_steps": 7,
                "design": {}, "content": {}}
         await dispatch(ctx, "render", None)
-        assert inst.run.call_args.kwargs.get("max_attempts") == 7
+        assert inst.run.call_args.kwargs.get("max_attempts") == min(7, SAFE_RENDER_ATTEMPTS) == 3
 
 
 def test_orchestrator_ctx_default_llm_steps_from_config():
@@ -89,7 +95,7 @@ async def test_judge_retry_uses_llm_steps():
         "cost_records": [], "_last_cost_len": 0, "_preferences": {},
         "judge_fail_count": 2,  # 已回退 2 轮
         "search_enabled": True, "search_max": 8,
-        "model": settings.deepseek_model,
+        "model": "deepseek-v4-flash",
     }
 
     # 不复用完整 orchestrator 主循环（依赖 WS push），直接验证判据表达式：

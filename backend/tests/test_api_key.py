@@ -122,7 +122,7 @@ async def test_chat_uses_session_client():
 
     bind_session_client("sk-session", "https://session.example.com")
     with patch.object(client_mod, "_get_client", return_value=fake_client):
-        out = await client_mod.chat("恐龙是什么", session_records=[])
+        out = await client_mod.chat("恐龙是什么", model="deepseek-v4-flash", session_records=[])
     assert out == "你好"
     # create 确实被调用（参数里有 model/messages）
     assert fake_client.chat.completions.create.await_count == 1

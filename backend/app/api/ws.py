@@ -68,10 +68,11 @@ class WSManager:
     async def send_json(self, session_id: str, payload: dict):
         await self._safe_send(session_id, payload)
 
-    async def send_page_ready(self, session_id: str, page_html: str):
+    async def send_page_ready(self, session_id: str, page_html: str, file_path: str = ""):
         await self._safe_send(session_id, {
             "type": "page_ready",
             "page_html": page_html,
+            "file_path": file_path,  # 工作区落盘路径（空=未落盘）
         })
 
     async def send_failed(self, session_id: str, reason: str, suggestions: list):

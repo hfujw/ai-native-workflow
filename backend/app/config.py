@@ -16,17 +16,17 @@ class Settings(BaseSettings):
     )
 
     # ── LLM ──
-    # Key 全部来自前端设置（会话级绑定）——后端不读 .env 的 key。
-    # 这里只保留默认端点/模型（前端没填时兜底）。
+    # Key 与模型全部来自前端设置（会话级绑定）——后端不读 .env，也不兜底默认模型。
+    # 没填 Key → LLMNotConfiguredError；没填模型 → LLMNotConfiguredError（前端必须填）。
     deepseek_base_url: str = Field("https://api.deepseek.com")
-    deepseek_model: str = Field("deepseek-v4-flash")
 
     # ── 搜索（用户在前端设置里填搜索服务的 Key——不回落 .env，没填 = 不联网） ──
 
-    # ── 预算（可通过 env 覆盖，调试和部署时都能改） ──
+    # ── 步数护栏（计费已砍——防跑飞靠步数上限，不追金额） ──
     max_steps: int = Field(20, ge=1, le=100)
-    budget_total: float = Field(1.0, gt=0)
     search_max: int = Field(8, ge=0, le=20)
+    # 创意脑数量（创作阶段人海战术：并行发散的子脑数）。默认 3，硬核创意可调 5-6。
+    creative_swarm_size: int = Field(3, ge=1, le=6)
     # LLM 步数 = 每类 LLM 内部决策循环（重试）的上限：
     # render 自检重试 / design 重试 / search 换词 / 质量审查回退
     llm_steps: int = Field(10, ge=1, le=100)
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # ── WebSocket ──
     max_connections: int = Field(20, ge=1)
     receive_timeout: int = Field(30, ge=5)
-    generation_timeout: int = Field(300, ge=60)
+    generation_timeout: int = Field(600, ge=60)
 
     # ── 安全（本地工具的健壮性护栏，非公网防护）──
     input_max_length: int = Field(500, ge=10, le=2000, description="用户输入最大长度（字符）")

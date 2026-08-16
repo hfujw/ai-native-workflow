@@ -78,6 +78,7 @@ def save_project(project: dict) -> None:
             "cost": project.get("cost", existing.get("cost", 0)),
             "iterations": len(versions),
             "trace_path": project.get("trace_path", existing.get("trace_path", "")),
+            "file_path": project.get("file_path", existing.get("file_path", "")),
         })
         projects.remove(existing)
         projects.insert(0, existing)

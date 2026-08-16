@@ -1,13 +1,15 @@
 """可插拔 skill — 所有 skill 都在一个目录 `backend/skills/`（gitignored）。
 
-- 每个 skill 一个子目录，内含 SKILL.md（markdown-frontmatter：元数据 + 指令）
-- 可选模板资产：`template.html`（页面骨架）+ `reference.css`（排版系统）——
-  渲染时注入，给 LLM 一个"真人设计的骨架"而不是凭空发挥
-- 内置的三个（像素/杂志/信息图）是**首次运行时播种**的默认内容，模板资产
-  从 `app/skills/templates/<id>/` 复制而来（源码随仓库分发）
-- 形式对齐 Claude skill 体系：frontmatter 放机器元数据，正文放注入 LLM 的指令
+每个 skill = **一个 markdown 文档**（SKILL.md）：frontmatter 放元数据（name/type/icon/desc），
+正文放该 skill 的人格/指令——对齐 Claude skill 机制，一个能力一个文档，不拆散。
+
+- 内置核心人格 skill（core/judge/critique/refine）是**系统管理**的：正文由代码常量注入，
+  每次启动同步最新人格；builtin 不可删、不可被安装覆盖。
+- 风格 skill（像素/杂志/信息图）用户可编辑、可在前端删除；可带模板资产（template.html/reference.css）。
+- 健壮性：格式坏/缺 name → 跳过该 skill 不崩；core 缺失 → 调用方回退代码常量。
 """
 
+import importlib
 import logging
 import os
 import re
@@ -18,23 +20,51 @@ logger = logging.getLogger(__name__)
 _SKILLS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "skills")  # backend/skills
 _TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")       # 源码内置模板
 
-# 内置默认 skill（播种源——写在代码里，随仓库发布；运行时生成进 skills/）
+# 内置默认 skill（播种源——随仓库发布；运行时生成进 skills/）
 _BUILTINS: dict[str, dict] = {
+    "core": {
+        "name": "核心编排", "type": "工具", "icon": "🧠",
+        "desc": "Lumen 核心编排人格（内置，不可删）——决定何时搜索/设计/渲染/审查",
+        "body": "核心编排人格（由系统注入）",
+    },
+    "judge": {
+        "name": "质量审查", "type": "工具", "icon": "🔍",
+        "desc": "四维审查人格（内置，不可删）——事实/覆盖/可读/美学挑刺",
+        "body": "质量审查人格（由系统注入）",
+    },
+    "critique": {
+        "name": "方案批评家", "type": "工具", "icon": "💢",
+        "desc": "设计前挑刺人格（内置，不可删）——方案结构问题零成本修正",
+        "body": "方案批评家人格（由系统注入）",
+    },
+    "refine": {
+        "name": "多轮迭代", "type": "工具", "icon": "🔁",
+        "desc": "成品迭代人格（内置，不可删）——用户改页面时决定怎么改",
+        "body": "迭代人格（由系统注入）",
+    },
     "pixel": {
         "name": "像素风", "type": "风格", "icon": "🎮",
-        "desc": "复古像素游戏画面，适合解谜与怀旧题材",
+        "desc": "复古 8-bit 像素美学——有限色板、块状像素、霓虹荧光。适合游戏化叙事、怀旧题材、独立游戏介绍页；生成『有游戏感』的像素风长页，字块、发光、颗粒感十足",
         "body": "低分辨率像素画面、有限色板、块状复古字体，主题围绕游戏化叙事",
     },
     "magazine": {
         "name": "杂志长图", "type": "风格", "icon": "📰",
-        "desc": "编辑级杂志排版，图文混排长页",
+        "desc": "编辑级杂志排版——网格系统、大标题、图文混排、留白节奏。适合品牌故事、深度报道、产品发布长文；生成编辑部审美的长页，信息层级清楚、排版克制精致",
         "body": "编辑级杂志排版、网格系统、图文混排、大标题与留白",
     },
     "infographic": {
         "name": "信息图", "type": "风格", "icon": "📊",
-        "desc": "数据可视化，图表 + 关键数字一眼看懂",
+        "desc": "数据可视化优先——图表、关键数字、对比面板。适合年度总结、数据报告、SaaS 特性页；生成『一眼看懂』的数据叙事长页，数字突出、信息层次分明",
         "body": "数据可视化优先、图表 + 关键数字突出、信息层次分明",
     },
+}
+
+# 系统管理的人格 skill → 正文从哪个模块常量注入（单一来源，不复制粘贴）
+_PERSONA_SOURCE: dict[str, tuple[str, str]] = {
+    "core": ("app.agent.orchestrator", "ORCHESTRATOR_SYSTEM_PROMPT"),
+    "judge": ("app.llm.judge", "JUDGE_SYSTEM_PROMPT"),
+    "critique": ("app.llm.judge", "CRITIQUE_SYSTEM_PROMPT"),
+    "refine": ("app.agent.orchestrator", "REFINE_SYSTEM_PROMPT"),
 }
 
 _cache: list[dict] | None = None
@@ -47,18 +77,36 @@ def _render_skill_md(meta: dict) -> str:
             f"icon: {meta['icon']}\ndesc: {meta['desc']}\n---\n{meta['body']}")
 
 
+def _persona_body(sid: str, fallback: str) -> str:
+    """系统管理人格 skill 的正文 = 代码常量（保持单一来源，代码更新即同步）。"""
+    src = _PERSONA_SOURCE.get(sid)
+    if not src:
+        return fallback
+    try:
+        mod, const = src
+        return getattr(importlib.import_module(mod), const, fallback)
+    except Exception as e:
+        logger.warning("人格注入失败(%s) 用占位: %s", sid, e)
+        return fallback
+
+
 def _ensure_seeded() -> None:
-    """首次运行播种内置 skill。只当目录整体不存在时播种——删过单个不重建。"""
-    if os.path.isdir(_SKILLS_DIR):
-        return
+    """逐 skill 播种。人格 skill（core/judge/critique/refine）每次覆盖（系统管理）；
+    风格 skill 只写缺失的 SKILL.md/资产（用户可编辑）。"""
     os.makedirs(_SKILLS_DIR, exist_ok=True)
     for sid, meta in _BUILTINS.items():
         skill_dir = os.path.join(_SKILLS_DIR, sid)
         os.makedirs(skill_dir, exist_ok=True)
-        with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as f:
-            f.write(_render_skill_md(meta))
-        _seed_assets(sid, skill_dir)
-    logger.info("已播种 %d 个内置 skill → %s", len(_BUILTINS), _SKILLS_DIR)
+        md_path = os.path.join(skill_dir, "SKILL.md")
+        system_managed = sid in _PERSONA_SOURCE
+        if system_managed or not os.path.isfile(md_path):
+            body = _persona_body(sid, meta["body"]) if system_managed else meta["body"]
+            with open(md_path, "w", encoding="utf-8") as f:
+                f.write(_render_skill_md({**meta, "body": body}))
+        if not os.path.isfile(md_path):  # 风格 skill 首次
+            _seed_assets(sid, skill_dir)
+        elif not os.path.exists(os.path.join(skill_dir, "template.html")):
+            _seed_assets(sid, skill_dir)
 
 
 def _seed_assets(sid: str, skill_dir: str) -> None:
@@ -116,11 +164,12 @@ def _load_all() -> list[dict]:
             try:
                 with open(path, encoding="utf-8") as f:
                     text = f.read()
-                text = text.lstrip("\ufeff")  # 容忍 UTF-8 BOM（某些编辑器会写）
+                text = text.lstrip("﻿")  # 容忍 UTF-8 BOM（某些编辑器会写）
                 meta, body = _parse_frontmatter(text)
                 if not meta.get("name"):
                     logger.warning("skill 缺 name，跳过: %s", entry)
                     continue
+                skill_dir = path.rsplit("SKILL.md", 1)[0]
                 found.append({
                     "id": entry,
                     "name": meta.get("name", entry),
@@ -129,7 +178,7 @@ def _load_all() -> list[dict]:
                     "desc": meta.get("desc", ""),
                     "prompt": body,
                     "builtin": entry in _BUILTINS,  # 内置标记（前端"我的 Skill"区分）
-                    "assets": _read_assets(path.rsplit("SKILL.md", 1)[0]),
+                    "assets": _read_assets(skill_dir),
                 })
             except OSError as e:
                 logger.warning("skill 读取失败(%s): %s", entry, e)
@@ -155,6 +204,29 @@ def load_skill(name: str) -> dict | None:
     return None
 
 
+def skill_prompt(skill_id: str, fallback: str) -> str:
+    """从 skill 取人格 prompt（正文）。skill 缺失/坏 → 回退 fallback，绝不崩。
+
+    这样系统管理人格（core/judge/critique/refine）以 skill 形式存在、可替换，
+    坏文件/被删也不会让调用方崩。
+    """
+    if not skill_id:
+        return fallback
+    try:
+        sk = load_skill(skill_id)
+    except Exception as e:
+        logger.warning("skill_prompt 读取失败(%s) 回退默认: %s", skill_id, e)
+        return fallback
+    if not sk:
+        return fallback
+    return sk.get("prompt") or fallback
+
+
+def is_builtin(skill_id: str) -> bool:
+    """该 skill 是否内置（core/人格/风格）——内置不可删除、不可被安装覆盖。"""
+    return skill_id in _BUILTINS
+
+
 def reload_skills() -> None:
     """清缓存——安装/删除后调用，让 list_skills 重新扫描。"""
     global _cache
@@ -173,7 +245,10 @@ def delete_skill(name: str) -> bool:
 
 def install_skill(skill_id: str, markdown: str) -> dict | None:
     """写入一个 skill（DeepSeek 下载用）：把 markdown 存到 skills/<id>/SKILL.md。
-    返回解析后的 skill；格式非法（缺 name）返回 None。"""
+    返回解析后的 skill；格式非法（缺 name）或覆盖内置 → 返回 None。"""
+    if skill_id in _BUILTINS:
+        logger.warning("拒绝覆盖内置 skill: %s", skill_id)
+        return None  # 内置（core/人格/风格）不可被安装覆盖
     skill_dir = os.path.join(_SKILLS_DIR, skill_id)
     os.makedirs(skill_dir, exist_ok=True)
     with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as f:
