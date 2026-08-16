@@ -10,6 +10,7 @@
 import asyncio
 import json
 import logging
+import re
 
 from app.agent.evaluate import evaluate_material
 from app.config import settings
@@ -17,6 +18,7 @@ from app.knowledge.kb import _name, event_to_search_results, get_event_by_keywor
 from app.llm.client import chat_stream
 from app.llm.parser import clean_thought, safe_parse_json, strip_fence
 from app.observability.trace import log_trace
+from app.skills import skill_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +66,6 @@ def apply_gen_params(ctx: dict, params: dict | None) -> None:
     """把前端设置里的生成参数（会话级）覆盖到编排上下文。
 
     - agentSteps  → max_steps（Agent 决策循环步数）
-    - budget      → budget_total（单次生成成本上限，元）
     - searchMax   → search_max（搜索轮数上限）
     - searchEnabled → search_enabled（False 时强制禁止搜索）
     - llmSteps    → llm_steps（每类 LLM 内部决策循环/重试的上限：
@@ -72,14 +73,14 @@ def apply_gen_params(ctx: dict, params: dict | None) -> None:
     """
     p = params or {}
     if p.get("agentSteps") is not None:
-        ctx["max_steps"] = min(100, max(1, int(p["agentSteps"])))  # 上限对齐 config（防烧钱）
-    if p.get("budget") is not None:
-        ctx["budget_total"] = max(0.0, float(p["budget"]))
+        ctx["max_steps"] = min(100, max(1, int(p["agentSteps"])))  # 上限对齐 config
     if p.get("searchMax") is not None:
         ctx["search_max"] = min(20, max(0, int(p["searchMax"])))   # 上限对齐 config
     ctx["search_enabled"] = bool(p.get("searchEnabled", True))
     if p.get("llmSteps") is not None:
         ctx["llm_steps"] = min(100, max(1, int(p["llmSteps"])))
+    if p.get("creativeSwarmSize") is not None:
+        ctx["creative_swarm_size"] = min(6, max(1, int(p["creativeSwarmSize"])))  # 创意脑数量
     if p.get("skillId"):
         ctx["skill_id"] = str(p["skillId"])  # 风格 skill（模板资产注入渲染）
 
@@ -103,15 +104,11 @@ async def orchestrator_node(state: dict) -> dict:
     "search_max": settings.search_max,
     "llm_steps": settings.llm_steps,   # 每类 LLM 内部循环/重试的上限
     "search_enabled": True,
-    "model": settings.deepseek_model,   # 会话模型（前端 Composer 选择可覆盖）
-    "budget_spent": 0.0,
-    "budget_total": settings.budget_total,
+    "model": None,   # 会话模型（前端 Composer 选择；无默认——模型必须前端填）
     "passed": False,
     "issues": [],
     "tool_history": [],
-    "cost_records": state.get("_cost_records", []),
-    "_last_cost_len": 0,   # 真实预算：上次结算的账本长度
-    "_preferences": state.get("_preferences", {}),  # Phase C：用户偏好
+    "cost_records": state.get("_cost_records", []),  # 仅 token 计数（计费已砍，留作诊断）
     }
 
     # 前端设置里的生成参数（会话级覆盖全局配置）
@@ -120,26 +117,14 @@ async def orchestrator_node(state: dict) -> dict:
     if state.get("_model"):
         ctx["model"] = state["_model"]
 
-    # 本地知识库：关键词匹配 → 没命中 → 语义向量检索兜底
-    # "嬴政" 能匹配到 "秦始皇修长城"——关键词做不到的，向量能做到。
+    # 本地知识库：关键词/别名匹配（语义向量检索已砍——169 条固定话题用关键词就够，
+    # 省掉 ChromaDB 依赖和首次要下载的 400MB 中文 embedding 模型）
     kb_event = get_event_by_keyword(user_input)
     if kb_event:
         ctx["material"].extend(event_to_search_results(kb_event))
         logger.info("KB命中 | session=%s | topic=%s", ctx["session_id"], _name(kb_event))
-    else:
-        from app.knowledge.vector_store import vector_search
-        try:
-            hits = vector_search(user_input, top_k=3, min_distance=1.5)
-            for h in hits:
-                event = get_event_by_keyword(h["title"])
-                if event:
-                    ctx["material"].extend(event_to_search_results(event))
-                    logger.info("向量命中 | session=%s | query='%s' → '%s'",
-                                ctx["session_id"], user_input, _name(event))
-        except Exception as e:
-            logger.debug("向量检索不可用: %s", e)  # ChromaDB 不可用时静默跳过
 
-    while ctx["steps"] < ctx["max_steps"] and ctx["budget_spent"] < ctx["budget_total"]:
+    while ctx["steps"] < ctx["max_steps"]:
 
         # 0. 断路器熔断检查：服务故障中 → 立即终止（不再每轮重试刷屏）
         from app.llm.circuit_breaker import llm_breaker, State as _CBState
@@ -156,18 +141,18 @@ async def orchestrator_node(state: dict) -> dict:
             tool_name = ctx.pop("force_next_tool")
             if push:
                 await push({"type": "tool_result", "step": ctx["steps"] + 1, "tool": tool_name,
-                            "summary": f"强制回退执行 {tool_name}…", "budget": ctx["budget_spent"]})
+                            "summary": f"强制回退执行 {tool_name}…"})
             result = await _execute_tool(tool_name, {}, ctx)  # 不依赖上一轮的旧 params
             ctx["steps"] += 1
             ctx["tool_history"].append({"step": ctx["steps"], "tool": tool_name,
                                         "result_summary": _summarize(result)})
             if push:
                 await push({"type": "tool_result", "step": ctx["steps"], "tool": tool_name,
-                            "summary": _summarize(result), "budget": ctx["budget_spent"]})
+                            "summary": _summarize(result), "detail": _tool_detail(result)})
             continue
         else:
             # 1. 让LLM决定下一步
-            decision = await _decide(ctx)
+            decision = await _decide(ctx, push)
 
         # 1.5. LLM 主动选择诚实模式
         if decision.get("honest") and not ctx.get("honest_mode"):
@@ -181,7 +166,7 @@ async def orchestrator_node(state: dict) -> dict:
             if push:
                 await push({"type": "thinking", "step": ctx["steps"] + 1,
                             "thought": "联网搜索已在设置中关闭，跳过搜索，直接基于自身知识与素材设计。",
-                            "tool": "system", "budget": ctx["budget_spent"]})
+                            "tool": "system"})
 
         # 1.6. 搜索次数硬拦截
         search_rounds = sum(1 for h in ctx["tool_history"] if h["tool"] == "search")
@@ -190,7 +175,7 @@ async def orchestrator_node(state: dict) -> dict:
             if push:
                 await push({"type": "thinking", "step": ctx["steps"] + 1,
                             "thought": f"已调用 {search_rounds} 轮搜索，达到上限。orchestrator 强制切换为 design——LLM 请基于现有素材或自身知识继续。",
-                            "tool": "system", "budget": ctx["budget_spent"]})
+                            "tool": "system"})
 
         # 2. ⚡ 思考先推到前端（空 thought 自动补上含义）
         thought = decision.get("thought", "")
@@ -214,19 +199,17 @@ async def orchestrator_node(state: dict) -> dict:
         })
         if push:
             await push({"type": "thinking", "step": ctx["steps"] + 1, "thought": thought,
-                        "tool": tool_name, "budget": ctx["budget_spent"]})
+                        "tool": tool_name})
 
         # 3. 推"进行中"，启动心跳
         if push:
-            await push({"type": "heartbeat", "step": ctx["steps"] + 1, "tool": tool_name,
-                        "budget": ctx["budget_spent"]})
+            await push({"type": "heartbeat", "step": ctx["steps"] + 1, "tool": tool_name})
         # 心跳：长操作期间每 4 秒推一次 pulse
         async def heartbeat():
             for _ in range(15):
                 await asyncio.sleep(4)
                 if push:
-                    await push({"type": "heartbeat", "step": ctx["steps"] + 1, "tool": tool_name,
-                                "budget": ctx["budget_spent"]})
+                    await push({"type": "heartbeat", "step": ctx["steps"] + 1, "tool": tool_name})
         hb = asyncio.create_task(heartbeat())
 
         # 4. 执行工具（finally 确保 heartbeat 一定被清理）
@@ -242,14 +225,21 @@ async def orchestrator_node(state: dict) -> dict:
         log_trace(ctx["session_id"], {
             "type": "tool", "step": ctx["steps"], "tool": tool_name,
             "summary": _summarize(result),
-            "cost_delta": ctx.get("_last_tool_cost", 0),
         })
         # 同一工具连续 3 次 → 强制换策略（喂给下一次 _decide）
         recent_tools = [h["tool"] for h in ctx["tool_history"][-3:]]
         ctx["force_strategy_change"] = len(recent_tools) == 3 and len(set(recent_tools)) == 1
+        # 通用工具失败检测：连续 3 次失败 → 也强制换策略（防工具坏了仍空转烧 decide token。
+        # supervisor 把工具异常吞成 {"error": ...}，这里补上计数——否则 Agent 会一直重试同一个坏工具）
+        if result.get("error"):
+            ctx["consecutive_tool_fail"] = ctx.get("consecutive_tool_fail", 0) + 1
+            if ctx["consecutive_tool_fail"] >= 3:
+                ctx["force_strategy_change"] = True
+        else:
+            ctx["consecutive_tool_fail"] = 0
         if push:
             await push({"type": "tool_result", "step": ctx["steps"], "tool": tool_name,
-                        "summary": _summarize(result), "budget": ctx["budget_spent"]})
+                        "summary": _summarize(result), "detail": _tool_detail(result)})
 
         # 5. 搜索后评估素材质量（信息通知 LLM，不替 LLM 做决策）
         if tool_name == "search" and not ctx.get("honest_mode"):
@@ -258,7 +248,7 @@ async def orchestrator_node(state: dict) -> dict:
             if eval_result["level"] in ("low", "none") and push:
                 await push({"type": "thinking", "step": ctx["steps"],
                             "thought": f"🔍 本轮搜索结果：{eval_result['reason']}。{eval_result['suggestion']}。LLM 自行决定下一步——换词重搜、跳过搜索直接用自身知识、或进入诚实模式。",
-                            "tool": "system", "budget": ctx["budget_spent"]})
+                            "tool": "system"})
 
         # 6. 硬检查
         if tool_name == "render":
@@ -276,8 +266,9 @@ async def orchestrator_node(state: dict) -> dict:
             elif result.get("complete"):
                 ctx["render_success_streak"] = ctx.get("render_success_streak", 0) + 1
                 ctx["consecutive_render_fail"] = 0
-            # 诚实模式 或 连续2次render成功还没verify → 强制verify
-            if (ctx.get("honest_mode") or ctx.get("render_success_streak", 0) >= 2) and result.get("complete"):
+            # 诚实模式 或 render 成功 → 强制 verify（"render 后必须 verify"是硬规则，
+            # 不让 LLM 自己决定——否则 LLM 会在 render 成功后又拉回去重设计，页面生成了却不终止）
+            if (ctx.get("honest_mode") or ctx.get("render_success_streak", 0) >= 1) and result.get("complete"):
                 ctx["force_verify"] = True
                 ctx["render_success_streak"] = 0
 
@@ -290,12 +281,12 @@ async def orchestrator_node(state: dict) -> dict:
                     logger.info("orchestrator=pass | session=%s | mode=honest", ctx["session_id"])
                     if push:
                         await push({"type": "complete", "html": ctx.get("html", ""),
-                                    "steps": ctx["steps"], "budget": ctx["budget_spent"]})
+                                    "steps": ctx["steps"]})
                         await push({"type": "thinking", "step": ctx["steps"],
                                     "thought": "这是基于现有资料的诚实呈现，已标注信息局限。",
-                                    "tool": "system", "budget": ctx["budget_spent"]})
+                                    "tool": "system"})
                     return {"status": "success", "html": ctx.get("html", ""),
-                            "steps": ctx["steps"], "budget": ctx["budget_spent"],
+                            "steps": ctx["steps"],
                             "honest_mode": True,
                             "tool_history": ctx["tool_history"],
                             "design": ctx.get("design"), "content": ctx.get("content"),
@@ -307,7 +298,7 @@ async def orchestrator_node(state: dict) -> dict:
                     if push:
                         await push({"type": "thinking", "step": ctx["steps"] + 1,
                                     "thought": "页面结构与事实通过验证，进入质量审查…",
-                                    "tool": "judge", "budget": ctx["budget_spent"]})
+                                    "tool": "judge"})
                     verdict = await judge_page(
                         ctx["user_input"], ctx.get("design"), ctx.get("content"),
                         ctx.get("material", []), ctx.get("html", ""),
@@ -315,6 +306,16 @@ async def orchestrator_node(state: dict) -> dict:
                     )
                     # 回退上限：用户拍板 ≤2 轮（judge_max_retries），同时不超 llm_steps
                     judge_limit = min(ctx.get("llm_steps", settings.llm_steps), settings.judge_max_retries)
+                    # 审查卡片必须有收尾——judge 内联执行不经过 _execute_tool，
+                    # 不推 tool_result 前端会永久"进行中"+ 光标一直闪
+                    if push:
+                        issues_text = "\n".join(
+                            f"· [{i.get('dimension')}] {i.get('desc', '')}" for i in verdict.get("issues", [])[:10]
+                        )
+                        await push({"type": "tool_result", "step": ctx["steps"] + 1, "tool": "judge",
+                                    "summary": "质量审查通过" if verdict["passed"]
+                                               else f"质量审查发现 {len(verdict['issues'])} 个问题",
+                                    "detail": issues_text or ("全部维度通过" if verdict["passed"] else "")})
                     if not verdict["passed"] and ctx.get("judge_fail_count", 0) < judge_limit:
                         ctx["judge_fail_count"] = ctx.get("judge_fail_count", 0) + 1
                         target = pick_rollback(verdict["issues"])
@@ -323,22 +324,22 @@ async def orchestrator_node(state: dict) -> dict:
                         if push:
                             await push({"type": "thinking", "step": ctx["steps"] + 1,
                                         "thought": f"质量审查发现 {len(verdict['issues'])} 个问题，退回「{target}」重做。",
-                                        "tool": "judge", "budget": ctx["budget_spent"]})
+                                        "tool": "judge"})
                         ctx["force_next_tool"] = target
                         continue
                     if not verdict["passed"]:
                         if push:
                             await push({"type": "thinking", "step": ctx["steps"] + 1,
                                         "thought": "质量审查多轮未通过，诚实交付当前版本。",
-                                        "tool": "system", "budget": ctx["budget_spent"]})
+                                        "tool": "system"})
 
-                logger.info("orchestrator=pass | session=%s | steps=%d | cost=¥%.4f",
-                            ctx["session_id"], ctx["steps"], ctx["budget_spent"])
+                logger.info("orchestrator=pass | session=%s | steps=%d",
+                            ctx["session_id"], ctx["steps"])
                 if push:
                     await push({"type": "complete", "html": ctx.get("html", ""),
-                                "steps": ctx["steps"], "budget": ctx["budget_spent"]})
+                                "steps": ctx["steps"]})
                 return {"status": "success", "html": ctx.get("html", ""),
-                        "steps": ctx["steps"], "budget": ctx["budget_spent"],
+                        "steps": ctx["steps"],
                         "honest_mode": False,
                         "tool_history": ctx["tool_history"],
                         # 多轮迭代需要复用
@@ -358,15 +359,15 @@ async def orchestrator_node(state: dict) -> dict:
                 if push:
                     await push({"type": "thinking", "step": ctx["steps"],
                                 "thought": f"连续{ctx['render_fail_count']}次生成均被审查驳回——不是技术问题，是现有素材与用户主题不匹配。建议换一个信息更充分的主题。",
-                                "tool": "system", "budget": ctx["budget_spent"]})
-                return {"status": "failed", "steps": ctx["steps"], "budget": ctx["budget_spent"],
+                                "tool": "system"})
+                return {"status": "failed", "steps": ctx["steps"],
                         "issues": ctx["issues"], "reason": "素材不匹配，多次生成被驳回"}
 
             # 强制回退：不让 LLM 决定下一步，直接跳回指定工具
             if push:
                 await push({"type": "thinking", "step": ctx["steps"],
                             "thought": f"审查发现{len(ctx['issues'])}个问题，系统强制回退到「{rollback}」重做。",
-                            "tool": "system", "budget": ctx["budget_spent"]})
+                            "tool": "system"})
             ctx["force_next_tool"] = rollback
             continue  # 跳到循环顶部，force_next_tool 块接管执行
 
@@ -379,26 +380,56 @@ async def orchestrator_node(state: dict) -> dict:
     else:
         search_rounds = sum(1 for h in ctx['tool_history'] if h['tool'] == 'search')
         reason = f"搜了 {search_rounds} 轮没找到直接素材" if search_rounds >= 2 else "多次生成尝试仍不满意"
-        logger.info("orchestrator=exhausted | session=%s | steps=%d | cost=¥%.4f | reason=%s",
-                    ctx["session_id"], ctx["steps"], ctx["budget_spent"], reason)
+        logger.info("orchestrator=exhausted | session=%s | steps=%d | reason=%s",
+                    ctx["session_id"], ctx["steps"], reason)
     if push:
         await push({"type": "thinking", "step": ctx["steps"],
                     "thought": f"⚠️ 无法完成「{ctx['user_input']}」：{reason}。建议换一个信息更充分的主题试试。",
-                    "tool": "system", "budget": ctx["budget_spent"]})
+                    "tool": "system"})
         await push({"type": "failed", "reason": reason,
-                    "steps": ctx["steps"], "budget": ctx["budget_spent"]})
-    return {"status": "failed", "steps": ctx["steps"], "budget": ctx["budget_spent"],
+                    "steps": ctx["steps"]})
+    return {"status": "failed", "steps": ctx["steps"],
             "issues": ctx["issues"], "tool_history": ctx["tool_history"],
             "reason": reason}
 
 
-async def _decide(ctx: dict) -> dict:
+def _extract_thought(text: str) -> str | None:
+    """从累积的 decide JSON 文本里尽量提取 thought 字段值（可能不完整）。
+
+    - 还没看到 `"thought": "` → 返回 None（还没开始生成 thought）
+    - 已看到、值未闭合 → 返回已见部分（供前端"长出来"）
+    - 已闭合 → 返回完整 thought
+    转义（\\、\" 等）保留原样——最终 thinking 推送会用解析后的干净 thought 覆盖。
+    """
+    m = re.search(r'"thought"\s*:\s*"', text)
+    if not m:
+        return None
+    i = m.end()
+    out: list[str] = []
+    while i < len(text):
+        ch = text[i]
+        if ch == "\\":  # 转义序列（\\ 或 \"）——整体跳过，不误判为闭合引号
+            if i + 1 < len(text):
+                out.append(text[i] + text[i + 1])
+                i += 2
+                continue
+            break
+        if ch == '"':  # 未转义的引号 → thought 值闭合
+            break
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+async def _decide(ctx: dict, push=None) -> dict:
     """让LLM决定：下一步干什么。
 
     严谨性设计（批次 C）：
     - 前缀稳定：主题/步数/预算/状态段固定顺序不变（KV 缓存友好）
     - 增量反馈：最近 2 步工具结果结构化回填（模型真正"看到"上一步）
     - 容错：safe_parse_json（半截 JSON 重试一次，不再裸 json.loads 立即降级）
+    - 实时流：LLM 边生成，边把 thought 增量推给前端（JSON 里 thought 在前，渐进提取）——
+      decide 期间屏幕不再干等，卡片逐字"长出来"
     """
     # ── 稳定前缀（不变，利于 KV 缓存复用）──
     material_brief = ""
@@ -408,7 +439,7 @@ async def _decide(ctx: dict) -> dict:
 
     summary = f"""用户想了解的具体主题：{ctx['user_input']}
 ⚠️ 必须围绕这个主题生成，不要偏离或扩展。
-步骤：{ctx['steps']}/{ctx['max_steps']} | 预算：¥{ctx['budget_spent']:.2f}/¥{ctx['budget_total']:.0f}
+步骤：{ctx['steps']}/{ctx['max_steps']}
 {material_brief}已有素材：{len(ctx['material'])}条 | 搜索次数：{sum(1 for h in ctx['tool_history'] if h['tool']=='search')}
 已设计：{ctx['design'] is not None} | 已写文案：{ctx['content'] is not None}
 HTML长度：{len(ctx.get('html', ''))}字符 | 上次验证：{'通过' if ctx['passed'] else '未通过'}
@@ -446,15 +477,25 @@ HTML长度：{len(ctx.get('html', ''))}字符 | 上次验证：{'通过' if ctx[
     try:
         # 流式收集 LLM 输出（不推原始 JSON，等解析完推干净的 thought）
         accumulated = ""
+        prev_visible = ""
         async for chunk in chat_stream(
             summary,
-            system=ORCHESTRATOR_SYSTEM_PROMPT,
+            system=skill_prompt("core", ORCHESTRATOR_SYSTEM_PROMPT),
             model=ctx.get("model"),
             temperature=0.5,
             session_records=ctx.get("cost_records"),
             label="decide",
         ):
             accumulated += chunk
+            # 决策实时流：边收边把 thought 新增片段推给前端（JSON 里 thought 在前，渐进提取）
+            if push:
+                visible = _extract_thought(accumulated)
+                if visible and len(visible) > len(prev_visible):
+                    delta = visible[len(prev_visible):]
+                    prev_visible = visible
+                    if delta:
+                        await push({"type": "thinking_stream", "step": ctx["steps"] + 1,
+                                    "chunk": delta, "tool": "think"})
 
         result = strip_fence(accumulated)
         decision = safe_parse_json(result)
@@ -464,7 +505,7 @@ HTML长度：{len(ctx.get('html', ''))}字符 | 上次验证：{'通过' if ctx[
             retry = ""
             async for chunk in chat_stream(
                 summary + "\n⚠️ 上次输出不是合法 JSON。这次只输出一个完整 JSON 对象，不要任何额外文字。",
-                system=ORCHESTRATOR_SYSTEM_PROMPT,
+                system=skill_prompt("core", ORCHESTRATOR_SYSTEM_PROMPT),
                 model=ctx.get("model"),
                 temperature=0.3,
                 session_records=ctx.get("cost_records"),
@@ -508,29 +549,8 @@ def _step_feedback(ctx: dict) -> str:
     return "\n".join(lines)
 
 
-def _real_cost_delta(ctx: dict) -> float:
-    """自上次结算以来新增的 LLM token 真实成本（按模型费率表计价，见 llm/pricing.py）。
-
-    cost_records 是会话账本，累积所有 chat/chat_stream 的 token。
-    只算增量——包含上一轮 decide 决策 + 本轮工具的 LLM 调用。
-    """
-    from app.llm.pricing import compute_cost
-
-    records = ctx.get("cost_records", [])
-    start = ctx.get("_last_cost_len", 0)
-    ctx["_last_cost_len"] = len(records)
-    new = records[start:]
-    return round(compute_cost(new), 6)
-
-
 async def _execute_tool(tool_name: str, params: dict, ctx: dict) -> dict:
-    """执行工具调用——Supervisor 分发 + ctx 更新。
-
-    预算用真实 LLM token 成本（不再是 TOOL_COST 估算）——决策+工具的全部 LLM 调用都计入。
-    """
-    ctx["_last_tool_cost"] = _real_cost_delta(ctx)
-    ctx["budget_spent"] += ctx["_last_tool_cost"]
-
+    """执行工具调用——Supervisor 分发 + ctx 更新。"""
     from app.agent.supervisor import dispatch
     result = await dispatch(ctx, tool_name, params)
 
@@ -545,6 +565,44 @@ async def _execute_tool(tool_name: str, params: dict, ctx: dict) -> dict:
             ctx["html"] = result["html"]
 
     return result
+
+
+def _tool_detail(result: dict) -> str:
+    """工具的实际产出（给用户看"干了什么"）——搜索素材列表、设计方案、验证问题。
+
+    和 _summarize（一句话摘要）配合：摘要给卡片行内，detail 给展开卡正文。
+    """
+    tool = result.get("tool", "")
+    if tool == "search":
+        results = result.get("results", []) or []
+        if not results:
+            return "（未找到可用素材）"
+        lines = []
+        for i, r in enumerate(results[:10], 1):
+            t = (r.get("title") or "").strip()
+            url = (r.get("url") or "").strip()
+            snip = (r.get("snippet") or r.get("content") or "").strip()[:100]
+            lines.append(f"{i}. {t}")
+            if url:
+                lines.append(f"   {url}")
+            if snip:
+                lines.append(f"   {snip}")
+        if len(results) > 10:
+            lines.append(f"… 共 {len(results)} 条素材")
+        return "\n".join(lines)
+    if tool in ("design", "compose"):
+        design = result.get("design") or {}
+        if not design:
+            return ""
+        return (f"组件：{'、'.join(design.get('components', []) or [])}\n"
+                f"结构：{design.get('structure', '')}\n"
+                f"视觉：{design.get('visual_hint', '')}")
+    if tool == "verify":
+        issues = result.get("issues", []) or []
+        if not issues:
+            return "全部检查项通过"
+        return "\n".join(f"· [{i.get('severity')}] {i.get('description', '')}" for i in issues[:10])
+    return ""
 
 
 def _summarize(result: dict) -> str:
@@ -591,7 +649,7 @@ REFINE_SYSTEM_PROMPT = """用户在已生成页面的基础上提出修改要求
 
 
 async def refine_page(design, content, material, html, user_input, instruction,
-                      push, session_records, preferences=None, model=None) -> dict:
+                      push, session_records, model=None) -> dict:
     """多轮迭代：用户改页面 → LLM 决定改法 → 执行 → 返回新版 html。"""
     import copy
 
@@ -608,12 +666,12 @@ async def refine_page(design, content, material, html, user_input, instruction,
     if push:
         await push({"type": "thinking", "step": 0,
                     "thought": f"🔄 收到新要求「{instruction}」，决定怎么改…",
-                    "tool": "system", "budget": 0})
+                    "tool": "system"})
 
     decision = {"action": "rerender", "hint": instruction}
     try:
         accumulated = ""
-        async for chunk in chat_stream(summary, system=REFINE_SYSTEM_PROMPT,
+        async for chunk in chat_stream(summary, system=skill_prompt("refine", REFINE_SYSTEM_PROMPT),
                                        temperature=0.3, session_records=session_records,
                                        model=model, label="refine"):
             accumulated += chunk
@@ -630,17 +688,16 @@ async def refine_page(design, content, material, html, user_input, instruction,
         query = decision.get("query") or user_input
         if push:
             await push({"type": "thinking", "step": 0,
-                        "thought": f"🔍 迭代补搜：「{query}」…", "tool": "search", "budget": 0})
+                        "thought": f"🔍 迭代补搜：「{query}」…", "tool": "search"})
         sr = await tool_search(query, reason="迭代补搜", existing_material=material)
         material = material + sr.get("results", [])
 
     if action in ("redesign", "research"):
         if push:
             await push({"type": "thinking", "step": 0,
-                        "thought": "🎨 重新设计叙事形式和文案…", "tool": "design", "budget": 0})
+                        "thought": "🎨 重新设计叙事形式和文案…", "tool": "design"})
         da = await DesignerAgent().run(material, user_input, push=push,
-                                       session_records=session_records, preferences=preferences,
-                                       model=model)
+                                       session_records=session_records, model=model)
         design = da.get("design") or design
         content = da.get("content") or content
 
@@ -650,7 +707,7 @@ async def refine_page(design, content, material, html, user_input, instruction,
     patched["visual_hint"] = f"{patched.get('visual_hint', '')} | {hint_text}".strip(" |")
     if push:
         await push({"type": "thinking", "step": 0,
-                    "thought": f"🖌️ 重新渲染（{action}）…", "tool": "render", "budget": 0})
+                    "thought": f"🖌️ 重新渲染（{action}）…", "tool": "render"})
     rr = await RenderAgent().run(patched, content or {}, push=push, session_records=session_records,
                                  model=model)
 
@@ -666,7 +723,7 @@ async def refine_page(design, content, material, html, user_input, instruction,
             if push:
                 await push({"type": "thinking", "step": 0,
                             "thought": f"🔎 验证发现 {len(critical)} 个关键问题，修正后重渲染…",
-                            "tool": "verify", "budget": 0})
+                            "tool": "verify"})
             patched["visual_hint"] = f"{patched.get('visual_hint', '')} | 审查问题：{'；'.join(critical)}".strip(" |")
             rr2 = await RenderAgent().run(patched, content or {}, push=push, session_records=session_records,
                                           model=model)

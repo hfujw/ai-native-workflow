@@ -3,7 +3,6 @@ import type { ComponentType } from "react";
 import type { IconProps } from "./icons";
 import type { ToolCall, ToolId } from "../lib/api";
 import {
-  IconChevronDown,
   IconCode,
   IconGrid,
   IconPencil,
@@ -24,17 +23,13 @@ const TOOL_ICONS: Record<ToolId, ComponentType<IconProps>> = {
   judge: IconShieldCheck,
 };
 
-/**
- * DSH 式工具卡片：头部（状态点 + 图标 + 名称 + 结果/耗时/成本 + 展开箭头），
- * 点击展开思考正文与明细；running 时自动展开，思考内容逐字"长出来"。
- */
+/** DSH 精确还原：一行 [图标(悬停变箭头)] [标题] · [摘要截断]，点击展开正文。 */
 export default function ToolCard({ call }: { call: ToolCall }) {
   const [open, setOpen] = useState(call.status === "running");
   const [shown, setShown] = useState(0);
 
   const isRunning = call.status === "running";
 
-  // 状态流转：running 自动展开并从头流式；done/error 展示全文
   useEffect(() => {
     if (isRunning) {
       setOpen(true);
@@ -44,7 +39,6 @@ export default function ToolCard({ call }: { call: ToolCall }) {
     }
   }, [call.status, call.thought, isRunning]);
 
-  // 流式打字（think 正文逐字出现，像 DSH 的 Think 卡片）
   useEffect(() => {
     if (!isRunning || !call.thought) return;
     const iv = window.setInterval(() => {
@@ -61,30 +55,40 @@ export default function ToolCard({ call }: { call: ToolCall }) {
 
   const Icon = TOOL_ICONS[call.tool];
   const thoughtVisible = isRunning ? (call.thought ?? "").slice(0, shown) : call.thought;
+  // 行内摘要：运行中已展开时清空（思考在正文，头部不重复出现两遍）
+  const inline =
+    open && isRunning
+      ? ""
+      : isRunning
+        ? thoughtVisible
+        : call.status === "error"
+          ? call.error || call.summary || call.thought
+          : call.summary || call.thought;
   const hasBody = !!thoughtVisible || !!call.detail || !!call.error;
 
   return (
-    <div className={`tool-card ${call.status}`}>
-      <button className="tc-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <span className="tc-dot" data-state={call.status} />
-        <span className="tc-icon"><Icon size={14} /></span>
-        <span className="tc-label">{call.title}</span>
-        <span className="tc-meta">
-          {isRunning && <span className="tc-running">进行中</span>}
-          {call.status === "done" && call.summary && (
-            <span className="tc-summary">{call.summary}</span>
-          )}
-          {call.status === "done" && (call.duration != null || call.cost != null) && (
-            <span className="tc-stats">
-              {call.duration != null && `${call.duration.toFixed(1)}s`}
-              {call.cost != null && call.cost > 0 && ` · ¥${call.cost.toFixed(4)}`}
-            </span>
-          )}
+    <div className={`tool-card ${call.status} ${open ? "open" : ""}`}>
+      <button
+        className="tc-head"
+        onClick={() => hasBody && setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        {/* 图标区：默认工具图标，hover 变箭头；展开后固定显示向下箭头 */}
+        <span className="tc-icon-wrap">
+          <span className="tc-tool-icon">
+            <Icon size={14} />
+          </span>
+          <span className="tc-arrow" />
         </span>
-        {hasBody && (
-          <IconChevronDown size={13} className={`tc-chev ${open ? "open" : ""}`} />
-        )}
+
+        <span className="tc-label">{call.title}</span>
+        <span className="tc-sep">·</span>
+        <span className="tc-inline">
+          {inline}
+          {isRunning && <span className="tc-caret" />}
+        </span>
       </button>
+
       {hasBody && open && (
         <div className="tc-body">
           {thoughtVisible && (

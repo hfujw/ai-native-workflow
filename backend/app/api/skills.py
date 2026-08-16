@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.skills import delete_skill, install_skill, list_skills, load_skill
+from app.skills import delete_skill, install_skill, is_builtin, list_skills, load_skill
 
 router = APIRouter()
 
@@ -27,6 +27,9 @@ async def install_skill_endpoint(req: _InstallRequest):
     # 路径安全：id 不能含路径分隔符/上级跳转
     if not skill_id or any(ch in skill_id for ch in ("/", "\\", "..", " ")):
         return JSONResponse(status_code=400, content={"error": "skill id 不合法"})
+    # 内置不可覆盖（core/风格）
+    if is_builtin(skill_id):
+        return JSONResponse(status_code=400, content={"error": "内置 skill 不可覆盖"})
     skill = install_skill(skill_id, req.markdown)
     if skill is None:
         return JSONResponse(status_code=400, content={"error": "skill 格式非法（缺 name）"})

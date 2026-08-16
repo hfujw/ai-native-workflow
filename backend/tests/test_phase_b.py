@@ -1,9 +1,8 @@
-"""Phase B 测试——持久化层（trace / 历史 / 偏好）。"""
-import pytest
+"""Phase B 测试——持久化层（trace / 历史 / 工作区）。偏好已砍，不再测试。"""
+import os
 
 from app import projects
 from app.observability import trace
-from app.preferences import get_preferences, update_preferences
 
 # ═══════════════════════════════════════════════════════════════
 # B1: trace 落盘
@@ -63,21 +62,44 @@ def test_projects_missing_file_returns_empty(tmp_path, monkeypatch):
 
 
 # ═══════════════════════════════════════════════════════════════
-# B3: 偏好存储
+# B4: 页面工作区（每对话一页，落成独立 HTML 文件）
 # ═══════════════════════════════════════════════════════════════
 
-@pytest.mark.asyncio
-async def test_preferences_update_and_get():
-    await update_preferences({"style_hints": ["暗色"]})
-    prefs = await get_preferences()
-    assert "暗色" in prefs["style_hints"]
-    assert "learned_at" in prefs
+def test_workspace_save_page(tmp_path, monkeypatch):
+    from app import workspace
+    monkeypatch.setattr(workspace, "_WORKSPACE_DIR", str(tmp_path))
+    path = workspace.save_page("s123", "Linux 诞生记: 1991 那个爱好项目", "<html>hi</html>")
+    assert os.path.isfile(path)
+    assert "s123" in os.path.basename(path)  # 文件名带会话 id
+    assert path.endswith("_v1.html")  # 首版 = v1
+    with open(path, encoding="utf-8") as f:
+        assert f.read() == "<html>hi</html>"
 
 
-@pytest.mark.asyncio
-async def test_preferences_merge():
-    await update_preferences({"style_hints": ["暗色"]})
-    await update_preferences({"preferred_components": ["timeline"]})
-    prefs = await get_preferences()
-    assert "暗色" in prefs["style_hints"]
-    assert "timeline" in prefs["preferred_components"]
+def test_workspace_iteration_makes_new_version(tmp_path, monkeypatch):
+    """迭代修改 → 生成新版本文件（不覆盖旧版）。"""
+    from app import workspace
+    monkeypatch.setattr(workspace, "_WORKSPACE_DIR", str(tmp_path))
+    p1 = workspace.save_page("s", "主题", "<html>v1</html>", 1)
+    p2 = workspace.save_page("s", "主题", "<html>v2</html>", 2)
+    assert os.path.isfile(p1) and os.path.isfile(p2)  # 两版都在，不覆盖
+    assert p1 != p2
+
+
+def test_workspace_delete_page(tmp_path, monkeypatch):
+    """删除产物文件 + 路径穿越防护。"""
+    from app import workspace
+    monkeypatch.setattr(workspace, "_WORKSPACE_DIR", str(tmp_path))
+    p = workspace.save_page("s", "主题", "<html>x</html>", 1)
+    name = os.path.basename(p)
+    assert workspace.delete_page(name) is True
+    assert not os.path.isfile(p)
+    assert workspace.delete_page(name) is False  # 已删
+    assert workspace.delete_page("../evil.html") is False  # 路径穿越被拒
+
+
+def test_workspace_save_page_skips_empty(tmp_path, monkeypatch):
+    from app import workspace
+    monkeypatch.setattr(workspace, "_WORKSPACE_DIR", str(tmp_path))
+    assert workspace.save_page("s2", "t", "") == ""  # 空 html 不落盘
+    assert workspace.save_page("s2", "t", None) == ""

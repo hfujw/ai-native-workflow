@@ -51,8 +51,7 @@ def _describe_llm_error(e: Exception) -> str:
 _session_client: contextvars.ContextVar = contextvars.ContextVar(
     "llm_session_client", default=None)
 
-DEFAULT_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
-
+# 模型必须由用户在前端填写（Composer 选择）——后端不再有默认模型，缺模型直接报错。
 # 模型名归一化见 normalize_model()——DeepSeek 官方改名后（v4-flash/v4-pro），
 # 用户前端可能存着各种变体（大小写、简名、旧名），统一模糊映射到官方名。
 
@@ -119,27 +118,6 @@ def _get_client() -> AsyncOpenAI:
     return client
 
 
-def get_cost_summary(records: list[dict]) -> dict:
-    """计算费用——按模型费率表计价（见 llm/pricing.py），未知模型兜底。"""
-    # 防御：个别账本条目缺 token 字段时按 0 计，并打日志暴露问题记录
-    for r in records:
-        if "input_tokens" not in r or "output_tokens" not in r:
-            logger.warning("账本条目缺 token 字段（不应发生）: %s", str(r)[:120])
-    total_input = sum(r.get("input_tokens", 0) for r in records)
-    total_output = sum(r.get("output_tokens", 0) for r in records)
-    total_cache_hit = sum(r.get("cache_hit_tokens", 0) for r in records)
-    from app.llm.pricing import compute_cost
-    cost = compute_cost(records)
-    return {
-        "calls": len(records),
-        "total_input_tokens": total_input,
-        "total_output_tokens": total_output,
-        "total_cache_hit_tokens": total_cache_hit,
-        "estimated_cost_rmb": round(cost, 4),
-        "records": records[-20:],
-    }
-
-
 async def chat(prompt: str, system: str = "", model: str = None, temperature: float = 0.7,
                max_tokens: int = 16384, session_records: list[dict] | None = None,
                label: str = "unknown", response_format: dict | None = None) -> str:
@@ -157,9 +135,12 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
     # 配置错误不重试：没填 key → 立即抛 LLMNotConfiguredError（入口检查）
     _assert_configured()
 
+    effective_model = normalize_model(model)  # 统一官方名；模型必须前端填，无默认
+    if not effective_model:
+        raise LLMNotConfiguredError("未配置模型——请在 Lumen 设置 → 模型 里填写所用模型")
+
     last_error = None
     from app.llm.circuit_breaker import llm_breaker, CircuitOpenError
-    effective_model = normalize_model(model) or DEFAULT_MODEL  # 统一官方名
     for attempt in range(MAX_RETRIES + 1):
         try:
             create_kwargs = dict(
@@ -196,10 +177,9 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
                 # 会话账本：传入才记账；不传则不记（不再有全局账本）
                 if session_records is not None:
                     session_records.append(entry)
-                    logger.info("LLM tokens: in=%d out=%d total=%d | 累计¥%.4f",
+                    logger.info("LLM tokens: in=%d out=%d total=%d",
                                 usage.prompt_tokens, usage.completion_tokens,
-                                usage.total_tokens,
-                                get_cost_summary(session_records)["estimated_cost_rmb"])
+                                usage.total_tokens)
             return content
 
         except CircuitOpenError:
@@ -258,29 +238,49 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
     # 配置错误不降级：没填 key → 立即抛 LLMNotConfiguredError
     _assert_configured()
 
-    effective_model = normalize_model(model) or DEFAULT_MODEL  # 统一官方名
+    effective_model = normalize_model(model)  # 模型必须前端填，无默认
+    if not effective_model:
+        raise LLMNotConfiguredError("未配置模型——请在 Lumen 设置 → 模型 里填写所用模型")
+
+    # 建连可重试（此刻还没 yield 任何内容，重开是安全的）。
+    # 一旦开始消费流就不再重试——流无法干净重开，中断直接上抛（_decide 有失败计数兜底）。
+    response = None
+    last_error = None
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            # DeepSeek 兼容层不一定支持 stream_options——报错就降级
+            try:
+                response = await _get_client().chat.completions.create(
+                    model=effective_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                )
+            except Exception as e:
+                logger.debug("stream_options 不支持，降级重试: %s", e)
+                response = await _get_client().chat.completions.create(
+                    model=effective_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=True,
+                )
+            break  # 建连成功，开始消费流
+        except Exception as e:
+            last_error = e
+            if attempt < MAX_RETRIES:
+                wait = 2 ** attempt
+                logger.warning("LLM stream 建连失败 (attempt %d/%d): %s, %ds 后重试…",
+                               attempt + 1, MAX_RETRIES + 1, _describe_llm_error(e), wait)
+                await asyncio.sleep(wait)
+            else:
+                logger.error("LLM stream 建连失败 after %d attempts: %s",
+                             MAX_RETRIES + 1, _describe_llm_error(e))
+                raise
 
     try:
-        # DeepSeek 兼容层不一定支持 stream_options——报错就降级
-        try:
-            response = await _get_client().chat.completions.create(
-                model=effective_model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=True,
-                stream_options={"include_usage": True},
-            )
-        except Exception as e:
-            logger.debug("stream_options 不支持，降级重试: %s", e)
-            response = await _get_client().chat.completions.create(
-                model=effective_model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=True,
-            )
-
         total_tokens = 0
         prompt_tokens = 0
         completion_tokens = 0
@@ -297,12 +297,13 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
                 completion_tokens = chunk.usage.completion_tokens or 0
                 cache_hit_tokens = getattr(chunk.usage, "prompt_cache_hit_tokens", None) or 0
 
-        # 兜底：DeepSeek 不一定返回 usage，拿不到精确值就用字符数估算
-        # 1 token ≈ 4 字符（中文约 2 字符，英文约 4 字符，取 4 保守估计）
+        # 兜底：DeepSeek 不一定返回 usage，拿不到精确值就用字符数估算。
+        # 中文约 1.5-2 字符/token、英文约 4 字符/token——取 2 偏高估
+        # （护栏原则：宁可高估预算，不少算；旧的 //4 会低估中文，¥1 护栏可能穿透）
         if prompt_tokens == 0:
-            prompt_tokens = max(1, len(prompt) // 4)
+            prompt_tokens = max(1, len(prompt) // 2)
         if completion_tokens == 0:
-            completion_tokens = max(1, completion_chars // 4)
+            completion_tokens = max(1, completion_chars // 2)
 
         # 记账：传入会话账本才记；不传则不记（不再有全局账本）
         entry = {
@@ -315,9 +316,8 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
             session_records.append(entry)
 
         if session_records is not None:
-            logger.info("LLM stream tokens: in=%d out=%d total=%d | 累计¥%.4f",
-                        prompt_tokens, completion_tokens, total_tokens,
-                        get_cost_summary(session_records)["estimated_cost_rmb"])
+            logger.info("LLM stream tokens: in=%d out=%d total=%d",
+                        prompt_tokens, completion_tokens, total_tokens)
 
     except Exception:
         raise

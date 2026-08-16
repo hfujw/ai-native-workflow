@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
 import { useDropdown } from "../hooks/useDropdown";
 import { usePersistentState } from "../hooks/usePersistentState";
+import { confirmDialog } from "../lib/confirm";
 import {
+  fetchSkills,
   groupModelsByProvider,
   type GenParams,
   type ModelItem,
   type ProviderCreds,
   type SearchService,
+  type Skill as ApiSkill,
 } from "../lib/api";
 import type { IconProps } from "./icons";
 import {
@@ -37,32 +40,32 @@ type Preset = {
   /** 推荐的 skill 组合（能力由 skill 赋予，预设只推荐） */
   skills: string[];
   /** 编排参数模板：设为默认时应用这组参数 */
-  params: { agentSteps: number; llmSteps: number; searchMax: number; searchEnabled: boolean; budget: number };
+  params: { agentSteps: number; llmSteps: number; searchMax: number; searchEnabled: boolean; creativeSwarmSize: number };
 };
 const PRESETS: Preset[] = [
   {
     id: "storyteller", name: "知识探险家", badge: "官方", trust: "system",
-    desc: "把故事讲成编辑级杂志长图，素材充足时尽量考证",
-    skills: ["杂志", "搜索"],
-    params: { agentSteps: 20, llmSteps: 10, searchMax: 8, searchEnabled: true, budget: 1.0 },
+    desc: "为故事型主题打造编辑级杂志长页：先搜索素材，再用多角度创意脑发散，最后杂志排版。适合历史、人物、深度话题——素材充足时尽量考证，讲得生动",
+    skills: ["杂志长图"],
+    params: { agentSteps: 20, llmSteps: 10, searchMax: 8, searchEnabled: true, creativeSwarmSize: 3 },
   },
   {
     id: "alchemist", name: "数据炼金师", badge: "官方", trust: "system",
-    desc: "信息图优先，数字与图表一目了然",
-    skills: ["信息图", "图表"],
-    params: { agentSteps: 15, llmSteps: 8, searchMax: 5, searchEnabled: true, budget: 0.8 },
+    desc: "把数据变成视觉叙事：多搜数字素材，数据型创意脑打头，图表信息图呈现。适合年度报告、产品对比、数据话题——数字一目了然",
+    skills: ["信息图"],
+    params: { agentSteps: 15, llmSteps: 8, searchMax: 5, searchEnabled: true, creativeSwarmSize: 4 },
   },
   {
     id: "pixelist", name: "像素时光机", badge: "官方", trust: "system",
-    desc: "复古像素风格，适合游戏化与怀旧题材",
-    skills: ["像素", "搜索"],
-    params: { agentSteps: 25, llmSteps: 12, searchMax: 4, searchEnabled: true, budget: 1.2 },
+    desc: "游戏化怀旧呈现：像素风 + 最多创意脑发散（人海战术），做出有『游戏感』的页面。适合游戏、复古、趣味话题——效果最花哨但也最烧 token",
+    skills: ["像素风"],
+    params: { agentSteps: 25, llmSteps: 12, searchMax: 4, searchEnabled: true, creativeSwarmSize: 5 },
   },
   {
     id: "curator", name: "极简策展人", badge: "官方", trust: "system",
-    desc: "安静留白的知识卡片，不联网，靠自身知识",
-    skills: ["杂志"],
-    params: { agentSteps: 10, llmSteps: 6, searchMax: 2, searchEnabled: false, budget: 0.5 },
+    desc: "不联网，靠自身知识做安静的知识卡片——极简克制、留白呼吸。适合快问快答、概念解释——最省 token 的预设",
+    skills: ["杂志长图"],
+    params: { agentSteps: 10, llmSteps: 6, searchMax: 2, searchEnabled: false, creativeSwarmSize: 3 },
   },
 ];
 
@@ -86,16 +89,6 @@ function SettingRow({
     </div>
   );
 }
-
-/** skill 名称 → id（预设推荐 → 生成时注入模板资产） */
-const SKILL_ID_BY_NAME: Record<string, string> = {
-  像素: "pixel",
-  杂志: "magazine",
-  信息图: "infographic",
-  搜索: "search",
-  图表: "chart",
-  "3D 场景": "3d",
-};
 
 /** 侧边栏底部设置入口：DSH 式居中模态（Agent 预设 / 外观 / 模型） */
 export default function SettingsButton({
@@ -141,6 +134,15 @@ export default function SettingsButton({
   const [editingPreset, setEditingPreset] = useState<string | null>(null);
   // 编辑草稿（打开时从预设拷贝，保存时写回）
   const [editPresetDraft, setEditPresetDraft] = useState<Preset | null>(null);
+  // 预设详情弹窗（内置/自定义都能看——"我没法查看详情我咋用"）
+  const [presetDetail, setPresetDetail] = useState<Preset | null>(null);
+  // 全部可用 skill + tool（自建预设技能组合的下拉数据源——和后端技能系统对齐）
+  const [allSkills, setAllSkills] = useState<ApiSkill[]>([]);
+  useEffect(() => {
+    fetchSkills()
+      .then((data) => setAllSkills(data.skills ?? []))
+      .catch(() => setAllSkills([])); // 后端未启动时留空，不影响其他功能
+  }, []);
 
   // 模型页（DSH ModelsSection：provider 行 + 一次一张编辑卡片 + 添加提供方）
   // 展开的 provider（null=收起全部；一次只展开一张）
@@ -182,7 +184,10 @@ export default function SettingsButton({
       searchServices.map((s) => (s.id === id ? { ...s, baseUrl: base } : s))
     );
   };
-  const removeSearchService = (id: string) => {
+  const removeSearchService = async (id: string) => {
+    // ⑤ 删除零确认 → 加确认
+    const ok = await confirmDialog("确定删除这个搜索服务？");
+    if (!ok) return;
     const next = searchServices.filter((s) => s.id !== id);
     onSearchServicesChange(next);
     if (activeSearchService === id) {
@@ -261,13 +266,21 @@ export default function SettingsButton({
     );
     setEditingModel(null);
   };
-  const removeModel = (id: string) => onModelsChange(models.filter((m) => m.id !== id));
+  const removeModel = async (id: string) => {
+    // ⑤ 删除零确认 → 加确认
+    const ok = await confirmDialog("确定删除这个模型？");
+    if (!ok) return;
+    onModelsChange(models.filter((m) => m.id !== id));
+  };
 
-  /** 应用预设：设为默认 + 套用一组编排参数 + 推荐的风格 skill */
+  /** 应用预设：设为默认 + 套用一组编排参数 + 推荐的风格 skill。
+   *  技能组合里的第一个"风格" skill → 生成风格；工具 skill 由 LLM 自主按需用，不强制。 */
   const applyPreset = (p: Preset) => {
     setActivePreset(p.id);
-    const styleName = p.skills.find((s) => s !== "搜索" && s !== "图表");
-    onParamsChange({ ...p.params, skillId: styleName ? (SKILL_ID_BY_NAME[styleName] ?? "") : "" });
+    const style = p.skills
+      .map((name) => allSkills.find((s) => s.name === name))
+      .find((s) => s && s.type === "风格");
+    onParamsChange({ ...p.params, skillId: style?.id ?? "" });
   };
 
   /** 自建预设：从空白开始（不是复制内置）——自己起名、选技能、定参数 */
@@ -278,13 +291,16 @@ export default function SettingsButton({
       trust: "user",
       desc: "",
       skills: [],
-      params: { agentSteps: 20, llmSteps: 10, searchMax: 8, searchEnabled: true, budget: 1.0 },
+      params: { agentSteps: 20, llmSteps: 10, searchMax: 8, searchEnabled: true, creativeSwarmSize: 3 },
     };
     setEditPresetDraft(draft);
     setEditingPreset(draft.id); // 占位 id：保存时才真正写入列表
   };
 
-  const removeCustomPreset = (id: string) => {
+  const removeCustomPreset = async (id: string) => {
+    // ⑤ 删除零确认 → 加确认
+    const ok = await confirmDialog("确定删除这个自定义预设？");
+    if (!ok) return;
     setCustomPresets((cs) => cs.filter((c) => c.id !== id));
     if (activePreset === id) applyPreset(PRESETS[0]);
     if (editingPreset === id) setEditingPreset(null);
@@ -380,6 +396,7 @@ export default function SettingsButton({
       </button>
 
       {open && (
+        <>
         <div className="drawer-overlay" onClick={() => setOpen(false)}>
           <div className="settings-drawer" onClick={(e) => e.stopPropagation()}>
             <div className="drawer-nav">
@@ -444,8 +461,15 @@ export default function SettingsButton({
                                       <span>步数 {p.params.agentSteps}</span>
                                       <span>搜索 ×{p.params.searchMax}</span>
                                       <span>{p.params.searchEnabled ? "联网" : "离线"}</span>
-                                      <span>¥{p.params.budget}</span>
                                     </div>
+                                  </button>
+                                  {/* 详情：内置/自定义都能看——"我没法查看详情我咋用" */}
+                                  <button
+                                    className="preset-card-edit"
+                                    title="查看详情"
+                                    onClick={(e) => { e.stopPropagation(); setPresetDetail(p); }}
+                                  >
+                                    详情
                                   </button>
                                   {isCustom && (
                                     <>
@@ -507,17 +531,50 @@ export default function SettingsButton({
                         </div>
                         <div className="model-field">
                           <label className="model-field-label">技能组合</label>
-                          <div className="preset-skill-picker">
-                            {Object.keys(SKILL_ID_BY_NAME).map((s) => (
-                              <button
-                                key={s}
-                                className={`preset-skill-chip ${editPresetDraft.skills.includes(s) ? "on" : ""}`}
-                                onClick={() => toggleDraftSkill(s)}
-                              >
-                                {s}
-                              </button>
-                            ))}
-                          </div>
+                          {/* 下拉列出后端全部 skill+tool（风格/工具两组）；已选显示为可移除 chips */}
+                          {allSkills.length === 0 ? (
+                            <span className="model-field-hint">暂无可用技能（后端未启动？）</span>
+                          ) : (
+                            <select
+                              className="model-select-input"
+                              value=""
+                              onChange={(e) => {
+                                const name = e.target.value;
+                                if (name && !editPresetDraft.skills.includes(name)) {
+                                  setEditPresetDraft({
+                                    ...editPresetDraft,
+                                    skills: [...editPresetDraft.skills, name],
+                                  });
+                                }
+                              }}
+                            >
+                              <option value="">+ 添加技能…</option>
+                              {(["风格", "工具"] as const).map((t) => (
+                                <optgroup key={t} label={t}>
+                                  {allSkills
+                                    .filter((s) => s.type === t)
+                                    .filter((s) => !editPresetDraft.skills.includes(s.name))
+                                    .map((s) => (
+                                      <option key={s.id} value={s.name}>{s.name}</option>
+                                    ))}
+                                </optgroup>
+                              ))}
+                            </select>
+                          )}
+                          {editPresetDraft.skills.length > 0 && (
+                            <div className="preset-skill-picker">
+                              {editPresetDraft.skills.map((name) => (
+                                <button
+                                  key={name}
+                                  className="preset-skill-chip on"
+                                  onClick={() => toggleDraftSkill(name)}
+                                  title="点击移除"
+                                >
+                                  {name} ✕
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="preset-editor-params">
                           <label className="model-field-label">编排参数</label>
@@ -527,6 +584,9 @@ export default function SettingsButton({
                               <input
                                 className="setting-input"
                                 type="number"
+                                min={1}
+                                max={100}
+                                placeholder="1–100，默认 20"
                                 value={editPresetDraft.params.agentSteps}
                                 onChange={(e) =>
                                   setEditPresetDraft({
@@ -541,6 +601,9 @@ export default function SettingsButton({
                               <input
                                 className="setting-input"
                                 type="number"
+                                min={1}
+                                max={100}
+                                placeholder="1–100，默认 10"
                                 value={editPresetDraft.params.llmSteps}
                                 onChange={(e) =>
                                   setEditPresetDraft({
@@ -555,6 +618,9 @@ export default function SettingsButton({
                               <input
                                 className="setting-input"
                                 type="number"
+                                min={0}
+                                max={20}
+                                placeholder="0–20，默认 8"
                                 value={editPresetDraft.params.searchMax}
                                 onChange={(e) =>
                                   setEditPresetDraft({
@@ -565,15 +631,18 @@ export default function SettingsButton({
                               />
                             </div>
                             <div className="model-field">
-                              <label className="model-field-label">预算（元）</label>
+                              <label className="model-field-label">创意脑数</label>
                               <input
                                 className="setting-input"
                                 type="number"
-                                value={editPresetDraft.params.budget}
+                                min={1}
+                                max={6}
+                                placeholder="1–6，默认 3"
+                                value={editPresetDraft.params.creativeSwarmSize}
                                 onChange={(e) =>
                                   setEditPresetDraft({
                                     ...editPresetDraft,
-                                    params: { ...editPresetDraft.params, budget: parseFloat(e.target.value) || 0 },
+                                    params: { ...editPresetDraft.params, creativeSwarmSize: parseInt(e.target.value) || 3 },
                                   })
                                 }
                               />
@@ -850,30 +919,36 @@ export default function SettingsButton({
 
                                 <div className="model-editor-models">
                                   {g.models.map((m) => (
-                                    <div key={m.id} className="provider-model-row">
+                                    <div key={m.id}>
                                       {editingModel === m.id ? (
-                                        <>
-                                          <div className="provider-model-fields">
+                                        /* 编辑态：垂直布局，独占整行（不再挤进横排 flex） */
+                                        <div className="model-editor">
+                                          <div className="model-field">
+                                            <label className="model-field-label">显示名称</label>
                                             <input
                                               className="setting-input"
                                               placeholder="显示名称"
                                               value={editModelName}
                                               onChange={(e) => setEditModelName(e.target.value)}
                                             />
+                                          </div>
+                                          <div className="model-field">
+                                            <label className="model-field-label">模型 ID</label>
                                             <input
                                               className="setting-input"
-                                              placeholder="模型 ID"
+                                              placeholder="模型 ID（如 deepseek-v4-flash / gpt-4o）"
                                               value={editModelId}
                                               onChange={(e) => setEditModelId(e.target.value)}
                                             />
+                                            <span className="model-field-hint">DeepSeek 官方模型名：deepseek-v4-flash / deepseek-v4-pro，填错 API 会拒绝</span>
                                           </div>
-                                          <span className="provider-model-actions">
+                                          <div className="model-editor-actions">
                                             <button className="btn-secondary" onClick={() => setEditingModel(null)}>取消</button>
                                             <button className="btn-primary" onClick={() => saveEdit(m.id)}>保存</button>
-                                          </span>
-                                        </>
+                                          </div>
+                                        </div>
                                       ) : (
-                                        <>
+                                        <div className="provider-model-row">
                                           <span className="provider-model-info">
                                             <span className="provider-model-name">{m.name}</span>
                                             <span className="provider-model-id">{m.modelId}</span>
@@ -885,7 +960,7 @@ export default function SettingsButton({
                                               <button className="btn-danger" onClick={() => removeModel(m.id)}>删除</button>
                                             )}
                                           </span>
-                                        </>
+                                        </div>
                                       )}
                                     </div>
                                   ))}
@@ -922,7 +997,8 @@ export default function SettingsButton({
                           )}
                           <div className="model-field">
                             <label className="model-field-label">模型 ID</label>
-                            <input className="setting-input" placeholder="如 gpt-4o / claude-3-5-sonnet" value={newModelId} onChange={(e) => setNewModelId(e.target.value)} />
+                            <input className="setting-input" placeholder="如 deepseek-v4-flash / gpt-4o" value={newModelId} onChange={(e) => setNewModelId(e.target.value)} />
+                            <span className="model-field-hint">调用 API 用的精确模型名——DeepSeek 官方：deepseek-v4-flash / deepseek-v4-pro</span>
                           </div>
                           <div className="model-field">
                             <label className="model-field-label">显示名称</label>
@@ -964,17 +1040,17 @@ export default function SettingsButton({
                     </div>
 
                     <div className="setting-section-title">生成参数</div>
-                    <SettingRow title="Agent 步数" desc="Agent 自主决策的最大循环步数">
-                      <input className="setting-input" type="number" value={params.agentSteps} onChange={(e) => onParamsChange({ ...params, agentSteps: parseInt(e.target.value) || 0 })} />
+                    <SettingRow title="Agent 步数" desc="Agent 自主决策的最大循环步数（1–100，后端会钳制）">
+                      <input className="setting-input" type="number" min={1} max={100} placeholder="默认 20" value={params.agentSteps} onChange={(e) => onParamsChange({ ...params, agentSteps: parseInt(e.target.value) || 0 })} />
                     </SettingRow>
-                    <SettingRow title="LLM 步数" desc="每类内部重试的上限：渲染自检 / 换词 / 审查回退">
-                      <input className="setting-input" type="number" value={params.llmSteps} onChange={(e) => onParamsChange({ ...params, llmSteps: parseInt(e.target.value) || 0 })} />
+                    <SettingRow title="LLM 步数" desc="每类内部重试上限：渲染自检 / 换词 / 审查回退（1–100）">
+                      <input className="setting-input" type="number" min={1} max={100} placeholder="默认 10" value={params.llmSteps} onChange={(e) => onParamsChange({ ...params, llmSteps: parseInt(e.target.value) || 0 })} />
                     </SettingRow>
-                    <SettingRow title="单次预算" desc="单次生成成本上限（元）">
-                      <input className="setting-input" type="number" value={params.budget} onChange={(e) => onParamsChange({ ...params, budget: parseFloat(e.target.value) || 0 })} />
+                    <SettingRow title="创意脑数量" desc="创作阶段并行发散的子脑数（1–6）——越高越多人海战术，越烧 token">
+                      <input className="setting-input" type="number" min={1} max={6} placeholder="默认 3" value={params.creativeSwarmSize} onChange={(e) => onParamsChange({ ...params, creativeSwarmSize: parseInt(e.target.value) || 3 })} />
                     </SettingRow>
-                    <SettingRow title="搜索次数上限" desc="素材检索的最多轮数">
-                      <input className="setting-input" type="number" value={params.searchMax} onChange={(e) => onParamsChange({ ...params, searchMax: parseInt(e.target.value) || 0 })} />
+                    <SettingRow title="搜索次数上限" desc="素材检索的最多轮数（0–20，0=不联网）">
+                      <input className="setting-input" type="number" min={0} max={20} placeholder="默认 8" value={params.searchMax} onChange={(e) => onParamsChange({ ...params, searchMax: parseInt(e.target.value) || 0 })} />
                     </SettingRow>
                     <SettingRow title="联网搜索" desc="允许 Lumen 联网检索素材（需在搜索服务里配置 Key）">
                       <button className={`toggle ${params.searchEnabled ? "on" : ""}`} onClick={() => onParamsChange({ ...params, searchEnabled: !params.searchEnabled })} />
@@ -985,6 +1061,56 @@ export default function SettingsButton({
             </div>
           </div>
         </div>
+
+        {/* 预设详情（内置/自定义都能看） */}
+        {presetDetail && (
+          <div className="confirm-overlay" onClick={() => setPresetDetail(null)}>
+            <div className="preset-detail" onClick={(e) => e.stopPropagation()}>
+              <div className="preset-detail-head">
+                <span className="preset-card-name">{presetDetail.name}</span>
+                {presetDetail.badge && <span className="preset-badge">{presetDetail.badge}</span>}
+              </div>
+              <p className="preset-card-desc">{presetDetail.desc}</p>
+
+              <div className="preset-detail-block">
+                <div className="preset-detail-title">技能组合</div>
+                <div className="preset-card-skills">
+                  {presetDetail.skills.length > 0 ? (
+                    presetDetail.skills.map((s) => <span key={s} className="preset-skill-chip">{s}</span>)
+                  ) : (
+                    <span className="preset-detail-none">未选技能（LLM 自由发挥）</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="preset-detail-block">
+                <div className="preset-detail-title">编排参数</div>
+                <ul className="preset-detail-list">
+                  <li><b>Agent 步数 {presetDetail.params.agentSteps}</b> — 自主决策最大循环步数</li>
+                  <li><b>LLM 步数 {presetDetail.params.llmSteps}</b> — 内部重试上限（渲染自检/换词/审查回退）</li>
+                  <li><b>搜索 ×{presetDetail.params.searchMax}</b> — 素材检索轮数上限</li>
+                  <li><b>创意脑 {presetDetail.params.creativeSwarmSize} 个</b> — 创作阶段并行发散子脑（人海战术）</li>
+                  <li><b>{presetDetail.params.searchEnabled ? "联网搜索" : "离线"}</b> — {presetDetail.params.searchEnabled ? "可检索素材" : "只用自身知识，不联网"}</li>
+                </ul>
+              </div>
+
+              <div className="preset-detail-actions">
+                {activePreset !== presetDetail.id && (
+                  <button className="btn-primary" onClick={() => { applyPreset(presetDetail); setPresetDetail(null); }}>
+                    套用此预设
+                  </button>
+                )}
+                {presetDetail.trust === "user" && (
+                  <button className="btn-secondary" onClick={() => { startEditPreset(presetDetail); setPresetDetail(null); }}>
+                    编辑
+                  </button>
+                )}
+                <button className="btn-secondary" onClick={() => setPresetDetail(null)}>关闭</button>
+              </div>
+            </div>
+          </div>
+        )}
+        </>
       )}
     </>
   );

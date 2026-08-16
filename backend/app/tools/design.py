@@ -50,7 +50,6 @@ async def tool_design(
     material: list[dict],
     user_input: str = "",
     session_records: list[dict] | None = None,
-    preferences: dict | None = None,   # Phase C：用户偏好注入
     model: str | None = None,          # 会话模型（前端选择，None=默认）
 ) -> dict:
     """分析素材，决定用什么叙事形式。"""
@@ -65,17 +64,9 @@ async def tool_design(
 
     topic_hint = f"\n⚠️ 用户想了解的具体主题是「{user_input}」。只围绕这个主题设计，不要扩展成更大的话题。" if user_input else ""
 
-    pref_hint = ""
-    if preferences:
-        style = preferences.get("style_hints") or []
-        comps = preferences.get("preferred_components") or []
-        if style or comps:
-            pref_hint = (f"\n⚠️ 用户偏好：风格「{'、'.join(style)}」、组件「{'、'.join(comps)}」。"
-                         f"尽量遵循，与主题冲突时以主题为准。")
-
     try:
         result = await chat_json(
-            f"素材：\n{brief}{topic_hint}{pref_hint}",
+            f"素材：\n{brief}{topic_hint}",
             system=DESIGN_SYSTEM_PROMPT,
             session_records=session_records,
             model=model,
@@ -130,7 +121,6 @@ async def tool_compose(
     design: dict,
     user_input: str = "",
     session_records: list[dict] | None = None,
-    preferences: dict | None = None,   # Phase C：用户偏好注入
     model: str | None = None,          # 会话模型（前端选择，None=默认）
 ) -> dict:
     """写叙事文案+来源标注。"""
@@ -141,16 +131,10 @@ async def tool_compose(
 
     topic_hint = f"\n⚠️ 用户想了解的具体主题是「{user_input}」。只围绕这个主题写内容，不要偏离。" if user_input else ""
 
-    pref_hint = ""
-    if preferences:
-        style = preferences.get("style_hints") or []
-        if style:
-            pref_hint = f"\n⚠️ 用户偏好的风格是「{'、'.join(style)}」，语气/取材尽量贴合，不违背事实。"
-
     prompt = f"""素材：{brief}
 
 设计：{json.dumps(design, ensure_ascii=False)}
-{topic_hint}{pref_hint}
+{topic_hint}
 为每个组件写内容。每个数字/年份/人名必须标注来源。"""
 
     try:
@@ -190,18 +174,18 @@ class DesignerAgent:
         push=None,
         session_records=None,
         bus=None,                     # Phase 4：消息总线（可选）
-        preferences=None,             # Phase C：用户偏好（风格/组件），注入 design/compose
         model=None,                   # 会话模型（前端选择，None=默认）
+        swarm_size: int | None = None,  # 创意脑数量（人海战术，None=配置默认）
         max_attempts: int | None = None,  # LLM 步数：设计重试上限（None=默认 2）
     ) -> dict:
         mat_count = len(material)
         attempts = max_attempts or 2
 
         for attempt in range(attempts):
-            # 发散-收敛设计（Kimi 模式）：并行创意子脑 → 大脑综合
+            # 发散-收敛设计（Kimi 模式）：并行创意子脑人海战术 → 大脑综合
             # 失败自动降级到单脑 tool_design（brainstorm 内部兜底）
             design = await brainstorm_design(user_input, material, session_records=session_records,
-                                             model=model, preferences=preferences)
+                                             model=model, swarm_size=swarm_size)
 
             # 素材不够？
             if not self._check_design_fit(design, mat_count):
@@ -223,6 +207,7 @@ class DesignerAgent:
                         "session_records": session_records,
                         "reply_to": "designer",
                         "push": push,  # 传 push 回调，让 ResearcherAgent 能推消息
+                        "model": model,  # 传会话模型——否则搜索换词 chat_json 因"未配置模型"报错
                     })
                     reply = await bus.recv("designer", timeout=45.0)
                     listener.cancel()
@@ -247,10 +232,10 @@ class DesignerAgent:
                 patched = [{"title": "⚠️ 素材不足，请使用简单形式（如 encyclopedia/cards）",
                             "snippet": f"仅有 {mat_count} 条素材", "content": ""}]
                 design = await tool_design(patched, user_input, session_records=session_records,
-                                           preferences=preferences, model=model)
+                                           model=model)
 
             content = await tool_compose(material, design, user_input, session_records=session_records,
-                                         preferences=preferences, model=model)
+                                         model=model)
 
             coverage = self._source_coverage(content)
             if coverage >= 0.3:

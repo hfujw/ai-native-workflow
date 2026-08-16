@@ -68,23 +68,3 @@ async def test_refine_falls_back_to_rerender_on_bad_decision():
         result = await refine_page({}, {"blocks": []}, [], "<html/>", "测试", "改一下", None, [])
 
     assert result["action"] == "rerender"  # 兜底到默认动作
-
-
-# ═══════════════════════════════════════════════════════════════
-# C2: 偏好提取
-# ═══════════════════════════════════════════════════════════════
-
-def test_extract_preferences_from_design():
-    from app.api.generate import _extract_preferences
-    prefs = _extract_preferences(
-        {"visual_hint": "暗色极简风格", "components": ["timeline", "cards"]}, None)
-    assert "暗色" in prefs["style_hints"]
-    assert "极简" in prefs["style_hints"]
-    assert "timeline" in prefs["preferred_components"]
-
-
-def test_extract_preferences_empty():
-    from app.api.generate import _extract_preferences
-    prefs = _extract_preferences({"visual_hint": "随便", "components": []}, None)
-    assert prefs["style_hints"] == []
-    assert prefs["preferred_components"] == []

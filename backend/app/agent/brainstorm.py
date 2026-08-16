@@ -51,10 +51,68 @@ CREATIVE_ANGLES: list[dict] = [
 输出JSON：
 {"angle": "你的信息角度（一句话）", "components": ["comparison"], "structure": "信息组织方式", "visual_hint": "克制清晰的视觉基调", "rationale": "为什么这样组织"}""",
     },
+    {
+        "id": "datadriven",
+        "name": "数据型",
+        "system": """你是数据设计师。你关心「数字的力量」——用数据支撑叙事。
+你的任务是给出这个主题的数据化呈现建议：哪些关键数字能支撑故事？用什么图表结构最有力？
+
+可选组件：datapanel（数据面板）/ comparison（对比表）/ timeline（时间轴）
+输出JSON：
+{"angle": "你的数据角度（一句话）", "components": ["datapanel"], "structure": "数据组织方式", "visual_hint": "清晰冷静的数据风格", "rationale": "为什么用数据讲"}""",
+    },
+    {
+        "id": "emotional",
+        "name": "情感型",
+        "system": """你是情感设计师。你关心「情绪共鸣」——让读者代入、被触动。
+你的任务是给出这个主题的情感化呈现建议：哪个瞬间/人物最能引发共鸣？怎么营造氛围？
+
+可选组件：portrait（人物画像）/ cards（卡片集）/ timeline（时间轴）
+输出JSON：
+{"angle": "你的情感角度（一句话）", "components": ["portrait"], "structure": "情感节奏安排", "visual_hint": "氛围基调与情绪色彩", "rationale": "为什么这样打动人"}""",
+    },
+    {
+        "id": "scene",
+        "name": "场景型",
+        "system": """你是场景设计师。你关心「身临其境」——把读者拉进现场。
+你的任务是给出这个主题的场景化呈现建议：怎么营造沉浸感？用什么空间结构让读者"走进去"？
+
+可选组件：cards（卡片集）/ flowchart（流程图）/ encyclopedia（百科条目）
+输出JSON：
+{"angle": "你的场景角度（一句话）", "components": ["cards"], "structure": "空间布局安排", "visual_hint": "沉浸式场景基调", "rationale": "为什么这样造境"}""",
+    },
 ]
 
 _FALLBACK_DESIGN = {"components": ["encyclopedia"], "rationale": "发散失败，降级为百科条目",
                     "structure": "单列百科条目", "visual_hint": "简洁中性"}
+
+# ── 预选 Top-K（人海战术的收敛护栏）──
+# 创意脑多了之后，综合器输入会爆炸。先按"可执行性"粗挑最好的几个再综合。
+# 分数 = visual_hint 具体风格词数 + 组件数 + rationale 长度（启发式，不调 LLM，零成本）。
+TOP_K = 4
+
+# visual_hint 里的"具体风格词"——含这些说明方向可执行（不是"简洁大方"这种空话）
+_CONCRETE_STYLE = ["黑金", "水墨", "渐变", "霓虹", "赛博", "像素", "杂志", "玻璃", "极简",
+                   "复古", "暗色", "留白", "衬线", "无衬线", "红金", "暖", "冷", "蓝", "绿", "橙"]
+
+
+def _score_plan(plan: dict) -> int:
+    """方案可执行性粗评分（纯启发式，不调 LLM）。"""
+    vh = plan.get("visual_hint", "") or ""
+    score = sum(1 for w in _CONCRETE_STYLE if w in vh)
+    score += len(plan.get("components", []) or [])
+    score += min(len((plan.get("rationale", "") or "")) // 10, 3)
+    return score
+
+
+def _preselect_topk(plans: list[dict], k: int = TOP_K) -> list[dict]:
+    """按分数取前 k 个（分数相同保持原始顺序，稳定）。"""
+    if len(plans) <= k:
+        return plans
+    top_idx = sorted(
+        range(len(plans)), key=lambda i: _score_plan(plans[i]), reverse=True
+    )[:k]
+    return [plans[i] for i in sorted(top_idx)]  # 按原始顺序返回
 
 
 def _material_brief(material: list[dict], limit: int = 8) -> str:
@@ -107,11 +165,19 @@ async def spawn_creative_agents(
     material: list[dict],
     session_records: list[dict] | None = None,
     model: str | None = None,
+    swarm_size: int | None = None,
 ) -> list[dict]:
-    """并行 spawn 全部创意子脑。返回成功子脑的方案列表（可能为空）。"""
+    """并行 spawn 创意子脑（创作阶段人海战术——多脑发散）。
+
+    swarm_size=None → 用配置默认 creative_swarm_size（默认 3，可调 6）。
+    每个脑独立小调用、并行跑，任一失败不阻塞其余。
+    """
+    from app.config import settings
+    n = swarm_size or settings.creative_swarm_size
+    angles = CREATIVE_ANGLES[: max(1, min(n, len(CREATIVE_ANGLES)))]
     results = await asyncio.gather(*[
         _one_creative(angle, user_input, material, session_records, model)
-        for angle in CREATIVE_ANGLES
+        for angle in angles
     ])
     return [r for r in results if r is not None]
 
@@ -134,11 +200,12 @@ async def synthesize_design(
     material: list[dict],
     session_records: list[dict] | None = None,
     model: str | None = None,
-    preferences: dict | None = None,
 ) -> dict:
     """大脑综合：把多视角方案合成 1 个 design。失败降级：取第一个有效方案。"""
     if not plans:
         return dict(_FALLBACK_DESIGN)
+
+    plans = _preselect_topk(plans)  # 脑多时先预选 Top-K，防综合器输入爆炸
 
     if len(plans) == 1:
         # 只有一个视角成功 → 直接采用，不浪费一次综合调用
@@ -146,14 +213,6 @@ async def synthesize_design(
         d["rationale"] = f"{d.get('rationale', '')}（仅{d.get('_angle_name', '单视角')}视角成功）"
         d["tool"] = "design"
         return d
-
-    pref_hint = ""
-    if preferences:
-        style = preferences.get("style_hints") or []
-        comps = preferences.get("preferred_components") or []
-        if style or comps:
-            pref_hint = (f"\n⚠️ 用户偏好：风格「{'、'.join(style)}」、组件「{'、'.join(comps)}」。"
-                         f"尽量遵循，与主题冲突时以主题为准。")
 
     try:
         plans_text = "\n\n".join(
@@ -167,7 +226,6 @@ async def synthesize_design(
 
 创意分身方案：
 {plans_text}
-{pref_hint}
 请综合成最终方案。"""
         result = await chat_json(
             prompt,
@@ -197,14 +255,14 @@ async def brainstorm_design(
     material: list[dict],
     session_records: list[dict] | None = None,
     model: str | None = None,
-    preferences: dict | None = None,
+    swarm_size: int | None = None,
 ) -> dict:
-    """对外主入口：发散（并行子脑）→ 收敛（综合）→ 批评（批评家挑刺）→ 修正。
+    """对外主入口：发散（并行子脑人海战术）→ 收敛（综合）→ 批评（批评家挑刺）→ 修正。
 
     批评家只在综合出真实方案时介入（1 轮），失败静默跳过（不阻塞设计）。
     """
-    plans = await spawn_creative_agents(user_input, material, session_records, model)
-    design = await synthesize_design(plans, user_input, material, session_records, model, preferences)
+    plans = await spawn_creative_agents(user_input, material, session_records, model, swarm_size)
+    design = await synthesize_design(plans, user_input, material, session_records, model)
     if not design.get("_synthesized"):
         return design  # 降级方案不批评（成本优先）
 

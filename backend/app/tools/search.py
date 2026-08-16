@@ -14,7 +14,6 @@ import logging
 import httpx
 
 from app.agent.evaluate import evaluate_material
-from app.knowledge.kb import get_event_by_keyword
 from app.llm.circuit_breaker import CircuitOpenError
 from app.llm.parser import detect_injection
 
@@ -265,12 +264,6 @@ class ResearcherAgent:
                         "thought": f"⚠️ ResearcherAgent：搜了 {search_count} 轮，{evaluation['reason']}",
                         "tool": "search", "budget": 0})
 
-        # 向量兜底
-        kb_material = await self._vector_fallback(topic)
-        if kb_material:
-            material.extend(kb_material)
-            evaluation = evaluate_material(material, topic)
-
         return self._done(material, evaluation, search_count)
 
     # ─── 内部方法 ───
@@ -284,23 +277,6 @@ class ResearcherAgent:
             "reason": evaluation["reason"],
             "search_count": count,
         }
-
-    async def _vector_fallback(self, topic: str) -> list[dict]:
-        """语义向量检索兜底。"嬴政" → "秦始皇"。"""
-        try:
-            from app.knowledge.vector_store import vector_search
-            hits = vector_search(topic, top_k=3, min_distance=1.5)
-            results = []
-            for h in hits:
-                event = get_event_by_keyword(h["title"])
-                if event:
-                    from app.knowledge.kb import event_to_search_results
-                    results.extend(event_to_search_results(event))
-                    logger.info("ResearcherAgent=vector_hit | %s → %s", topic, h["title"])
-            return results
-        except Exception as e:
-            logger.debug("向量检索不可用: %s", e)
-            return []
 
     async def listen(self, bus):
         """Phase 4：通过消息总线监听搜索请求。收到消息 → 执行搜索 → 返回结果。"""

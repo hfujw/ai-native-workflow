@@ -25,7 +25,7 @@ async def test_chat_does_not_retry_when_circuit_open():
 
     with patch("app.llm.circuit_breaker.llm_breaker", _OpenBreaker()):
         with pytest.raises(CircuitOpenError):
-            await client_mod.chat("你好", session_records=[])
+            await client_mod.chat("你好", model="deepseek-v4-flash", session_records=[])
     clear_session_client()
 
 

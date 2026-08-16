@@ -15,6 +15,14 @@ from app.tools.verify import tool_verify
 
 logger = logging.getLogger(__name__)
 
+# ── 安全重试上限 ──
+# llm_steps 默认 10，但一次 render 全量生成可达 16384 token、一次 design 是
+# 3 创意脑+综合+批评+文案 ≈ 7 次 LLM 调用——直接拿 llm_steps 当工具内部重试上限会把预算烧穿。
+# 用户想要的"多试试"由 orchestrator 层（verify 失败回退 / judge 回退）兜底，工具内部 2-3 次足够。
+SAFE_REQUERY_CAP = 2      # search 换词：原始词 + 最多 2 次换词
+SAFE_RENDER_ATTEMPTS = 3  # render 自检重试：3 次全量渲染封顶（连挂 3 次 orchestrator 强制换策略）
+SAFE_DESIGN_ATTEMPTS = 2  # design/compose 重试：每次约 7 次调用，2 次封顶
+
 
 def _skill_assets_for(skill_id: str | None) -> dict | None:
     """按 skill_id 加载模板资产（template.html/reference.css）。"""
@@ -36,29 +44,32 @@ TOOL_HANDLERS = {
         topic=(params or {}).get("query") or ctx.get("user_input", ""),
         existing_material=ctx.get("material", []),
         session_records=ctx.get("cost_records"),
+        push=ctx.get("_push"),  # ← 补 push：ResearcherAgent 内部换词思考也进 DecisionLog（思考透明）
         model=ctx.get("model"),
-        max_requery=ctx.get("llm_steps"),  # LLM 步数：换词上限
+        max_requery=min(ctx.get("llm_steps") or 2, SAFE_REQUERY_CAP),  # 换词上限（防烧 token）
     ),
     "design":  lambda ctx, bus, params: DesignerAgent().run(
         ctx.get("material", []), ctx.get("user_input", ""),
         push=ctx.get("_push"), session_records=ctx.get("cost_records"),
-        bus=bus, preferences=ctx.get("_preferences"),  # ← 用户偏好注入
+        bus=bus,
         model=ctx.get("model"),  # ← 会话模型（前端选择）
-        max_attempts=ctx.get("llm_steps"),  # LLM 步数：设计重试上限
+        swarm_size=ctx.get("creative_swarm_size"),  # 创意脑数量（人海战术）
+        max_attempts=min(ctx.get("llm_steps") or 2, SAFE_DESIGN_ATTEMPTS),  # 设计重试上限
     ),
     "compose": lambda ctx, bus, params: DesignerAgent().run(
         ctx.get("material", []), ctx.get("user_input", ""),
         push=ctx.get("_push"), session_records=ctx.get("cost_records"),
-        bus=bus, preferences=ctx.get("_preferences"),
+        bus=bus,
         model=ctx.get("model"),
-        max_attempts=ctx.get("llm_steps"),
+        swarm_size=ctx.get("creative_swarm_size"),
+        max_attempts=min(ctx.get("llm_steps") or 2, SAFE_DESIGN_ATTEMPTS),
     ),
     "render":  lambda ctx, bus, params: RenderAgent().run(
         ctx.get("design") or {}, ctx.get("content") or {},
         push=ctx.get("_push"), session_records=ctx.get("cost_records"),
         model=ctx.get("model"),
         skill_assets=_skill_assets_for(ctx.get("skill_id")),
-        max_attempts=ctx.get("llm_steps"),  # LLM 步数：自检重试上限
+        max_attempts=min(ctx.get("llm_steps") or 2, SAFE_RENDER_ATTEMPTS),  # 自检重试上限
     ),
     "verify":  lambda ctx, bus, params: _sync_wrap(
         tool_verify(ctx.get("html", ""), ctx.get("content") or {})
