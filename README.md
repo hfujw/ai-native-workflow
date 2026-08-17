@@ -1,11 +1,6 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/hfujw/lumen/master/screenshots/header-dark.svg">
-  <img alt="Lumen README cover" src="https://raw.githubusercontent.com/hfujw/lumen/master/screenshots/header-light.svg">
-</picture>
-
 <div align="center">
 
-# Lumen
+# ✨ Lumen
 
 **AI 自主编排的教育内容引擎**
 
