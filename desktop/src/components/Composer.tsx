@@ -52,7 +52,11 @@ export default function Composer({
         <textarea
           value={input}
           onChange={(e) => setInput(e.currentTarget.value)}
-          placeholder={iterable ? "继续修改这个页面..." : "给 Lumen 提供灵感..."}
+          placeholder={iterable
+            ? "继续修改这个页面..."
+            : configHint?.includes("模型 API Key")
+              ? "输入感兴趣的主题（需先配置 API Key）"
+              : "给 Lumen 提供灵感..."}
           maxLength={500}
           rows={1}
           autoFocus

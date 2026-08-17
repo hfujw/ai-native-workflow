@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 import { useDropdown } from "../hooks/useDropdown";
 import { usePersistentState } from "../hooks/usePersistentState";
 import { confirmDialog } from "../lib/confirm";
+import { resolvePresetParams, type Preset } from "../lib/presets";
 import {
   fetchSkills,
   groupModelsByProvider,
@@ -31,17 +32,6 @@ const SETTINGS_TABS: TabDef[] = [
   { id: "models", label: "模型", icon: IconCpu },
 ];
 
-type Preset = {
-  id: string;
-  name: string;
-  badge?: string;
-  desc: string;
-  trust: "system" | "user";
-  /** 推荐的 skill 组合（能力由 skill 赋予，预设只推荐） */
-  skills: string[];
-  /** 编排参数模板：设为默认时应用这组参数 */
-  params: { agentSteps: number; llmSteps: number; searchMax: number; searchEnabled: boolean; creativeSwarmSize: number };
-};
 const PRESETS: Preset[] = [
   {
     id: "storyteller", name: "知识探险家", badge: "官方", trust: "system",
@@ -273,14 +263,10 @@ export default function SettingsButton({
     onModelsChange(models.filter((m) => m.id !== id));
   };
 
-  /** 应用预设：设为默认 + 套用一组编排参数 + 推荐的风格 skill。
-   *  技能组合里的第一个"风格" skill → 生成风格；工具 skill 由 LLM 自主按需用，不强制。 */
+  /** 应用预设：设为默认 + 套用一组编排参数 + 推荐的风格 skill（核心计算抽到 lib/presets）。 */
   const applyPreset = (p: Preset) => {
     setActivePreset(p.id);
-    const style = p.skills
-      .map((name) => allSkills.find((s) => s.name === name))
-      .find((s) => s && s.type === "风格");
-    onParamsChange({ ...p.params, skillId: style?.id ?? "" });
+    onParamsChange(resolvePresetParams(p, allSkills));
   };
 
   /** 自建预设：从空白开始（不是复制内置）——自己起名、选技能、定参数 */

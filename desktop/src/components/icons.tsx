@@ -313,5 +313,18 @@ export const IconHistory = ({ size = 16, ...rest }: IconProps) => (
 
 export type IconComponent = ComponentType<IconProps>;
 
+export const IconPlay = ({ size = 16, ...rest }: IconProps) => (
+  <svg {...base(size)} {...rest}>
+    <polygon points="7 5 19 12 7 19 7 5" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+export const IconPause = ({ size = 16, ...rest }: IconProps) => (
+  <svg {...base(size)} {...rest}>
+    <line x1="9" y1="5" x2="9" y2="19" />
+    <line x1="15" y1="5" x2="15" y2="19" />
+  </svg>
+);
+
 
 
