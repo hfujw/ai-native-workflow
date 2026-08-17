@@ -2543,3 +2543,114 @@ body {
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* ── 思考回放抽屉："AI 是怎么想到这些的？" ── */
+.trace-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2800;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  justify-content: flex-end;
+}
+.trace-drawer {
+  width: 440px;
+  max-width: 90vw;
+  height: 100%;
+  background: var(--surface-2);
+  border-left: 1px solid var(--border-medium);
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.3);
+  animation: traceIn 0.2s ease;
+}
+@keyframes traceIn { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.trace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-light);
+  flex: none;
+}
+.trace-title { font-size: 14px; font-weight: 600; color: var(--text-1); }
+.trace-close {
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+}
+.trace-close:hover { background: var(--surface-3); color: var(--text-1); }
+.trace-empty { padding: 40px 20px; text-align: center; color: var(--text-3); font-size: 13px; }
+.trace-play {
+  margin: 12px 16px;
+  align-self: flex-start;
+  border: 1px solid var(--border-medium);
+  background: var(--surface-3);
+  color: var(--text-1);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  cursor: pointer;
+  flex: none;
+}
+.trace-play:hover { background: var(--accent); color: #fff; }
+.trace-steps {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.trace-step { border-radius: 8px; transition: background 0.15s; }
+.trace-step.active { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.trace-step-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.trace-step-icon {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text-3);
+}
+.trace-step.active .trace-step-icon { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.trace-step-label { font-size: 13px; font-weight: 500; color: var(--text-1); flex: none; }
+.trace-step-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trace-step-chev { flex: none; color: var(--text-3); transition: transform 0.2s; }
+.trace-step-chev.open { transform: rotate(180deg); }
+.trace-step-thought {
+  padding: 2px 10px 10px 40px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
