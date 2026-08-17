@@ -103,3 +103,28 @@ def test_workspace_save_page_skips_empty(tmp_path, monkeypatch):
     monkeypatch.setattr(workspace, "_WORKSPACE_DIR", str(tmp_path))
     assert workspace.save_page("s2", "t", "") == ""  # 空 html 不落盘
     assert workspace.save_page("s2", "t", None) == ""
+
+
+# ═══════════════════════════════════════════════════════════════
+# B5: 思考回放端点（"AI 是怎么想到这些的"）
+# ═══════════════════════════════════════════════════════════════
+
+def test_trace_endpoint(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app import projects
+    from app.main import app
+    from app.observability import trace
+    monkeypatch.setattr(trace, "_TRACE_DIR", str(tmp_path))
+    monkeypatch.setattr(projects, "_PROJECTS_FILE", str(tmp_path / "projects.json"))
+    projects.save_project({"id": "p1", "topic": "恐龙", "html": "<html/>", "iterations": 1})
+    trace.log_trace("p1", {"type": "decide", "step": 1, "tool": "search", "thought": "先搜索证据"})
+    trace.log_trace("p1", {"type": "tool", "step": 1, "tool": "search", "summary": "找到 3 条"})
+
+    client = TestClient(app)
+    r = client.get("/api/history/p1/trace")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["total"] == 2
+    assert data["entries"][0]["tool"] == "search"
+    assert client.get("/api/history/nope/trace").status_code == 404
