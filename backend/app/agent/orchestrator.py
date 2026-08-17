@@ -32,18 +32,20 @@ ORCHESTRATOR_SYSTEM_PROMPT = """你是一个视觉叙事引擎。用户给你一
 
 【硬规则】
 - render之后必须verify
-- verify说过 → 停止，输出final
-- verify说不过 → 退给render或design，你来决定退给谁
+- verify通过 → 系统会自动交付并结束，你不需要输出 final（没有 final 这个工具，别再试）
+- verify不通过 → 退给render或design，你来决定退给谁
 - 最多20步，总预算¥1，最多搜8次
 - HTML截断(缺</html>) → 自动失败，必须重render
 - 同一工具连续3次失败 → 必须换策略
 
 【决策指南】
 - **你是决策中心**。orchestrator 只执行和兜底，其他决定都你来做。
-- **搜索是可选的增强**。有把握的话题直接 design。
+- **素材（已有素材：0条）时禁止直接 design**——没有素材就没有来源可引用，"事实锚定"必挂。必须先 search。
+- **有素材后**搜索才是可选的：素材够、你有把握，可直接 design。
 - 不确定的话题选 search 验证。最多搜 8 次。
 - 搜不到？换词重搜已在 Agent 内部处理，你只需要调 search 一次。
 - design 现在一步完成设计+文案，不需要再单独调 compose。
+- **已设计过（已有设计：True）就不要再 design**——直接 render 或按需 compose 优化。
 - verify说"visual不好看"→退render；"来源不足"或"形式不合适"→退design
 - 预算紧张时用最简方案
 - 【诚实模式】**你**认为素材不够且你也没把握时：直接 render 诚实页面，不编造
@@ -153,6 +155,18 @@ async def orchestrator_node(state: dict) -> dict:
         else:
             # 1. 让LLM决定下一步
             decision = await _decide(ctx, push)
+
+        # 1.4. 零素材防呆：还没搜过、也没素材 → 不允许直接 design（否则设计师拿到空素材降级百科，
+        #      "事实锚定"必挂）。LLM 觉得"有把握"也要先 search 一次拿素材，除非它主动诚实。
+        #      KB 命中的素材也算（ctx['material'] 非空即视为有素材）。
+        searched = sum(1 for h in ctx["tool_history"] if h["tool"] == "search")
+        if (not ctx["material"] and searched == 0 and not ctx.get("honest_mode")
+                and decision.get("tool") in ("design", "compose")):
+            decision = {"thought": "当前没有任何素材——先搜索确认关键事实，不能凭印象直接设计（避免零素材降级百科）。",
+                        "tool": "search", "params": {"query": ctx.get("user_input", "")}}
+            if push:
+                await push({"type": "thinking", "step": ctx["steps"] + 1,
+                            "thought": "还没有素材——先搜索关键事实，再进入设计。", "tool": "system"})
 
         # 1.5. LLM 主动选择诚实模式
         if decision.get("honest") and not ctx.get("honest_mode"):
@@ -316,14 +330,20 @@ async def orchestrator_node(state: dict) -> dict:
                                     "summary": "质量审查通过" if verdict["passed"]
                                                else f"质量审查发现 {len(verdict['issues'])} 个问题",
                                     "detail": issues_text or ("全部维度通过" if verdict["passed"] else "")})
-                    if not verdict["passed"] and ctx.get("judge_fail_count", 0) < judge_limit:
+                    # 只有 issues 里含事实/覆盖严重问题才强制回退——纯可读/美学/教育问题不阻塞交付
+                    # （judge 是"挑刺模式"，可读/美学问题永远挑得出；若都回退会死循环烧步数）
+                    serious_issues = [
+                        i for i in verdict.get("issues", [])
+                        if isinstance(i, dict) and i.get("dimension") in ("fact", "coverage")
+                    ]
+                    if not verdict["passed"] and serious_issues and ctx.get("judge_fail_count", 0) < judge_limit:
                         ctx["judge_fail_count"] = ctx.get("judge_fail_count", 0) + 1
                         target = pick_rollback(verdict["issues"])
                         logger.info("orchestrator=judge_retry | session=%s | round=%d | target=%s",
                                     ctx["session_id"], ctx["judge_fail_count"], target)
                         if push:
                             await push({"type": "thinking", "step": ctx["steps"] + 1,
-                                        "thought": f"质量审查发现 {len(verdict['issues'])} 个问题，退回「{target}」重做。",
+                                        "thought": f"质量审查发现 {len(verdict['issues'])} 个严重问题（事实/覆盖），退回「{target}」重做。",
                                         "tool": "judge"})
                         ctx["force_next_tool"] = target
                         continue
@@ -335,11 +355,19 @@ async def orchestrator_node(state: dict) -> dict:
 
                 logger.info("orchestrator=pass | session=%s | steps=%d",
                             ctx["session_id"], ctx["steps"])
+
+                # 产物质量自动打分（五维底线：信息架构/视觉层次/段落/事实锚定/互动）——
+                # 客观判定，不靠肉眼；<3/5 记日志，便于复盘调 prompt
+                from app.observability.artifact_quality import assess_artifact
+                quality = assess_artifact(ctx.get("html", ""))
+
                 if push:
                     await push({"type": "complete", "html": ctx.get("html", ""),
-                                "steps": ctx["steps"]})
+                                "steps": ctx["steps"], "quality": quality.get("score", 0)})
                 return {"status": "success", "html": ctx.get("html", ""),
                         "steps": ctx["steps"],
+                        "quality": quality.get("score", 0),
+                        "quality_results": quality.get("results", {}),
                         "honest_mode": False,
                         "tool_history": ctx["tool_history"],
                         # 多轮迭代需要复用
