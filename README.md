@@ -8,7 +8,8 @@
 ![FastAPI](https://img.shields.io/badge/fastapi-0.141-green)
 ![Tauri](https://img.shields.io/badge/tauri-2-purple)
 ![React](https://img.shields.io/badge/react-19-blue)
-![Tests](https://img.shields.io/badge/tests-212%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-220%20passed-brightgreen)
+[![CI](https://img.shields.io/github/actions/workflow/status/hfujw/ai-native-workflow/ci.yml)](https://github.com/hfujw/ai-native-workflow/actions)
 
 ---
 
@@ -20,7 +21,12 @@
 2. **可插拔 Skill** —— 能力不被人写死。风格（杂志 / 信息图 / 像素）是可选的 skill，从外部下载安装；你给 LLM 装什么手艺，它就会什么手艺。
 3. **思考过程全透明** —— 每一步决策、每次工具调用实时可见；历史作品可回放"AI 是怎么想到这些的"。对学习者来说，这是思维示范。
 
-> ⏳ **产品截图待补充**——README 目前没有真实运行截图。截图 SOP 已自动化（`backend/scripts/capture_demo.py`，Playwright 驱动前端，产出创作区 / 产物首屏 / 思考回放三张 WebP），等一次真实主题生成后即补齐。生成流程本地可跑，见下方"快速开始"。
+| | |
+|---|---|
+| ![创作区：输入主题，AI 实时展示思考过程（Composer & Thinking Stream）](screenshots/01-composer.webp) | ![产物预览：AI 生成的教育网页（Generated Educational Page）](screenshots/02-preview.webp) |
+| ![思考回放：AI 决策过程全透明（Thinking Playback）](screenshots/03-trace.webp) | 上图：输入"恐龙为什么灭绝"→ AI 自主搜索素材 → 设计叙事 → 渲染页面 → 审查通过。产物网页可零配置打开：<br> [`examples/dinosaur-extinction.html`](examples/dinosaur-extinction.html) |
+
+*真实产物截图——由 `backend/scripts/capture_demo.py` 自动截取。*
 
 ---
 
@@ -172,7 +178,7 @@ backend/app/
 
 backend/skills/                  🎨 运行时 skill 目录（gitignored）
 backend/workspace/               📄 生成页面工作区（gitignored）
-backend/tests/                   🧪 212 个 pytest 用例
+backend/tests/                   🧪 220 个 pytest 用例
 
 desktop/src/                    🖥️ Tauri 桌面前端（DSH 设计语言）
 ├── App.tsx                     主布局 + 消息流 + 成品卡 + 侧边栏
