@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0E0F12"/>
+      <stop offset="0.5" stop-color="#17181D"/>
+      <stop offset="1" stop-color="#0E0F12"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3964FE" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#3964FE" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 背景 + 光晕 -->
+  <rect width="1200" height="300" fill="url(#bg)"/>
+  <ellipse cx="250" cy="150" rx="180" ry="180" fill="url(#glow)"/>
+
+  <!-- Lumen Logo（白底圆角方块 + 中心光点六线辐射） -->
+  <g transform="translate(110, 50)">
+    <rect x="0" y="0" width="200" height="200" rx="32" fill="#F5F5F7"/>
+    <circle cx="100" cy="100" r="22" fill="#0B0123"/>
+    <circle cx="100" cy="38" r="10" fill="#0B0123"/>
+    <circle cx="150" cy="68" r="10" fill="#0B0123"/>
+    <circle cx="150" cy="132" r="10" fill="#0B0123"/>
+    <circle cx="100" cy="162" r="10" fill="#0B0123"/>
+    <circle cx="50" cy="132" r="10" fill="#0B0123"/>
+    <circle cx="50" cy="68" r="10" fill="#0B0123"/>
+    <line x1="100" y1="76" x2="100" y2="50" stroke="#0B0123" stroke-width="6" stroke-linecap="round"/>
+    <line x1="118" y1="88" x2="142" y2="74" stroke="#0B0123" stroke-width="6" stroke-linecap="round"/>
+    <line x1="118" y1="112" x2="142" y2="126" stroke="#0B0123" stroke-width="6" stroke-linecap="round"/>
+    <line x1="100" y1="124" x2="100" y2="150" stroke="#0B0123" stroke-width="6" stroke-linecap="round"/>
+    <line x1="82" y1="112" x2="58" y2="126" stroke="#0B0123" stroke-width="6" stroke-linecap="round"/>
+    <line x1="82" y1="88" x2="58" y2="74" stroke="#0B0123" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  <!-- 标题 + 标语 -->
+  <text x="400" y="130" font-family="Georgia, 'Songti SC', 'Noto Serif SC', serif" font-size="72" font-weight="700" fill="#ECECF0">Lumen</text>
+  <text x="400" y="175" font-family="'Songti SC', 'Noto Sans SC', sans-serif" font-size="22" fill="#9BA0AA">AI 主题学习引擎 · 把知识点亮</text>
+
+  <!-- 底部细线 -->
+  <line x1="400" y1="205" x2="1080" y2="205" stroke="#3964FE" stroke-width="3" stroke-linecap="round"/>
+  <text x="400" y="240" font-family="'Songti SC', 'Noto Sans SC', sans-serif" font-size="16" fill="#646873">LLM 自主编排多 Agent 工作流 · Skill 可插拔 · 思考过程全透明</text>
+</svg>
