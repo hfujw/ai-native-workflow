@@ -8,7 +8,7 @@
 ![FastAPI](https://img.shields.io/badge/fastapi-0.141-green)
 ![Tauri](https://img.shields.io/badge/tauri-2-purple)
 ![React](https://img.shields.io/badge/react-19-blue)
-![Tests](https://img.shields.io/badge/tests-198%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-212%20passed-brightgreen)
 
 ---
 
@@ -20,6 +20,8 @@
 2. **可插拔 Skill** —— 能力不被人写死。风格（杂志 / 信息图 / 像素）是可选的 skill，从外部下载安装；你给 LLM 装什么手艺，它就会什么手艺。
 3. **思考过程全透明** —— 每一步决策、每次工具调用实时可见；历史作品可回放"AI 是怎么想到这些的"。对学习者来说，这是思维示范。
 
+> ⏳ **产品截图待补充**——README 目前没有真实运行截图。截图 SOP 已自动化（`backend/scripts/capture_demo.py`，Playwright 驱动前端，产出创作区 / 产物首屏 / 思考回放三张 WebP），等一次真实主题生成后即补齐。生成流程本地可跑，见下方"快速开始"。
+
 ---
 
 ## 学习场景
@@ -29,6 +31,43 @@
 | "恐龙为什么灭绝" | 先搜证据 → 用时间线 + 对比卡片呈现撞击说 vs 火山说 | 有视觉层次的知识长页 |
 | "光合作用原理" | 数据型创意脑打头 → 流程 + 数据面板讲清化学反应 | 图表辅助理解 |
 | "秦始皇" | 人物时间轴 + 卡片，素材考证后标注来源 | 编辑级叙事长页 |
+
+产物不是干巴巴的文字流——是带视觉层级的交互网页。下面是一份真实产物的 HTML 骨架（杂志风格，由 LLM 按 skill 模板填充生成）：
+
+<details>
+<summary>📄 展开看产物 HTML 骨架（杂志风格）</summary>
+
+```html
+<div class="wrap">
+  <div class="kicker">专题</div>              <!-- 眉题：告诉读者这是哪类内容 -->
+  <h1>大标题</h1>                             <!-- 一级标题：最大字号 -->
+  <p class="lede">导语：一句话钩子</p>          <!-- 导语：弱化的说明文字 -->
+  <p>正文…</p>
+
+  <div class="rule"></div>                     <!-- 分隔线：章节间的视觉停顿 -->
+
+  <h2>章节标题</h2>                            <!-- 二级标题：左侧色条标记 -->
+  <div class="tl">                             <!-- 时间线：垂直轴 + 圆点节点 -->
+    <div class="tl-item">
+      <div class="tl-year">年份</div>           <!-- 强调色年份 -->
+      <div class="tl-text">事件</div>
+    </div>
+  </div>
+
+  <div class="figure">                          <!-- 数据面板：白底卡片 + 大号数字 -->
+    <div class="num">关键数字</div>
+    <div class="cap">图注</div>
+  </div>
+
+  <blockquote>金句引用</blockquote>             <!-- 引用：左侧金线 + 斜体 -->
+  <div class="grid2"><div>内容A</div><div>内容B</div></div>  <!-- 双栏对比 -->
+
+  <div class="footer">来源与说明</div>          <!-- 页脚：来源标注 -->
+</div>
+```
+</details>
+
+> 三种风格（杂志 / 信息图 / 像素）各有独立模板，LLM 按 skill 选择注入。上面的骨架说明**为什么产物是"教育网页"而不是"文字段落"**：字号分级、色块分隔、时间线/数据面板/引用各有视觉锚点。
 
 ---
 
@@ -82,6 +121,8 @@ npm run tauri dev
 - 需要联网搜索 → **设置 → 搜索服务**：给 Tavily（或自定义服务）填 Key
 - 没填 Key 也能生成——生成时会明确提示"未配置模型/API Key"，绝不静默
 - 生成完的页面自动落盘到 `backend/workspace/`（每版一个文件），成品栏可导出 / 复制路径
+- 每个产物生成后自动跑**五维质量打分**（信息架构 / 视觉层次 / 段落长度 / 事实锚定 / 互动元素），满分 5 分——打分器是纯正则，不依赖 LLM，客观可复现（`backend/app/observability/artifact_quality.py`）
+- 产物中的**外部链接（如百科、NASA）需联网访问**——离线查看时链接不可点，页面主体不受影响
 
 ---
 
@@ -131,7 +172,7 @@ backend/app/
 
 backend/skills/                  🎨 运行时 skill 目录（gitignored）
 backend/workspace/               📄 生成页面工作区（gitignored）
-backend/tests/                   🧪 198 个 pytest 用例
+backend/tests/                   🧪 212 个 pytest 用例
 
 desktop/src/                    🖥️ Tauri 桌面前端（DSH 设计语言）
 ├── App.tsx                     主布局 + 消息流 + 成品卡 + 侧边栏
@@ -145,9 +186,10 @@ desktop/src/                    🖥️ Tauri 桌面前端（DSH 设计语言）
 
 - **多 Agent 自主编排**：Orchestrator 让 LLM 每一步自己决定调哪个工具，带容错、硬边界、预算护栏（步数 + 搜索次数）
 - **发散-收敛设计**：创作时 6 个创意脑并行发散 → Top-K 预选 → 综合 → 批评家挑刺；执行时单脑闭环
-- **四维质量审查**：事实 / 覆盖 / 可读 / 美学，审查不过退回正确的节点重做
+- **Skill 是编排策略，不是皮肤**：风格 skill 会改变 AI 的组件选择（杂志优先时间线叙事、信息图优先数据面板）、文案语气（叙事感 vs 数据化）和交互基因（阅读进度条 / 数字滚动动画）——同一主题用不同 skill 产出结构迥异的页面
+- **六维质量审查**：事实 / 覆盖 / 可读 / 美学 / 教育适配，审查不过退回正确的节点重做
 - **流式思考透明**：决策 thought 实时流式推送，工具产出进卡片详情，全程可见
-- **页面工作区**：每次生成 / 迭代落盘独立 HTML 文件（`v1`、`v2`…），可导出、可分享
+- **页面工作区**：每次生成 / 迭代落盘独立 HTML 文件（`v1`、`v2`…），成品卡可导出（下载 HTML）
 - **Skill 系统**：风格 skill 可下载 / 安装 / 删除；系统人格内置不可删；一个 skill 一个 markdown
 - **多轮迭代**：成品后继续对话改页面，LLM 决定 rerender / redesign / research
 - **会话日志**：每次生成一个独立日志文件，好回看
@@ -157,7 +199,7 @@ desktop/src/                    🖥️ Tauri 桌面前端（DSH 设计语言）
 
 ## Roadmap
 
-- **思考回放**：历史作品的"AI 是怎么想到这些的"时间轴面板（trace 已落盘，补读取 + 前端可视化）
+- **思考回放**：历史作品的"AI 是怎么想到这些的"时间轴面板（已完成 ✅——trace 落盘 + 前端可视化，见 /api/history/{id}/trace）
 - **教育游戏生成**：基于现有编排架构扩展 render 输出到 Canvas，生成交互式教育小游戏
 - **断线续传**：WS 会话状态持久化 + 重连续推
 - **i18n**：多语言界面
@@ -175,7 +217,7 @@ desktop/src/                    🖥️ Tauri 桌面前端（DSH 设计语言）
 | 搜索是可选增强 | LLM 决策中心，有把握直接跳过搜索 |
 | 模型必须前端填 | 后端无默认模型，Key/地址/模型名全在前端设置，本地可控 |
 | 会话日志分开 | 每次生成一个文件，日志不再堆成一座山 |
-| 页面工作区 | 每版产物独立文件，可导出 / 分享 |
+| 页面工作区 | 每版产物独立文件，可导出（下载 HTML） |
 | Skill 一文档制 | 一个 skill 一个 markdown，系统人格内置不可删 |
 
 ---

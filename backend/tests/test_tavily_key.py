@@ -118,3 +118,30 @@ async def test_search_without_service_returns_empty():
 
     with patch("app.tools.search.httpx.AsyncClient", boom):
         assert await _search_tavily("恐龙") == []
+
+
+def test_bind_search_service_accepts_camelcase():
+    """前端发送用驼峰 apiKey——后端必须认（真实 bug：之前只认 api_key 导致搜索永远空）。"""
+    from app.tools.search import bind_search_service, _search_svc_ctx
+    bind_search_service({"name": "Tavily", "apiKey": "tvly-test", "baseUrl": "https://api.tavily.com"})
+    svc = _search_svc_ctx.get()
+    assert svc is not None
+    assert svc["api_key"] == "tvly-test"
+    assert svc["base_url"] == "https://api.tavily.com"
+
+
+def test_bind_search_service_accepts_snakecase():
+    """后端调用/REST 用 api_key 也认。"""
+    from app.tools.search import bind_search_service, _search_svc_ctx
+    bind_search_service({"name": "Tavily", "api_key": "tvly-test2", "base_url": ""})
+    svc = _search_svc_ctx.get()
+    assert svc is not None
+    assert svc["api_key"] == "tvly-test2"
+    assert svc["base_url"] == "https://api.tavily.com"  # 空地址回落默认
+
+
+def test_bind_search_service_empty_key_unbinds():
+    """没传 Key → 不绑定（联网不可用），不回落任何配置。"""
+    from app.tools.search import bind_search_service, _search_svc_ctx
+    bind_search_service({"name": "Tavily", "apiKey": ""})
+    assert _search_svc_ctx.get() is None

@@ -35,14 +35,17 @@ def bind_search_service(service: dict | None) -> None:
     if not service:
         _search_svc_ctx.set(None)
         return
-    key = (service.get("api_key") or "").strip()
+    # 兼容前端两种字段名：WS 传的是 JSON，字段名原样保留——前端用驼峰 apiKey，
+    # 直接调后端（测试/REST）可能用 api_key。两个都认，不卡字段命名。
+    key = (service.get("api_key") or service.get("apiKey") or "").strip()
+    base = (service.get("base_url") or service.get("baseUrl") or "").strip()
     if not key:
         _search_svc_ctx.set(None)
         return
     _search_svc_ctx.set({
         "name": str(service.get("name") or "搜索"),
         "api_key": key,
-        "base_url": str(service.get("base_url") or "").strip() or "https://api.tavily.com",
+        "base_url": base or "https://api.tavily.com",
     })
 
 

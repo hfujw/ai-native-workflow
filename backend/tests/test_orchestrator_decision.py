@@ -10,8 +10,13 @@ orchestrator 只在预算/步数耗尽时兜底。
 
 def _simulate_decision_handling(decision: dict, ctx: dict) -> dict:
     """模拟 orchestrator_node 中对 LLM decision 的处理逻辑。"""
+    # 零素材防呆：还没搜过、也没素材 → 不允许直接 design/compose（否则设计师空素材降级百科）
+    searched = sum(1 for h in ctx.get("tool_history", []) if h.get("tool") == "search")
+    if (not ctx.get("material") and searched == 0 and not ctx.get("honest_mode")
+            and decision.get("tool") in ("design", "compose")):
+        decision = {"tool": "search", "thought": "还没有素材——先搜索关键事实", "params": {}}
     # honest 字段 → 自动切换为 render
-    if decision.get("honest") and not ctx.get("honest_mode"):
+    elif decision.get("honest") and not ctx.get("honest_mode"):
         ctx["honest_mode"] = True
         decision["tool"] = "render"
     return decision
@@ -22,16 +27,47 @@ def _simulate_hard_guard(ctx: dict) -> bool:
     return ctx["steps"] >= ctx.get("max_steps", 20) or ctx["budget_spent"] >= ctx.get("budget_total", 1.0)
 
 
-# ── 场景 1：LLM 决定跳过搜索直接设计 ──
+# ── 场景 1：零素材时 LLM 想直接设计 → 被强制改为 search ──
 
-def test_llm_skips_search_goes_directly_to_design():
-    """LLM 认为知识足够，直接选 design——orchestrator 不干预。"""
+def test_zero_material_design_forced_to_search():
+    """素材 0 条、没搜过 → LLM 想 design 被 orchestrator 强制改为 search（零素材降级百科的防呆）。"""
     decision = {"tool": "design", "thought": "我对这个话题有充分知识"}
-    ctx = {"steps": 0, "budget_spent": 0, "max_steps": 20, "budget_total": 1.0}
+    ctx = {"steps": 0, "budget_spent": 0, "max_steps": 20, "budget_total": 1.0,
+           "material": [], "tool_history": []}
 
     decision = _simulate_decision_handling(decision, ctx)
 
-    assert decision["tool"] == "design"  # 没有被 orchestrator 改为 search
+    assert decision["tool"] == "search"  # 被强制改为 search
+
+
+def test_zero_material_compose_forced_to_search():
+    """素材 0 条、没搜过 → LLM 想 compose 同样被拦截。"""
+    decision = {"tool": "compose", "thought": "直接写文案"}
+    ctx = {"steps": 1, "material": [], "tool_history": []}
+
+    decision = _simulate_decision_handling(decision, ctx)
+
+    assert decision["tool"] == "search"
+
+
+def test_zero_material_design_allowed_after_search():
+    """搜过一次（即使无结果）→ LLM 选 design 放行（搜索死循环防护优先）。"""
+    decision = {"tool": "design", "thought": "搜索无结果，但我自己知道"}
+    ctx = {"steps": 2, "material": [], "tool_history": [{"tool": "search", "result_summary": "0条"}]}
+
+    decision = _simulate_decision_handling(decision, ctx)
+
+    assert decision["tool"] == "design"
+
+
+def test_has_material_design_allowed():
+    """有素材（KB 命中或搜索成功）→ LLM 选 design 放行。"""
+    decision = {"tool": "design", "thought": "素材够了"}
+    ctx = {"steps": 1, "material": [{"title": "恐龙灭绝"}], "tool_history": []}
+
+    decision = _simulate_decision_handling(decision, ctx)
+
+    assert decision["tool"] == "design"
 
 
 # ── 场景 2：LLM 主动选择诚实模式 ──
@@ -48,16 +84,7 @@ def test_llm_actively_chooses_honest_mode():
 
 
 # ── 场景 3：LLM 搜不到后决定继续（不触发诚实） ──
-
-def test_llm_search_empty_then_continues_to_design():
-    """LLM 搜了一次空结果 → 下一步选 design → orchestrator 放行。"""
-    decision = {"tool": "design", "thought": "搜索无结果，但我自己知道"}
-    ctx = {"steps": 2, "budget_spent": 0.05}
-
-    decision = _simulate_decision_handling(decision, ctx)
-
-    assert decision["tool"] == "design"
-    assert not ctx.get("honest_mode")  # 没有被迫进入诚实模式
+# 已被 test_zero_material_design_allowed_after_search 覆盖（搜过空结果 → design 放行）
 
 
 # ── 场景 4：orchestrator 硬兜底——步数耗尽 ──
