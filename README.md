@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="screenshots/header-dark.svg">
-  <img alt="Lumen README cover" src="screenshots/header-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/hfujw/lumen/master/screenshots/header-dark.svg">
+  <img alt="Lumen README cover" src="https://raw.githubusercontent.com/hfujw/lumen/master/screenshots/header-light.svg">
 </picture>
 
 <div align="center">
@@ -12,7 +12,7 @@
 输入任意主题，LLM 自主决定怎么搜、怎么设计、怎么写、怎么审，<br>
 输出一张结构清晰、视觉精美的交互式知识网页。面向年轻人与儿童。
 
-[![CI](https://img.shields.io/github/actions/workflow/status/hfujw/ai-native-workflow/ci.yml)](https://github.com/hfujw/ai-native-workflow/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/hfujw/lumen/ci.yml)](https://github.com/hfujw/lumen/actions)
 ![Tests](https://img.shields.io/badge/tests-220%20passed-brightgreen)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -41,21 +41,21 @@ Lumen 的核心差异在于 **编排权交给 LLM**：流程不被人写死，�
 输入 **"恐龙为什么灭绝"**，AI 自主编排完整工作流：
 
 <p align="center">
-  <img src="screenshots/01-composer.webp" width="900"><br>
+  <img src="https://raw.githubusercontent.com/hfujw/lumen/master/screenshots/01-composer.webp" width="900"><br>
   <sub>创作区：输入主题，AI 实时展示思考过程</sub>
 </p>
 
 产物是一张带视觉层级的教育网页（杂志风格）：
 
 <p align="center">
-  <img src="screenshots/02-preview.webp" width="900"><br>
+  <img src="https://raw.githubusercontent.com/hfujw/lumen/master/screenshots/02-preview.webp" width="900"><br>
   <sub>产物预览：AI 生成的教育网页，带时间线与对比卡片</sub>
 </p>
 
 点击"思考过程"，回放 AI 每一步决策：
 
 <p align="center">
-  <img src="screenshots/03-trace.webp" width="900"><br>
+  <img src="https://raw.githubusercontent.com/hfujw/lumen/master/screenshots/03-trace.webp" width="900"><br>
   <sub>思考回放：🔍 探索 → 🎨 构思 → 📝 撰写 → ✅ 审查 → 🧐 评估</sub>
 </p>
 
@@ -91,8 +91,8 @@ flowchart TD
 **前置**：Python 3.11+ · Node.js 18+ · 一个 LLM API Key
 
 ```bash
-git clone https://github.com/hfujw/ai-native-workflow.git
-cd ai-native-workflow
+git clone https://github.com/hfujw/lumen.git
+cd lumen
 
 # 终端 1：后端
 cd backend && python -m venv venv
