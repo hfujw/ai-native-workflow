@@ -4,6 +4,7 @@ import Composer from "./components/Composer";
 import SkillPage from "./components/SkillPage";
 import SettingsButton from "./components/SettingsButton";
 import ToolCard from "./components/ToolCard";
+import TraceTimeline from "./components/TraceTimeline";
 import { useClickOutside } from "./hooks/useClickOutside";
 import { useGenerate } from "./hooks/useGenerate";
 import { usePersistentState } from "./hooks/usePersistentState";
@@ -225,6 +226,8 @@ export default function App() {
   const [fullscreenHtml, setFullscreenHtml] = useState<string | null>(null);
   /** 源码视图：某条消息的成品卡切换到"看 HTML 代码流"（null=预览 iframe） */
   const [codeMsgId, setCodeMsgId] = useState<number | null>(null);
+  /** 思考回放抽屉：打开某个历史作品的 trace（null=关闭） */
+  const [traceProjectId, setTraceProjectId] = useState<string | null>(null);
   const codeRef = useRef<HTMLPreElement>(null);
   // 渲染流式：源码视图随 html 增长自动滚到底（看代码飞快上滑）
   useEffect(() => {
@@ -1099,6 +1102,15 @@ export default function App() {
                                 <div className="preview-bar">
                                   <span>成品</span>
                                   <div>
+                                    {/* 思考回放：回看历史作品时能看"AI 是怎么想到这些的" */}
+                                    {currentProjectIdRef.current && (
+                                      <button
+                                        onClick={() => setTraceProjectId(currentProjectIdRef.current)}
+                                        title="查看 AI 的思考过程"
+                                      >
+                                        <IconSparkle size={13} /> 思考过程
+                                      </button>
+                                    )}
                                     <button
                                       className={codeMsgId === m.id ? "active" : ""}
                                       onClick={() => setCodeMsgId(codeMsgId === m.id ? null : m.id)}
@@ -1238,6 +1250,9 @@ export default function App() {
           <iframe srcDoc={fullscreenHtml} sandbox="allow-scripts" title="全屏预览" />
         </div>
       )}
+
+      {/* 思考回放抽屉："AI 是怎么想到这些的？" */}
+      <TraceTimeline projectId={traceProjectId} onClose={() => setTraceProjectId(null)} />
     </div>
   );
 }
