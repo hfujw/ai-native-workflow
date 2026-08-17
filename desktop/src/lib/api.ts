@@ -13,6 +13,8 @@ export type Project = {
   iterations: number;
   versions?: ProjectVersion[];
   trace_path?: string;
+  /** 页面工作区文件路径（产物落盘位置） */
+  file_path?: string;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -52,6 +54,13 @@ export function deleteProject(id: string): Promise<{ ok: boolean }> {
 /** 删除工作区里的一个产物文件（作品卡删除用） */
 export function deleteWorkspaceFile(filename: string): Promise<{ ok: boolean }> {
   return request(`/api/workspace/${encodeURIComponent(filename)}`, { method: "DELETE" });
+}
+
+/** 读取一个作品的决策轨迹（思考回放——"AI 是怎么想到这些的"） */
+export function fetchTrace(
+  id: string
+): Promise<{ entries: Record<string, unknown>[]; total: number }> {
+  return request(`/api/history/${id}/trace`);
 }
 
 export type Skill = {

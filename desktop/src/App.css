@@ -1755,6 +1755,37 @@ body {
 
 /* ── 输入框（Composer） ── */
 .composer-area { flex: none; padding: 0 24px 20px; }
+/* 当前 Agent 预设联动显示 */
+.preset-chip-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+  justify-content: center;
+}
+.preset-chip {
+  font-size: 11.5px;
+  line-height: 1;
+  color: var(--text-3);
+  background: var(--surface-3);
+  border: 1px solid var(--border-light);
+  border-radius: 9999px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+.preset-chip.accent {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+/* 配置预检提示 */
+.composer-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-state-warn);
+  margin-bottom: 8px;
+  text-align: center;
+}
 
 /* 模型选择：无边框文字按钮（DSH ModelSelect 同款） */
 .model-select {

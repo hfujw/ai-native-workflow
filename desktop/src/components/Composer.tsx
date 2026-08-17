@@ -12,6 +12,7 @@ export default function Composer({
   onModelIdChange,
   iterable,
   sending,
+  configHint,
 }: {
   onSend: (text: string) => void;
   /** 生成/迭代进行中点击：停止当前生成 */
@@ -25,6 +26,8 @@ export default function Composer({
   iterable?: boolean;
   /** 生成/迭代进行中：发送按钮变终止按钮 */
   sending?: boolean;
+  /** 配置预检提示（未配 Key 等，发送前就提示，不等生成报错） */
+  configHint?: string;
 }) {
   const [input, setInput] = useState("");
   const modelDrop = useDropdown();
@@ -43,6 +46,8 @@ export default function Composer({
   return (
     <div className="composer-area">
       <div className="composer">
+        {/* 配置预检：发送前提示，不等生成报错 */}
+        {configHint && <div className="composer-hint">{configHint}</div>}
         {/* 上行：输入文字 */}
         <textarea
           value={input}

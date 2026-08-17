@@ -105,6 +105,16 @@ const DEFAULT_MODELS: ModelItem[] = [
   { id: "pro", name: "deepseek-Pro", modelId: "deepseek-v4-pro", provider: "DeepSeek", removable: false },
 ];
 
+/** 预设 id → 名称（Composer 联动显示用；设置页同名 localStorage key） */
+const PRESET_NAMES: Record<string, string> = {
+  storyteller: "知识探险家",
+  alchemist: "数据炼金师",
+  pixelist: "像素时光机",
+  curator: "极简策展人",
+};
+/** 风格 skill id → 名称 */
+const STYLE_NAMES: Record<string, string> = { magazine: "杂志长图", pixel: "像素风", infographic: "信息图" };
+
 export default function App() {
   const [view, setView] = useState<View>("chat");
   // 对话消息持久化：刷新/重启恢复（防抖写入，见下方 useEffect）
@@ -124,6 +134,8 @@ export default function App() {
   const [renameText, setRenameText] = useState("");
   // 持久化：主题 / 生成参数 / 模型列表 / 侧边栏状态（刷新不丢）
   const [theme, setTheme] = usePersistentState<Theme>("lumen.theme", "dark");
+  // 当前 Agent 预设（设置页写同一个 localStorage key）——Composer 上方联动显示
+  const [activePreset] = usePersistentState<string>("lumen.preset", "storyteller");
   const [genParams, setGenParams] = usePersistentState<GenParams>("lumen.genParams", {
     agentSteps: 20,
     llmSteps: 10,
@@ -326,6 +338,7 @@ export default function App() {
           text: `历史作品回看 · 生成于 ${new Date(p.created_at * 1000).toLocaleString()} · ${p.steps} 步 · 共 ${p.iterations} 版`,
           html: last?.html ?? "",
           finalized: true,
+          file_path: p.file_path ?? "", // 恢复工作区路径——"复制路径"按钮才能显示
         },
       ]);
       setView("chat");
@@ -816,6 +829,16 @@ export default function App() {
   );
   // ⑨ 首次引导：没有任何 provider 配置过 Key → 空状态提示去设置
   const hasAnyApiKey = Object.values(providerCreds).some((c) => c.apiKey);
+  // 配置预检：发送前就提示，不等生成才报"未配置 Key"
+  const selectedModel = models.find((m) => m.id === composerModel);
+  const modelKey = selectedModel ? providerCreds[selectedModel.provider]?.apiKey : "";
+  const searchOnButNoKey =
+    genParams.searchEnabled && searchServices.length > 0 && !searchServices.some((s) => s.apiKey);
+  const configHint = !modelKey
+    ? "未配置模型 API Key——请到 设置→模型 填写"
+    : searchOnButNoKey
+      ? "联网搜索已开启但搜索服务未配置 Key——将只用自身知识"
+      : "";
   // 当前对话（侧边栏"当前对话"条目）：聊天时左侧创作区也能看到它，受搜索过滤
   const currentTitle = messages.find((m) => m.role === "user")?.text ?? "新对话";
   const showCurrent = messages.length > 0 && currentTitle.includes(historySearch.trim());
@@ -1130,6 +1153,18 @@ export default function App() {
               </div>
             </div>
 
+            {/* 当前 Agent 预设联动显示——设置改了预设，这里实时反映 */}
+            <div className="preset-chip-bar">
+              <span className="preset-chip accent">{PRESET_NAMES[activePreset] ?? "自定义"}</span>
+              {genParams.skillId && (
+                <span className="preset-chip">{STYLE_NAMES[genParams.skillId] ?? genParams.skillId}</span>
+              )}
+              <span className="preset-chip">步数 {genParams.agentSteps}</span>
+              <span className="preset-chip">搜索×{genParams.searchMax}</span>
+              <span className="preset-chip">{genParams.creativeSwarmSize}脑</span>
+              <span className="preset-chip">{genParams.searchEnabled ? "联网" : "离线"}</span>
+            </div>
+
             <Composer
               onSend={handleSend}
               onStop={handleStop}
@@ -1138,6 +1173,7 @@ export default function App() {
               onModelIdChange={setComposerModel}
               iterable={iterable}
               sending={genStatus === "running" || genStatus === "connecting"}
+              configHint={configHint}
             />
           </>
         )}
