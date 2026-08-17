@@ -1,6 +1,8 @@
 <div align="center">
 
-# ✨ Lumen
+<img src="https://raw.githubusercontent.com/hfujw/lumen/master/desktop/src/assets/lumen.svg" width="96" alt="Lumen logo">
+
+# Lumen
 
 **AI 自主编排的教育内容引擎**
 
