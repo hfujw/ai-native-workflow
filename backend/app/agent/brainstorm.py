@@ -194,12 +194,23 @@ SYNTHESIZE_SYSTEM_PROMPT = """你是主设计师。多个创意分身从不同�
 {"components": ["timeline", "cards"], "structure": "顶部时间轴，下方两列卡片", "visual_hint": "黑金配色、厚重历史感", "rationale": "综合叙事+视觉+信息角度的理由"}"""
 
 
+def _skill_synthesize_constraint(skill_config: dict | None) -> str:
+    """方向 A：skill 的 design_priority 约束综合时的组件选择。"""
+    if not skill_config:
+        return ""
+    priority = skill_config.get("design_priority") or []
+    if not priority:
+        return ""
+    return f"\n【风格约束】综合时优先采用这些组件（按优先级）：{', '.join(priority)}。除非主题完全不匹配，否则不要偏离。"
+
+
 async def synthesize_design(
     plans: list[dict],
     user_input: str,
     material: list[dict],
     session_records: list[dict] | None = None,
     model: str | None = None,
+    skill_config: dict | None = None,  # 风格 skill 的编排配置（方向 A）
 ) -> dict:
     """大脑综合：把多视角方案合成 1 个 design。失败降级：取第一个有效方案。"""
     if not plans:
@@ -226,7 +237,7 @@ async def synthesize_design(
 
 创意分身方案：
 {plans_text}
-请综合成最终方案。"""
+请综合成最终方案。{_skill_synthesize_constraint(skill_config)}"""
         result = await chat_json(
             prompt,
             system=SYNTHESIZE_SYSTEM_PROMPT,
@@ -256,13 +267,14 @@ async def brainstorm_design(
     session_records: list[dict] | None = None,
     model: str | None = None,
     swarm_size: int | None = None,
+    skill_config: dict | None = None,  # 风格 skill 的编排配置（方向 A）
 ) -> dict:
     """对外主入口：发散（并行子脑人海战术）→ 收敛（综合）→ 批评（批评家挑刺）→ 修正。
 
     批评家只在综合出真实方案时介入（1 轮），失败静默跳过（不阻塞设计）。
     """
     plans = await spawn_creative_agents(user_input, material, session_records, model, swarm_size)
-    design = await synthesize_design(plans, user_input, material, session_records, model)
+    design = await synthesize_design(plans, user_input, material, session_records, model, skill_config)
     if not design.get("_synthesized"):
         return design  # 降级方案不批评（成本优先）
 

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.tools.design import tool_design
+from app.tools.design import tool_design, tool_compose
 
 
 @pytest.fixture
@@ -71,3 +71,56 @@ async def test_design_llm_error(sample_material):
         result = await tool_design(sample_material, "秦始皇")
 
     assert result["components"] == ["encyclopedia"]
+
+
+# ── 方向 A：skill_config 注入（Skill 是编排策略）──
+
+@pytest.mark.asyncio
+async def test_design_skill_priority_injected(sample_material):
+    """skill_config.design_priority 注入 design prompt——Skill 影响组件选择。"""
+    mock_response = json.dumps({"components": ["datapanel", "cards"],
+                                "rationale": "数据优先", "structure": "数据面板+卡片",
+                                "visual_hint": "深色数据风"}, ensure_ascii=False)
+
+    with patch("app.tools.design.chat_json", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = mock_response
+        await tool_design(sample_material, "某数据主题", skill_config={
+            "design_priority": ["datapanel", "comparison", "cards", "flowchart"],
+            "compose_tone": "数据化", "max_paragraph_lines": 2, "target_age": "12-18",
+        })
+
+    sent_prompt = mock_llm.await_args.args[0]
+    assert "datapanel" in sent_prompt  # 优先级组件出现在 prompt 里
+    assert "风格约束" in sent_prompt
+
+
+@pytest.mark.asyncio
+async def test_design_skill_empty_priority_no_injection(sample_material):
+    """无 design_priority → 不注入约束（prompt 保持原样）。"""
+    mock_response = json.dumps({"components": ["timeline"], "rationale": "R",
+                                "structure": "S", "visual_hint": "V"}, ensure_ascii=False)
+
+    with patch("app.tools.design.chat_json", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = mock_response
+        await tool_design(sample_material, "主题", skill_config={"compose_tone": "叙事感"})
+
+    sent_prompt = mock_llm.await_args.args[0]
+    assert "风格约束" not in sent_prompt
+
+
+@pytest.mark.asyncio
+async def test_compose_skill_tone_injected(sample_material):
+    """skill_config.compose_tone 注入 compose prompt——Skill 影响文案语气。"""
+    mock_response = json.dumps({"title": "T", "subtitle": "S", "blocks": [], "fact_notes": ""},
+                               ensure_ascii=False)
+
+    with patch("app.tools.design.chat_json", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = mock_response
+        await tool_compose(sample_material, {"components": ["timeline"]}, "主题",
+                           skill_config={"compose_tone": "数据化", "max_paragraph_lines": 2,
+                                         "target_age": "12-18"})
+
+    sent_prompt = mock_llm.await_args.args[0]
+    assert "数据化" in sent_prompt
+    assert "每段不超过 2 行" in sent_prompt
+    assert "12-18" in sent_prompt

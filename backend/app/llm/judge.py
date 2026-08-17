@@ -25,20 +25,28 @@ logger = logging.getLogger(__name__)
 
 JUDGE_SYSTEM_PROMPT = """你是严格的质检员，审查一个 AI 生成的知识页面。你的任务不是打分，而是**挑刺**——找出具体缺陷，每条必须能直接指导修改（指出位置和改法）。
 
-四维审查：
+五维审查：
 1. 事实核查：页面中的每个数字/年份/断言，与提供的素材对照。找出：无素材依据的断言、与素材矛盾的表述。没有素材支撑的断言必须标出。（如果素材为空：检查页面是否诚实标注"资料有限"，而不是编造）
 2. 覆盖度：用户想了解的主题，关键信息是否讲全？有没有明显的空洞？
 3. 可读性：是否通俗易懂？有没有生硬术语堆砌、大段枯燥陈列？是否像"讲给人听"而不是"信息转储"？
 4. 美学：视觉方案是否具体、协调、有艺术感？版式、色彩、留白、层级是否有明确设计？（根据视觉方案描述与页面结构特征判断）
+5. 教育适配度：内容是否适合目标年龄段（如 12-18 岁）学习？
+   - 术语密度：每 100 字中学科专有名词是否过多？（如"白垩纪-古近纪灭绝事件"算 1 个术语，堆 5 个就超标）
+   - 段落长度：是否存在过长段落（手机阅读超过 3-4 行）？
+   - 引导性：是否有提问句激发好奇心？（如"你知道…吗？""为什么…？"）
+   - 互动密度：页面是否有可交互元素（按钮/折叠/翻转卡片）辅助主动学习？
+   - 视觉辅助：复杂概念是否配有时间线/图标/色块，而非纯文字堆砌？
 
 规则：
 - 至少找出 3 条具体缺陷；如果实在挑不出，则 passed=true
 - 每条 issue 必须给出：维度、建议回退到哪个环节、具体描述（位置+问题+改法）
-- 回退目标：事实/覆盖问题 → search 或 compose；可读性问题 → compose；美学问题 → design 或 render
-- passed=false **仅当**存在事实或覆盖的严重问题；纯可读/美学问题视为可优化，passed=true 但仍列出 issues
+- 回退目标：事实/覆盖问题 → search 或 compose；可读性/教育适配问题 → compose；美学问题 → design 或 render
+- **passed=false 仅当存在事实或覆盖的严重问题**；纯可读/美学/教育问题视为可优化，passed=true 但仍列出 issues
+- ⚠️ 教育适配问题（术语太多/段落太长/缺引导提问）**一律归到 education 维度，严禁归入 coverage**——coverage 只指"主题关键信息没讲全"
+- 不要为了凑满 3 条而把可优化项判成严重——严重（fact/coverage）才是真问题
 
 输出 JSON：
-{"passed": true/false, "issues": [{"dimension": "fact|coverage|readability|aesthetic", "target": "search|design|compose|render", "desc": "具体缺陷描述"}]}"""
+{"passed": true/false, "issues": [{"dimension": "fact|coverage|readability|aesthetic|education", "target": "search|design|compose|render", "desc": "具体缺陷描述"}]}"""
 
 
 CRITIQUE_SYSTEM_PROMPT = """你是方案批评家。设计还没开始做，你提前挑刺——找出方案里的结构性问题，让修改成本为零。
@@ -174,14 +182,25 @@ async def judge_page(
 
 
 def pick_rollback(issues: list[dict]) -> str:
-    """从审查缺陷里选回退目标：严重维度优先，其次出现最多的 target。"""
+    """从审查缺陷里选回退目标：严重维度优先，其次按维度映射。
+
+    严重（fact/coverage）→ 回退 search 类补素材；非严重按维度给合理目标：
+    education/readability → compose（改文案）；aesthetic → design（改设计）。
+    """
     if not issues:
         return "render"
     # 事实/覆盖问题最严重，优先
     for i in issues:
         if i.get("dimension") in ("fact", "coverage"):
             return i.get("target") or "search"
-    # 否则选出现最多的 target
+    # 非严重：按维度映射，教育/可读 → compose，美学 → design
+    for i in issues:
+        dim = i.get("dimension")
+        if dim in ("education", "readability"):
+            return "compose"
+        if dim == "aesthetic":
+            return "design"
+    # 兜底：选出现最多的 target
     counts: dict[str, int] = {}
     for i in issues:
         t = i.get("target") or "render"

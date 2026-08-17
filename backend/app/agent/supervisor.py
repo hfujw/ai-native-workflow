@@ -25,15 +25,36 @@ SAFE_DESIGN_ATTEMPTS = 2  # design/compose 重试：每次约 7 次调用，2 �
 
 
 def _skill_assets_for(skill_id: str | None) -> dict | None:
-    """按 skill_id 加载模板资产（template.html/reference.css）。"""
+    """按 skill_id 加载模板资产（template.html/reference.css/interactions.js）。
+
+    附带把 skill 的 interaction 类型塞进 assets（render 用它决定注入哪种交互 DOM 提示），
+    让 render 工具只拿 assets 就能知道交互基因，不用再读 skill_config。
+    """
     if not skill_id:
         return None
     try:
         from app.skills import load_skill
         skill = load_skill(skill_id)
-        return (skill or {}).get("assets") or None
+        assets = (skill or {}).get("assets") or None
+        if assets is not None:
+            assets = dict(assets)  # 拷贝，不污染 skill 缓存
+            assets["_interaction"] = ((skill or {}).get("skill_config") or {}).get("interaction", "")
+        return assets
     except Exception as e:
         logger.debug("skill 资产加载失败(%s): %s", skill_id, e)
+        return None
+
+
+def _skill_config_for(skill_id: str | None) -> dict | None:
+    """按 skill_id 加载编排配置（方向 A/C：design_priority/compose_tone/max_paragraph_lines 等）。"""
+    if not skill_id:
+        return None
+    try:
+        from app.skills import load_skill
+        skill = load_skill(skill_id)
+        return (skill or {}).get("skill_config") or None
+    except Exception as e:
+        logger.debug("skill 配置加载失败(%s): %s", skill_id, e)
         return None
 
 
@@ -55,6 +76,7 @@ TOOL_HANDLERS = {
         model=ctx.get("model"),  # ← 会话模型（前端选择）
         swarm_size=ctx.get("creative_swarm_size"),  # 创意脑数量（人海战术）
         max_attempts=min(ctx.get("llm_steps") or 2, SAFE_DESIGN_ATTEMPTS),  # 设计重试上限
+        skill_config=_skill_config_for(ctx.get("skill_id")),  # 方向 A：风格约束注入
     ),
     "compose": lambda ctx, bus, params: DesignerAgent().run(
         ctx.get("material", []), ctx.get("user_input", ""),
@@ -63,6 +85,7 @@ TOOL_HANDLERS = {
         model=ctx.get("model"),
         swarm_size=ctx.get("creative_swarm_size"),
         max_attempts=min(ctx.get("llm_steps") or 2, SAFE_DESIGN_ATTEMPTS),
+        skill_config=_skill_config_for(ctx.get("skill_id")),  # 方向 A：文案约束注入
     ),
     "render":  lambda ctx, bus, params: RenderAgent().run(
         ctx.get("design") or {}, ctx.get("content") or {},
