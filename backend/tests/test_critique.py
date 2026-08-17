@@ -56,7 +56,7 @@ async def test_brainstorm_critic_fixes_design():
     plan = {"_angle": "visual", "_angle_name": "视觉型", "components": ["cards"],
             "structure": "S", "visual_hint": "V", "rationale": "R"}
 
-    async def fake_synthesize(plans, user_input, material, session_records, model):
+    async def fake_synthesize(plans, user_input, material, session_records, model, skill_config=None):
         return {"components": ["cards"], "structure": "S", "visual_hint": "简洁大方",
                 "rationale": "R", "tool": "design", "_synthesized": True}
 
@@ -83,7 +83,7 @@ async def test_brainstorm_skips_critique_on_fallback():
 
     fallback = {"components": ["encyclopedia"], "rationale": "降级", "tool": "design"}
 
-    async def fake_synthesize(plans, user_input, material, session_records, model):
+    async def fake_synthesize(plans, user_input, material, session_records, model, skill_config=None):
         return dict(fallback)
 
     with patch("app.agent.brainstorm.spawn_creative_agents", new=AsyncMock(return_value=[])), \

@@ -46,16 +46,32 @@ _BUILTINS: dict[str, dict] = {
         "name": "像素风", "type": "风格", "icon": "🎮",
         "desc": "复古 8-bit 像素美学——有限色板、块状像素、霓虹荧光。适合游戏化叙事、怀旧题材、独立游戏介绍页；生成『有游戏感』的像素风长页，字块、发光、颗粒感十足",
         "body": "低分辨率像素画面、有限色板、块状复古字体，主题围绕游戏化叙事",
+        # 方向 A：Skill 是编排策略——组件优先级/文案语气/交互基因（播种时写进 SKILL.md frontmatter）
+        "design_priority": ["cards", "timeline", "portrait"],
+        "compose_tone": "游戏化",
+        "max_paragraph_lines": 2,
+        "interaction": "none",
+        "target_age": "12-18",
     },
     "magazine": {
         "name": "杂志长图", "type": "风格", "icon": "📰",
         "desc": "编辑级杂志排版——网格系统、大标题、图文混排、留白节奏。适合品牌故事、深度报道、产品发布长文；生成编辑部审美的长页，信息层级清楚、排版克制精致",
         "body": "编辑级杂志排版、网格系统、图文混排、大标题与留白",
+        "design_priority": ["timeline", "blockquote", "portrait", "cards"],
+        "compose_tone": "叙事感",
+        "max_paragraph_lines": 3,
+        "interaction": "reading-progress",
+        "target_age": "12-18",
     },
     "infographic": {
         "name": "信息图", "type": "风格", "icon": "📊",
         "desc": "数据可视化优先——图表、关键数字、对比面板。适合年度总结、数据报告、SaaS 特性页；生成『一眼看懂』的数据叙事长页，数字突出、信息层次分明",
         "body": "数据可视化优先、图表 + 关键数字突出、信息层次分明",
+        "design_priority": ["datapanel", "comparison", "cards", "flowchart"],
+        "compose_tone": "数据化",
+        "max_paragraph_lines": 2,
+        "interaction": "count-up",
+        "target_age": "12-18",
     },
 }
 
@@ -73,8 +89,18 @@ _cache: list[dict] | None = None
 # ── 内部 ──
 
 def _render_skill_md(meta: dict) -> str:
-    return (f"---\nname: {meta['name']}\ntype: {meta['type']}\n"
-            f"icon: {meta['icon']}\ndesc: {meta['desc']}\n---\n{meta['body']}")
+    """把 skill 元数据渲染成 SKILL.md。编排配置字段（方向 A）写进 frontmatter，
+    clone 后播种时从 _BUILTINS 自动生成，GitHub 上不丢配置。"""
+    lines = [f"name: {meta['name']}", f"type: {meta['type']}",
+             f"icon: {meta['icon']}", f"desc: {meta['desc']}"]
+    for key in ("design_priority", "compose_tone", "max_paragraph_lines",
+                "interaction", "target_age"):
+        if key in meta:
+            v = meta[key]
+            if isinstance(v, list):
+                v = "[" + ", ".join(v) + "]"
+            lines.append(f"{key}: {v}")
+    return f"---\n{chr(10).join(lines)}\n---\n{meta['body']}"
 
 
 def _persona_body(sid: str, fallback: str) -> str:
@@ -105,26 +131,39 @@ def _ensure_seeded() -> None:
                 f.write(_render_skill_md({**meta, "body": body}))
         if not os.path.isfile(md_path):  # 风格 skill 首次
             _seed_assets(sid, skill_dir)
-        elif not os.path.exists(os.path.join(skill_dir, "template.html")):
-            _seed_assets(sid, skill_dir)
+        else:
+            # 逐资产补缺：新增资产文件（如 interactions.js）也要补种到旧运行时目录
+            _seed_missing_assets(sid, skill_dir)
 
 
 def _seed_assets(sid: str, skill_dir: str) -> None:
-    """把源码里的模板资产（template.html/reference.css）复制到运行时 skill 目录。"""
+    """把源码里的模板资产（template.html/reference.css/interactions.js）复制到运行时 skill 目录。"""
     src = os.path.join(_TEMPLATES_DIR, sid)
     if not os.path.isdir(src):
         return
-    for name in ("template.html", "reference.css"):
+    for name in ("template.html", "reference.css", "interactions.js"):
         s = os.path.join(src, name)
         if os.path.isfile(s):
             shutil.copy2(s, os.path.join(skill_dir, name))
             logger.debug("skill 模板资产已播种: %s/%s", sid, name)
 
 
+def _seed_missing_assets(sid: str, skill_dir: str) -> None:
+    """逐资产补缺——新资产文件（如 interactions.js）补种到已存在的运行时目录。"""
+    src = os.path.join(_TEMPLATES_DIR, sid)
+    if not os.path.isdir(src):
+        return
+    for name in ("template.html", "reference.css", "interactions.js"):
+        s = os.path.join(src, name)
+        if os.path.isfile(s) and not os.path.exists(os.path.join(skill_dir, name)):
+            shutil.copy2(s, os.path.join(skill_dir, name))
+            logger.debug("skill 资产补种: %s/%s", sid, name)
+
+
 def _read_assets(skill_dir: str) -> dict:
     """读取 skill 的模板资产（不存在则为空）。"""
     assets: dict = {}
-    for name in ("template.html", "reference.css"):
+    for name in ("template.html", "reference.css", "interactions.js"):
         p = os.path.join(skill_dir, name)
         if os.path.isfile(p):
             try:
@@ -135,8 +174,20 @@ def _read_assets(skill_dir: str) -> dict:
     return assets
 
 
+def _parse_int(raw) -> int:
+    """安全解析 frontmatter 里的整数，失败回退默认值。"""
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 3
+
+
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """解析 SKILL.md：--- 之间的 key: value frontmatter + 正文指令。不引 YAML 依赖。"""
+    """解析 SKILL.md：--- 之间的 key: value frontmatter + 正文指令。不引 YAML 依赖。
+
+    支持简单列表（`[a, b, c]`）和标量。新字段（design_priority / compose_tone /
+    max_paragraph_lines / interaction / target_age）都从这里进 skill_config。
+    """
     meta: dict = {}
     body = text.strip()
     m = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", text, re.S)
@@ -144,7 +195,12 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
         for line in m.group(1).splitlines():
             if ":" in line:
                 k, v = line.split(":", 1)
-                meta[k.strip()] = v.strip()
+                key, raw = k.strip(), v.strip()
+                # `[a, b, c]` 列表 → list
+                if raw.startswith("[") and raw.endswith("]"):
+                    meta[key] = [x.strip() for x in raw[1:-1].split(",") if x.strip()]
+                else:
+                    meta[key] = raw
         body = m.group(2).strip()
     return meta, body
 
@@ -179,6 +235,14 @@ def _load_all() -> list[dict]:
                     "prompt": body,
                     "builtin": entry in _BUILTINS,  # 内置标记（前端"我的 Skill"区分）
                     "assets": _read_assets(skill_dir),
+                    # 编排配置（方向 A/C）：影响 design/compose/render 的生成约束
+                    "skill_config": {
+                        "design_priority": meta.get("design_priority", []),
+                        "compose_tone": meta.get("compose_tone", ""),
+                        "max_paragraph_lines": _parse_int(meta.get("max_paragraph_lines", 3)),
+                        "interaction": meta.get("interaction", ""),
+                        "target_age": meta.get("target_age", "12-18"),
+                    },
                 })
             except OSError as e:
                 logger.warning("skill 读取失败(%s): %s", entry, e)

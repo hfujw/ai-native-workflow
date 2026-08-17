@@ -46,11 +46,23 @@ _DESIGN_FALLBACK = {"components": ["encyclopedia"], "rationale": "降级为百�
                     "structure": "单列百科条目", "visual_hint": "简洁中性"}
 
 
+def _skill_design_constraint(skill_config: dict | None) -> str:
+    """方向 A：skill 的 design_priority 约束组件选择（skill 是皮肤更是编排策略）。"""
+    if not skill_config:
+        return ""
+    priority = skill_config.get("design_priority") or []
+    if not priority:
+        return ""
+    return (f"\n【风格约束】优先使用这些组件（按优先级）：{', '.join(priority)}。"
+            f"除非主题完全不匹配，否则不要偏离。可选组件里能匹配的就用匹配的。")
+
+
 async def tool_design(
     material: list[dict],
     user_input: str = "",
     session_records: list[dict] | None = None,
     model: str | None = None,          # 会话模型（前端选择，None=默认）
+    skill_config: dict | None = None,  # 风格 skill 的编排配置（方向 A）
 ) -> dict:
     """分析素材，决定用什么叙事形式。"""
     if not material:
@@ -66,7 +78,7 @@ async def tool_design(
 
     try:
         result = await chat_json(
-            f"素材：\n{brief}{topic_hint}",
+            f"素材：\n{brief}{topic_hint}{_skill_design_constraint(skill_config)}",
             system=DESIGN_SYSTEM_PROMPT,
             session_records=session_records,
             model=model,
@@ -116,12 +128,32 @@ COMPOSE_SYSTEM_PROMPT = """你是叙事文案写手。每个事实性陈述必�
 _COMPOSE_FALLBACK = {"tool": "compose", "title": "生成失败", "subtitle": "LLM 异常", "blocks": [], "fact_notes": ""}
 
 
+def _skill_compose_constraint(skill_config: dict | None) -> str:
+    """方向 A + C：skill 的文案语气 / 段落长度 / 目标年龄约束。"""
+    if not skill_config:
+        return ""
+    tone = skill_config.get("compose_tone", "")
+    max_lines = skill_config.get("max_paragraph_lines", 3)
+    age = skill_config.get("target_age", "12-18")
+    parts = []
+    if tone:
+        parts.append(f"语气：{tone}")
+    if max_lines:
+        parts.append(f"每段不超过 {max_lines} 行（手机阅读）")
+    if age:
+        parts.append(f"面向 {age} 岁读者，避免超出该年龄段的术语堆砌")
+    if not parts:
+        return ""
+    return f"\n【文案约束】{'；'.join(parts)}。"
+
+
 async def tool_compose(
     material: list[dict],
     design: dict,
     user_input: str = "",
     session_records: list[dict] | None = None,
     model: str | None = None,          # 会话模型（前端选择，None=默认）
+    skill_config: dict | None = None,  # 风格 skill 的编排配置（方向 A/C）
 ) -> dict:
     """写叙事文案+来源标注。"""
     brief = "\n\n".join(
@@ -135,7 +167,7 @@ async def tool_compose(
 
 设计：{json.dumps(design, ensure_ascii=False)}
 {topic_hint}
-为每个组件写内容。每个数字/年份/人名必须标注来源。"""
+为每个组件写内容。每个数字/年份/人名必须标注来源。{_skill_compose_constraint(skill_config)}"""
 
     try:
         result = await chat_json(prompt, system=COMPOSE_SYSTEM_PROMPT, session_records=session_records,
@@ -177,6 +209,7 @@ class DesignerAgent:
         model=None,                   # 会话模型（前端选择，None=默认）
         swarm_size: int | None = None,  # 创意脑数量（人海战术，None=配置默认）
         max_attempts: int | None = None,  # LLM 步数：设计重试上限（None=默认 2）
+        skill_config: dict | None = None,  # 风格 skill 的编排配置（方向 A）
     ) -> dict:
         mat_count = len(material)
         attempts = max_attempts or 2
@@ -185,7 +218,8 @@ class DesignerAgent:
             # 发散-收敛设计（Kimi 模式）：并行创意子脑人海战术 → 大脑综合
             # 失败自动降级到单脑 tool_design（brainstorm 内部兜底）
             design = await brainstorm_design(user_input, material, session_records=session_records,
-                                             model=model, swarm_size=swarm_size)
+                                             model=model, swarm_size=swarm_size,
+                                             skill_config=skill_config)
 
             # 素材不够？
             if not self._check_design_fit(design, mat_count):
@@ -232,10 +266,10 @@ class DesignerAgent:
                 patched = [{"title": "⚠️ 素材不足，请使用简单形式（如 encyclopedia/cards）",
                             "snippet": f"仅有 {mat_count} 条素材", "content": ""}]
                 design = await tool_design(patched, user_input, session_records=session_records,
-                                           model=model)
+                                           model=model, skill_config=skill_config)
 
             content = await tool_compose(material, design, user_input, session_records=session_records,
-                                         model=model)
+                                         model=model, skill_config=skill_config)
 
             coverage = self._source_coverage(content)
             if coverage >= 0.3:
