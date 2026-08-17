@@ -6,7 +6,9 @@ import {
   IconChevronDown,
   IconClose,
   IconCode,
+  IconPause,
   IconPenTool,
+  IconPlay,
   IconSearch,
   IconShieldCheck,
   IconSparkle,
@@ -109,7 +111,7 @@ export default function TraceTimeline({
               className="trace-play"
               onClick={() => setPlayStep(playStep == null ? (steps[0]?.step ?? 0) : null)}
             >
-              {playStep == null ? "▶ 自动浏览" : "⏸ 暂停"}
+              {playStep == null ? <><IconPlay size={12} /> 自动浏览</> : <><IconPause size={12} /> 暂停</>}
             </button>
             <div className="trace-steps">
               {steps.map((s) => {

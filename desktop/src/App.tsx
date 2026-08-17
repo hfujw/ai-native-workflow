@@ -18,6 +18,7 @@ import {
   renameProject,
 } from "./lib/api";
 import type { GenParams, ModelItem, Msg, ProviderCreds, SearchService, ToolCall, ToolId } from "./lib/api";
+import { computeConfigHint } from "./lib/preflight";
 import { dedupeSessions, deleteSession, loadSessions, saveSession } from "./lib/sessions";
 import type { SavedSession } from "./lib/sessions";
 import { confirmDialog } from "./lib/confirm";
@@ -45,7 +46,10 @@ import {
 import "./App.css";
 import lumenLogo from "./assets/lumen.svg";
 
-const appWindow = getCurrentWindow();
+// Tauri 窗口句柄：只在桌面壳里可用。纯浏览器（vite dev / 部署）没有 __TAURI_INTERNALS__，
+// 直接 getCurrentWindow() 会读 undefined.metadata 崩溃白屏 → 惰性守卫，点击窗口按钮时才取。
+const IS_TAURI = typeof window !== "undefined" && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+const getTauriWindow = () => (IS_TAURI ? getCurrentWindow() : null);
 
 type Theme = "dark" | "light" | "system";
 type View = "chat" | "works" | "skill";
@@ -370,7 +374,7 @@ export default function App() {
   // 桌面端体验：双击标题栏空白处最大化/还原（按钮上不触发）
   const onTitlebarDoubleClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest(".tb-btn")) return;
-    appWindow.toggleMaximize();
+    getTauriWindow()?.toggleMaximize();
   };
 
   useEffect(() => {
@@ -835,13 +839,11 @@ export default function App() {
   // 配置预检：发送前就提示，不等生成才报"未配置 Key"
   const selectedModel = models.find((m) => m.id === composerModel);
   const modelKey = selectedModel ? providerCreds[selectedModel.provider]?.apiKey : "";
-  const searchOnButNoKey =
-    genParams.searchEnabled && searchServices.length > 0 && !searchServices.some((s) => s.apiKey);
-  const configHint = !modelKey
-    ? "未配置模型 API Key——请到 设置→模型 填写"
-    : searchOnButNoKey
-      ? "联网搜索已开启但搜索服务未配置 Key——将只用自身知识"
-      : "";
+  const configHint = computeConfigHint({
+    modelKey,
+    searchEnabled: genParams.searchEnabled,
+    searchServices,
+  });
   // 当前对话（侧边栏"当前对话"条目）：聊天时左侧创作区也能看到它，受搜索过滤
   const currentTitle = messages.find((m) => m.role === "user")?.text ?? "新对话";
   const showCurrent = messages.length > 0 && currentTitle.includes(historySearch.trim());
@@ -1027,13 +1029,13 @@ export default function App() {
           </div>
           <div className="titlebar-right">
             <div className="titlebar-controls">
-              <button className="tb-btn" onClick={() => appWindow.minimize()}>
+              <button className="tb-btn" onClick={() => getTauriWindow()?.minimize()}>
                 <IconMinus size={14} />
               </button>
-              <button className="tb-btn" onClick={() => appWindow.toggleMaximize()}>
+              <button className="tb-btn" onClick={() => getTauriWindow()?.toggleMaximize()}>
                 <IconSquare size={13} />
               </button>
-              <button className="tb-btn close" onClick={() => appWindow.close()}>
+              <button className="tb-btn close" onClick={() => getTauriWindow()?.close()}>
                 <IconClose size={14} />
               </button>
             </div>
@@ -1140,7 +1142,7 @@ export default function App() {
                                 {codeMsgId === m.id ? (
                                   <pre className="preview-code" ref={codeRef}>{m.html}</pre>
                                 ) : m.finalized ? (
-                                  <iframe srcDoc={m.html} sandbox="allow-scripts" title="预览" />
+                                  <iframe srcDoc={m.html} sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" title="预览" />
                                 ) : (
                                   <div className="preview-pending">正在渲染…（切"源码"可看 HTML 实时生成）</div>
                                 )}
@@ -1203,7 +1205,7 @@ export default function App() {
               {works.map((w) => (
                 <div key={w.id} className="work-card" onClick={() => setFullscreenHtml(w.html)} title="点击全屏预览">
                   <div className="work-preview">
-                    <iframe srcDoc={w.html} sandbox="allow-scripts" title={w.title} loading="lazy" />
+                    <iframe srcDoc={w.html} sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" title={w.title} loading="lazy" />
                   </div>
                   <div className="work-info">
                     <div className="work-title">{w.title}</div>
@@ -1247,7 +1249,7 @@ export default function App() {
               <IconClose size={15} />
             </button>
           </div>
-          <iframe srcDoc={fullscreenHtml} sandbox="allow-scripts" title="全屏预览" />
+          <iframe srcDoc={fullscreenHtml} sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" title="全屏预览" />
         </div>
       )}
 
