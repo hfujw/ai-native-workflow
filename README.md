@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/hfujw/lumen/master/desktop/src/assets/lumen.svg" width="96" alt="Lumen logo">
+<img src="https://raw.githubusercontent.com/hfujw/lumen/master/desktop/src/assets/lumen.svg" width="64" height="64" align="left" alt="Lumen logo">
 
 # Lumen
 
