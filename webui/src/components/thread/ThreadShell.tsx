@@ -18,7 +18,6 @@ import {
   fetchFilePreviewAvailability,
   fetchInstalledCliApps,
   fetchMcpPresets,
-  fetchSettings,
   listSlashCommands,
 } from "@/lib/api";
 import {
@@ -896,21 +895,15 @@ export function ThreadShell({
     [workspaceScope],
   );
 
+  // task 16（Lumen）：无 nanobot /api/settings——模型徽章靠 bootstrap model_name
+  // （deepseek-v4-flash）显示，不再拉取设置（消 404 噪音）。
   const refreshModelSettings = useCallback(async () => {
-    try {
-      setSettings(await fetchSettings(getToken()));
-    } catch {
-      if (!settingsSnapshot) setSettings(null);
-    }
-  }, [getToken, settingsSnapshot]);
+    setSettings(settingsSnapshot ?? null);
+  }, [settingsSnapshot]);
 
   useEffect(() => {
-    if (settingsSnapshot) {
-      setSettings(settingsSnapshot);
-      return;
-    }
-    void refreshModelSettings();
-  }, [refreshModelSettings, settingsSnapshot]);
+    setSettings(settingsSnapshot ?? null);
+  }, [settingsSnapshot]);
 
   useEffect(() => {
     return client.onRuntimeModelUpdate(() => {

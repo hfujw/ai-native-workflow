@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 
-import { fetchSkills } from "@/lib/api";
+import { fetchLumenSkills } from "@/lib/lumen-api";
 import { isSkillsPayload, SKILLS_CHANGED_EVENT } from "@/lib/skill-events";
 import type { SkillSummary } from "@/lib/types";
 
-export function useSkills(getToken: () => string): SkillSummary[] {
+export function useSkills(_getToken: () => string): SkillSummary[] {
   const [skills, setSkills] = useState<SkillSummary[]>([]);
 
   useEffect(() => {
@@ -12,8 +12,8 @@ export function useSkills(getToken: () => string): SkillSummary[] {
     let payloadVersion = 0;
     const refresh = () => {
       const version = payloadVersion;
-      fetchSkills(getToken())
-        .then(({ skills: nextSkills }) => {
+      fetchLumenSkills()
+        .then((nextSkills) => {
           if (!cancelled && version === payloadVersion) setSkills(nextSkills);
         })
         .catch(() => {
@@ -34,7 +34,7 @@ export function useSkills(getToken: () => string): SkillSummary[] {
       cancelled = true;
       window.removeEventListener(SKILLS_CHANGED_EVENT, onSkillsChanged);
     };
-  }, [getToken]);
+  }, []);
 
   return skills;
 }

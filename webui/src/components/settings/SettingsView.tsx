@@ -1,6 +1,5 @@
-import { SettingsPage } from "@/components/settings/SettingsPage";
+import { LumenSettingsView } from "@/components/settings/LumenSettingsView";
 import type { SettingsSectionKey } from "@/components/settings/contracts";
-import { useSettingsController } from "@/components/settings/useSettingsController";
 import type { SettingsPayload, SkillSummary } from "@/lib/types";
 
 export type { SettingsSectionKey } from "@/components/settings/contracts";
@@ -23,44 +22,13 @@ interface SettingsViewProps {
   hostChromeInset?: boolean;
 }
 
+/** 设置入口（Lumen 原生版，2026-08-19）。
+ * nanobot 的 SettingsPage/useSettingsController 数据层已由 LumenSettingsView 取代
+ * （概览/模型/技能/外观全部接深度后端，不依赖 nanobot SettingsPayload）。 */
 export function SettingsView({
   theme,
-  initialSection = "overview",
-  initialSettings = null,
-  showSidebar = true,
   onToggleTheme,
   onBackToChat,
-  onModelNameChange,
-  onSettingsChange,
-  skills = [],
-  onSectionChange,
-  onLogout,
-  onRestart,
-  onNativeEngineRestart,
-  isRestarting = false,
-  hostChromeInset = false,
 }: SettingsViewProps) {
-  const controller = useSettingsController({
-    initialSection,
-    initialSettings,
-    onModelNameChange,
-    onSettingsChange,
-    onSectionChange,
-    onRestart,
-    onNativeEngineRestart,
-  });
-
-  return (
-    <SettingsPage
-      controller={controller}
-      theme={theme}
-      showSidebar={showSidebar}
-      onToggleTheme={onToggleTheme}
-      onBackToChat={onBackToChat}
-      skills={skills}
-      onLogout={onLogout}
-      isRestarting={isRestarting}
-      hostChromeInset={hostChromeInset}
-    />
-  );
+  return <LumenSettingsView theme={theme} onToggleTheme={onToggleTheme} onBackToChat={onBackToChat} />;
 }

@@ -495,12 +495,20 @@ export async function fetchInstalledCliApps(
   token: string,
   base: string = "",
 ): Promise<CliAppsPayload> {
-  return request<CliAppsPayload>(
-    `${base}/api/settings/cli-apps?installed_only=1`,
-    token,
-    undefined,
-    API_READ_TIMEOUT_MS,
-  );
+  // task 16（Lumen）：无 CLI apps——404 静默返回空，消控制台噪音
+  try {
+    return await request<CliAppsPayload>(
+      `${base}/api/settings/cli-apps?installed_only=1`,
+      token,
+      undefined,
+      API_READ_TIMEOUT_MS,
+    );
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) {
+      return { apps: [], installed_count: 0 } as CliAppsPayload;
+    }
+    throw e;
+  }
 }
 
 export async function fetchNanobotFeatures(
@@ -691,12 +699,20 @@ export async function fetchMcpPresets(
   token: string,
   base: string = "",
 ): Promise<McpPresetsPayload> {
-  return request<McpPresetsPayload>(
-    `${base}/api/settings/mcp-presets`,
-    token,
-    undefined,
-    API_READ_TIMEOUT_MS,
-  );
+  // task 16（Lumen）：无 MCP——404 静默返回空
+  try {
+    return await request<McpPresetsPayload>(
+      `${base}/api/settings/mcp-presets`,
+      token,
+      undefined,
+      API_READ_TIMEOUT_MS,
+    );
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) {
+      return { presets: [], installed_count: 0 } as McpPresetsPayload;
+    }
+    throw e;
+  }
 }
 
 export async function startMcpOAuth(
@@ -820,12 +836,21 @@ export async function listSlashCommands(
     lifecycle?: unknown;
     accepts_args?: unknown;
   };
-  const body = await request<{ commands: Row[] }>(
-    `${base}/api/commands`,
-    token,
-    undefined,
-    API_READ_TIMEOUT_MS,
-  );
+  // task 16（Lumen）：无 slash 命令——404 静默返回空
+  let body: { commands: Row[] };
+  try {
+    body = await request<{ commands: Row[] }>(
+      `${base}/api/commands`,
+      token,
+      undefined,
+      API_READ_TIMEOUT_MS,
+    );
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) {
+      return [];
+    }
+    throw e;
+  }
   return body.commands
     .flatMap((command) => {
       if (!isSlashCommandLifecycle(command.lifecycle)) return [];

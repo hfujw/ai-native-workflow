@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useClient } from "@/providers/ClientProvider";
 import { hasPendingAgentActivity } from "@/lib/activity-timeline";
+import { getLumenKey } from "@/lib/lumen-key";
 import type { StreamError } from "@/lib/nanobot-client";
 import {
   finalizeStreamedTurn,
@@ -701,9 +702,13 @@ export function useNanobotStream(
       };
       let res: Response;
       try {
+        const apiKey = getLumenKey();
         res = await fetch("/v1/responses", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+          },
           body: JSON.stringify({
             input: buildResponsesInput(messagesRef.current, content),
             model: "deepseek-v4-flash",

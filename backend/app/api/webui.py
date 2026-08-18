@@ -30,7 +30,8 @@ async def webui_bootstrap():
         "token": "",
         "api_token": "",
         "expires_in": 3600,
-        "model_name": "lumen-deep",
+        # 必须返回 DeepSeek 官方名——前端模型徽章直接用这个值
+        "model_name": "deepseek-v4-flash",
         "runtime_surface": "browser",
         "runtime_capabilities": {
             "can_restart_engine": False,

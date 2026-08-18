@@ -51,9 +51,6 @@ import type {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  fetchPairingRequests,
-  fetchSettings,
-  fetchWorkspaces,
   runPairingAction,
 } from "@/lib/api";
 import { lumenSessionKey } from "@/lib/lumen-api";
@@ -1025,7 +1022,6 @@ function Shell({
   const [pairingRequests, setPairingRequests] = useState<PairingRequestInfo[]>([]);
   const [pairingBusyCode, setPairingBusyCode] = useState<string | null>(null);
   const [pairingError, setPairingError] = useState<string | null>(null);
-  const pairingRefreshRef = useRef<Promise<number> | null>(null);
   const [snoozedPairingCodes, setSnoozedPairingCodes] = useState<Map<string, number>>(
     () => new Map(),
   );
@@ -1105,18 +1101,10 @@ function Shell({
   }, [client]);
 
   useEffect(() => {
-    let cancelled = false;
-    fetchSettings(getToken())
-      .then((payload) => {
-        if (!cancelled) setSettingsSnapshot(payload);
-      })
-      .catch(() => {
-        if (!cancelled) setSettingsSnapshot(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [getToken]);
+    // task 16（Lumen）：无 nanobot /api/settings——settingsSnapshot 恒 null，
+    // 模型徽章靠 bootstrap model_name 显示（消 404 噪音）
+    setSettingsSnapshot(null);
+  }, []);
 
   useEffect(() => {
     try {
@@ -1134,38 +1122,9 @@ function Shell({
   }, [updatedChatIds]);
 
   const refreshPairingRequests = useCallback((): Promise<number> => {
-    if (pairingRefreshRef.current) return pairingRefreshRef.current;
-
-    const request = (async () => {
-      try {
-        const payload = await fetchPairingRequests(getToken());
-        const requests = Array.isArray(payload.requests) ? payload.requests : [];
-        setPairingRequests(requests);
-        setSnoozedPairingCodes((current) => {
-          if (current.size === 0) return current;
-          const activeCodes = new Set(requests.map((request) => request.code));
-          const now = Date.now();
-          const next = new Map(
-            Array.from(current).filter(
-              ([code, snoozedUntil]) => activeCodes.has(code) && snoozedUntil > now,
-            ),
-          );
-          return next.size === current.size ? current : next;
-        });
-        return requests.length;
-      } catch {
-        // Pairing is an opportunistic WebUI affordance. The slash command path
-        // remains available if this polling request fails.
-        return 0;
-      }
-    })();
-    const clearRequest = () => {
-      if (pairingRefreshRef.current === request) pairingRefreshRef.current = null;
-    };
-    pairingRefreshRef.current = request;
-    void request.then(clearRequest, clearRequest);
-    return request;
-  }, [getToken]);
+    // task 16（Lumen）：无配对概念——恒空，不再轮询后端（消 404 噪音）
+    return Promise.resolve(0);
+  }, []);
 
   useEffect(() => {
     if (!pageVisible) return undefined;
@@ -1229,13 +1188,9 @@ function Shell({
   const activeChatRunning = activeChatId ? runningChatIds.has(activeChatId) : false;
 
   const refreshWorkspaces = useCallback(async () => {
-    try {
-      const payload = await fetchWorkspaces(getToken());
-      setWorkspaces(payload);
-    } catch {
-      setWorkspaces(null);
-    }
-  }, [getToken]);
+    // task 16（Lumen）：无工作区概念——恒空，不拉后端（消 404 噪音）
+    setWorkspaces(null);
+  }, []);
 
   useEffect(() => {
     void refreshWorkspaces();

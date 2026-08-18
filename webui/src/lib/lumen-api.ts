@@ -3,6 +3,7 @@ import type {
   SessionAutomationJob,
   SessionAutomationsPayload,
   SessionDeleteResult,
+  SkillSummary,
   UIMessage,
   WebuiThreadPersistedPayload,
 } from "./types";
@@ -201,4 +202,59 @@ export async function fetchSessionAutomations(
   _base: string = "",
 ): Promise<SessionAutomationsPayload> {
   return { jobs: [] as SessionAutomationJob[] };
+}
+
+interface LumenSkill {
+  name?: string;
+  description?: string;
+  type?: string;
+  icon?: string;
+  builtin?: boolean;
+}
+
+/** GET /api/skills → Lumen skill 列表（风格/工具）。 */
+export async function fetchLumenSkills(): Promise<SkillSummary[]> {
+  const res = await fetchWithTimeout("/api/skills", {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`);
+  const body = (await res.json()) as { skills?: LumenSkill[] };
+  return (body.skills ?? []).map((skill) => ({
+    name: skill.name ?? "",
+    description: skill.description ?? "",
+    source: skill.type === "风格" ? "style" : skill.type === "工具" ? "tool" : (skill.type ?? "skill"),
+    available: true,
+    deletable: skill.builtin !== true,
+  }));
+}
+
+/** POST /api/skills/install——安装一个 skill（markdown 内容）。 */
+export async function installLumenSkill(id: string, markdown: string): Promise<SkillSummary> {
+  const res = await fetchWithTimeout("/api/skills/install", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: id.trim(), markdown }),
+    credentials: "same-origin",
+  });
+  if (!res.ok) {
+    let reason = `HTTP ${res.status}`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) reason = body.error;
+    } catch {
+      // keep status fallback
+    }
+    throw new Error(reason);
+  }
+  return (await res.json()) as SkillSummary;
+}
+
+/** DELETE /api/skills/{id}——删除一个 skill。 */
+export async function deleteLumenSkill(id: string): Promise<void> {
+  const res = await fetchWithTimeout(`/api/skills/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`);
 }
