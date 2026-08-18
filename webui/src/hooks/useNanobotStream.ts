@@ -7,7 +7,6 @@ import {
   finalizeStreamedTurn,
   findActiveAssistantPlaceholderIndex,
   findStreamingAssistantIndex,
-  isReasoningOnlyPlaceholder,
   matchesTurn,
   pruneReasoningOnlyPlaceholders,
   replaceMessageAt,

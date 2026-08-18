@@ -20,6 +20,13 @@ function notFound(): Response {
   return { ok: false, status: 404, json: async () => ({}) } as unknown as Response;
 }
 
+/** fetchWithTimeout 调用 fetch(input, init)——给 mock 标类型，让 mock.calls 元组可索引。 */
+function stubFetch(
+  impl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+): ReturnType<typeof vi.fn> {
+  return vi.fn(impl);
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -38,7 +45,7 @@ describe("lumen session key", () => {
 
 describe("listSessions", () => {
   it("maps projects to ChatSummary rows", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({
+    const fetchMock = stubFetch(async () => jsonResponse({
       projects: [
         {
           id: "a1b2c3d4",
@@ -67,14 +74,14 @@ describe("listSessions", () => {
   });
 
   it("handles an empty project list", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ projects: [] })));
+    vi.stubGlobal("fetch", stubFetch(async () => jsonResponse({ projects: [] })));
     expect(await listSessions("token")).toEqual([]);
   });
 });
 
 describe("fetchWebuiThread", () => {
   it("maps project messages to replay UIMessage rows", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({
+    const fetchMock = stubFetch(async () => jsonResponse({
       id: "a1b2c3d4",
       topic: "秦始皇",
       created_at: 1000,
@@ -106,14 +113,14 @@ describe("fetchWebuiThread", () => {
   });
 
   it("returns null on 404", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => notFound()));
+    vi.stubGlobal("fetch", stubFetch(async () => notFound()));
     expect(await fetchWebuiThread("token", "lumen:none")).toBeNull();
   });
 });
 
 describe("deleteSession", () => {
   it("deletes via DELETE /api/history/:id", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ ok: true }));
+    const fetchMock = stubFetch(async () => jsonResponse({ ok: true }));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await deleteSession("lumen:a1b2c3d4");
@@ -125,7 +132,7 @@ describe("deleteSession", () => {
   });
 
   it("reports not deleted when the backend says no", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ ok: false })));
+    vi.stubGlobal("fetch", stubFetch(async () => jsonResponse({ ok: false })));
     expect((await deleteSession("lumen:a1b2c3d4")).deleted).toBe(false);
   });
 });

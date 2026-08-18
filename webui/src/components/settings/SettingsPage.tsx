@@ -52,13 +52,7 @@ export function SettingsPage({
 
 
 
-    automationAction,
-    automationPendingDelete,
-    automationPendingEdit,
-
-
-
-
+    // task 12 已删自动化管理 UI——对应状态/动作不再解构
 
 
     beginModelPresetCreation,
@@ -81,8 +75,7 @@ export function SettingsPage({
 
     form,
 
-    handleAutomationAction,
-    handleAutomationEdit,
+    // task 12 已删自动化管理 UI
 
     handleDeleteModelConfiguration,
 
@@ -97,7 +90,6 @@ export function SettingsPage({
 
     handleToggleProvider,
 
-    hasPendingRestart,
     hostEngineApplying,
 
 
@@ -154,8 +146,7 @@ export function SettingsPage({
     selectSection,
 
 
-    setAutomationPendingDelete,
-    setAutomationPendingEdit,
+    // task 12 已删自动化管理 UI
 
 
 
@@ -207,7 +198,6 @@ export function SettingsPage({
         return (
           <OverviewSettings
             settings={settings}
-            requiresRestart={hasPendingRestart}
             showBrandLogos={localPrefs.brandLogos}
             onSelectSection={selectSection}
           />

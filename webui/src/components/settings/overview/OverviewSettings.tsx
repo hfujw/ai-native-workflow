@@ -37,12 +37,10 @@ import { useClient } from "@/providers/ClientProvider";
 
 export function OverviewSettings({
   settings,
-  requiresRestart,
   onSelectSection,
   showBrandLogos,
 }: {
   settings: SettingsPayload;
-  requiresRestart: boolean;
   onSelectSection: (section: SettingsSectionKey) => void;
   showBrandLogos: boolean;
 }) {
@@ -65,51 +63,7 @@ export function OverviewSettings({
     : activeProviderLabel || settings.agent.model
       ? [activeProviderLabel, settings.agent.model].filter(Boolean).join(" · ")
       : tx("settings.byok.noConfiguredProviders", "No configured providers");
-  const webStatus = settings.web.enable
-    ? tx("settings.values.enabled", "Enabled")
-    : tx("settings.values.disabled", "Disabled");
-  const webSearchProvider =
-    settings.web_search.providers.find((provider) => provider.name === settings.web_search.provider) ??
-    settings.web_search.providers[0];
-  const webSearchProviderLabel = providerDisplayLabel(
-    settings.web_search.providers,
-    settings.web_search.provider,
-  );
-  const webSearchCredentialStatus =
-    webSearchProvider?.credential === "none"
-      ? tx("settings.byok.webSearch.noCredentialRequired", "No key required")
-      : webSearchProvider?.credential === "optional_api_key"
-        ? settings.web_search.api_key_hint
-          ? tx("settings.values.configured", "Configured")
-          : tx("settings.byok.webSearch.noCredentialRequired", "No key required")
-      : webSearchProvider?.credential === "base_url"
-        ? settings.web_search.base_url
-          ? tx("settings.values.configured", "Configured")
-          : tx("settings.values.notConfigured", "Not configured")
-        : settings.web_search.api_key_hint
-          ? tx("settings.values.configured", "Configured")
-          : tx("settings.values.notConfigured", "Not configured");
-  const webCaption = `${webSearchProviderLabel} · ${webSearchCredentialStatus}`;
-  const imageStatus = settings.image_generation.enabled
-    ? tx("settings.values.enabled", "Enabled")
-    : tx("settings.values.disabled", "Disabled");
-  const imageCaption = `${providerDisplayLabel(settings.image_generation.providers, settings.image_generation.provider)} · ${
-    settings.image_generation.provider_configured
-      ? tx("settings.values.configured", "Configured")
-      : tx("settings.values.notConfigured", "Not configured")
-  }`;
-  const isNativeHost = (settings.surface ?? settings.runtime_surface) === "native";
-  const runtimeTitle = isNativeHost
-    ? tx("settings.rows.engine", "Engine")
-    : tx("settings.rows.gateway", "Gateway");
-  const runtimeValue = isNativeHost
-    ? tx("settings.values.privateEngine", "Private engine")
-    : `${settings.runtime.gateway_host}:${settings.runtime.gateway_port}`;
-  const runtimeCaption = isNativeHost
-    ? tx("settings.values.unixSocket", "Unix socket")
-    : requiresRestart
-      ? tx("settings.values.restartPending", "Restart pending")
-      : tx("settings.values.ready", "Ready");
+  // task 12 已删 web/图片生成/运行时状态行——对应 status/caption 计算一并移除
   return (
     <div className="space-y-7">
       <section className="rounded-[22px] bg-settings-surface px-4 py-4 sm:px-5">

@@ -748,12 +748,6 @@ function normalizePairingCode(raw: string): string {
   return formatPairingCodeInput(raw);
 }
 
-function pairingChannelKey(channel: string): string {
-  const raw = channel.trim().toLowerCase();
-  if (!raw) return "";
-  return raw.split(/[.:]/)[0] ?? raw;
-}
-
 function channelLabel(channel: string): string {
   return pairingChannelPresentation(channel).label;
 }
