@@ -30,6 +30,12 @@ ORCHESTRATOR_SYSTEM_PROMPT = """你是一个视觉叙事引擎。用户给你一
 - render → 生成HTML（内部自检 + 缓存 + 重试）
 - verify → Playwright审查
 
+【可选 skill】（和 tool 一样自由选，随 JSON 输出 skill 字段）
+- magazine（杂志长图）→ 叙事感、时间线+引用，适合历史/人物/深度话题
+- infographic（信息图）→ 数据化、数据面板+对比，适合数字/报告话题
+- pixel（像素风）→ 游戏化、卡片+怀旧，适合趣味/游戏话题
+- 不输出 skill 字段 = 沿用当前 skill（或系统默认）
+
 【硬规则】
 - render之后必须verify
 - verify通过 → 系统会自动交付并结束，你不需要输出 final（没有 final 这个工具，别再试）
@@ -61,7 +67,7 @@ ORCHESTRATOR_SYSTEM_PROMPT = """你是一个视觉叙事引擎。用户给你一
   素材评估显示与'朱子钦'无直接关联。用朱字释义做一个诚实的汉字文化页。"
 - 坏例子（第3步）："用户想了解朱子钦这个人。我对这个名字不太熟悉。搜索结果显示…"
 
-{"thought":"3-4句自然内心独白","tool":"search|design|compose|render|verify","params":{}}"""
+{"thought":"3-4句自然内心独白","tool":"search|design|compose|render|verify","skill":"magazine|infographic|pixel（可选）","params":{}}"""
 
 
 def apply_gen_params(ctx: dict, params: dict | None) -> None:
@@ -107,6 +113,7 @@ async def orchestrator_node(state: dict) -> dict:
     "llm_steps": settings.llm_steps,   # 每类 LLM 内部循环/重试的上限
     "search_enabled": True,
     "model": None,   # 会话模型（前端 Composer 选择；无默认——模型必须前端填）
+    "skill_id": None,  # 风格 skill：用户预设为初始值，LLM 决策可覆盖（v0.2 自主选 skill）
     "passed": False,
     "issues": [],
     "tool_history": [],
@@ -168,6 +175,17 @@ async def orchestrator_node(state: dict) -> dict:
             if push:
                 await push({"type": "thinking", "step": ctx["steps"] + 1,
                             "thought": "还没有素材——先搜索关键事实，再进入设计。", "tool": "system"})
+
+        # 1.45. LLM 自主选 skill（和选 tool 一样）：decision.skill → 更新 ctx.skill_id
+        # 用户预设是初始值，LLM 可覆盖；只认内置风格 skill id，防注入
+        skill_choice = str(decision.get("skill") or "").strip()
+        if skill_choice in ("magazine", "infographic", "pixel"):
+            if ctx.get("skill_id") != skill_choice:
+                ctx["skill_id"] = skill_choice
+                if push:
+                    await push({"type": "thinking", "step": ctx["steps"] + 1,
+                                "thought": f"🎨 自主选定风格：{skill_choice}——按此风格编排后续生成。",
+                                "tool": "system"})
 
         # 1.5. LLM 主动选择诚实模式
         if decision.get("honest") and not ctx.get("honest_mode"):

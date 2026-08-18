@@ -15,6 +15,10 @@ def _simulate_decision_handling(decision: dict, ctx: dict) -> dict:
     if (not ctx.get("material") and searched == 0 and not ctx.get("honest_mode")
             and decision.get("tool") in ("design", "compose")):
         decision = {"tool": "search", "thought": "还没有素材——先搜索关键事实", "params": {}}
+    # LLM 自主选 skill：decision.skill → 更新 ctx.skill_id（和选 tool 一样）
+    skill_choice = str(decision.get("skill") or "").strip()
+    if skill_choice in ("magazine", "infographic", "pixel"):
+        ctx["skill_id"] = skill_choice
     # honest 字段 → 自动切换为 render
     elif decision.get("honest") and not ctx.get("honest_mode"):
         ctx["honest_mode"] = True
@@ -139,3 +143,35 @@ def test_search_count_hard_limit_blocks_9th_search():
     decision = _simulate_search_limit(decision, ctx)
 
     assert decision["tool"] == "design"  # 被强制改了，不是 search
+
+
+# ── 场景 8：LLM 自主选 skill（和选 tool 一样）──
+
+def test_llm_selects_skill_updates_ctx():
+    """LLM 决策带 skill 字段 → ctx.skill_id 更新为所选 skill。"""
+    decision = {"tool": "design", "skill": "infographic", "thought": "数据主题用信息图"}
+    ctx = {"material": [{"title": "数据"}], "tool_history": [], "skill_id": "magazine"}
+
+    decision = _simulate_decision_handling(decision, ctx)
+
+    assert ctx["skill_id"] == "infographic"  # LLM 覆盖了预设
+
+
+def test_llm_skill_choice_optional():
+    """LLM 不输出 skill 字段 → ctx.skill_id 不变（沿用预设）。"""
+    decision = {"tool": "design", "thought": "直接设计"}
+    ctx = {"material": [{"title": "x"}], "tool_history": [], "skill_id": "magazine"}
+
+    _simulate_decision_handling(decision, ctx)
+
+    assert ctx["skill_id"] == "magazine"
+
+
+def test_llm_skill_choice_invalid_ignored():
+    """LLM 输出非法 skill id → 忽略（防注入，只认内置）。"""
+    decision = {"tool": "design", "skill": "hacker-style", "thought": "想用奇怪风格"}
+    ctx = {"material": [{"title": "x"}], "tool_history": [], "skill_id": "magazine"}
+
+    _simulate_decision_handling(decision, ctx)
+
+    assert ctx["skill_id"] == "magazine"  # 非法 skill 被忽略
