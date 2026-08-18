@@ -31,10 +31,8 @@ ORCHESTRATOR_SYSTEM_PROMPT = """你是一个视觉叙事引擎。用户给你一
 - verify → Playwright审查
 
 【可选 skill】（和 tool 一样自由选，随 JSON 输出 skill 字段）
-- magazine（杂志长图）→ 叙事感、时间线+引用，适合历史/人物/深度话题
-- infographic（信息图）→ 数据化、数据面板+对比，适合数字/报告话题
-- pixel（像素风）→ 游戏化、卡片+怀旧，适合趣味/游戏话题
-- 不输出 skill 字段 = 沿用当前 skill（或系统默认）
+- 当前可用 skill 列表见下面的"可用 skill"（每步都会动态列出）
+- 选一个最匹配主题的 skill；不输出 skill 字段 = 沿用当前 skill（或系统默认）
 
 【硬规则】
 - render之后必须verify
@@ -177,10 +175,12 @@ async def orchestrator_node(state: dict) -> dict:
                             "thought": "还没有素材——先搜索关键事实，再进入设计。", "tool": "system"})
 
         # 1.45. LLM 自主选 skill（和选 tool 一样）：decision.skill → 更新 ctx.skill_id
-        # 用户预设是初始值，LLM 可覆盖；只认内置风格 skill id，防注入
+        # 用户预设是初始值，LLM 可覆盖；只认真实存在的风格 skill id（动态白名单，防注入）
         skill_choice = str(decision.get("skill") or "").strip()
-        if skill_choice in ("magazine", "infographic", "pixel"):
-            if ctx.get("skill_id") != skill_choice:
+        if skill_choice:
+            from app.skills import list_skills
+            valid_skill_ids = {s.get("id") for s in list_skills("风格")}
+            if skill_choice in valid_skill_ids and ctx.get("skill_id") != skill_choice:
                 ctx["skill_id"] = skill_choice
                 if push:
                     await push({"type": "thinking", "step": ctx["steps"] + 1,
@@ -491,6 +491,15 @@ async def _decide(ctx: dict, push=None) -> dict:
 已设计：{ctx['design'] is not None} | 已写文案：{ctx['content'] is not None}
 HTML长度：{len(ctx.get('html', ''))}字符 | 上次验证：{'通过' if ctx['passed'] else '未通过'}
 """
+
+    # ── 可用 skill（动态：新装的 skill 自动进 LLM 视野，不硬编码）──
+    from app.skills import list_skills
+    style_skills = list_skills("风格")
+    if style_skills:
+        lines = ["可用 skill（选一个最匹配主题的，或沿用当前）："]
+        for s in style_skills:
+            lines.append(f"- {s.get('id')}（{s.get('name','')}）→ {s.get('desc','')[:60]}")
+        summary += "\n".join(lines) + "\n"
 
     # ── 增量尾部：最近 2 步的结构化反馈（模型"看到"上一步再决策）──
     feedback = _step_feedback(ctx)
