@@ -31,7 +31,7 @@ import {
 } from "@/lib/api";
 import { notifyCliAppsChanged } from "@/lib/cli-app-events";
 import { notifyMcpPresetsChanged } from "@/lib/mcp-preset-events";
-import type { NanobotClient } from "@/lib/nanobot-client";
+import type { LumenClientContract } from "@/lib/lumen-client";
 import type {
   AutomationUpdatePayload,
   McpOAuthFlowPayload,
@@ -68,7 +68,7 @@ function isExpectedMcpOAuthPendingReloadFailure(
 interface SystemSettingsActionsOptions {
   state: SystemSettingsState;
   featureCatalog: NanobotFeatureInfo[];
-  client: NanobotClient;
+  client: LumenClientContract;
   token: string;
   getToken: () => string;
   t: TFunction;

@@ -36,7 +36,7 @@ import {
 } from "@/lib/bootstrap";
 import { displayTitle } from "@/lib/chat-groups";
 import { deriveTitle } from "@/lib/format";
-import { NanobotClient } from "@/lib/nanobot-client";
+import { LumenClient, type LumenClientContract } from "@/lib/lumen-client";
 import { ClientProvider, useClient } from "@/providers/ClientProvider";
 import type {
   BootstrapResponse,
@@ -71,7 +71,7 @@ type BootState =
   | { status: "auth"; failed?: boolean }
   | {
       status: "ready";
-      client: NanobotClient;
+      client: LumenClientContract;
       token: string;
       tokenExpiresAt: number | null;
       modelName: string | null;
@@ -773,7 +773,7 @@ export default function App() {
   const bootstrapSecretRef = useRef("");
 
   const refreshReadyClient = useCallback(
-    async (client: NanobotClient, fallbackSurface: RuntimeSurface) => {
+    async (client: LumenClientContract, fallbackSurface: RuntimeSurface) => {
       const boot = await fetchBootstrap("", bootstrapSecretRef.current);
       const url = deriveWsUrl(boot.ws_path, boot.token, boot.ws_url);
       const runtimeSurface = boot.runtime_surface
@@ -815,22 +815,10 @@ export default function App() {
           const boot = await fetchBootstrap("", secret);
           if (cancelled) return;
           if (secret) saveSecret(secret);
-          const url = deriveWsUrl(boot.ws_path, boot.token, boot.ws_url);
           const runtimeSurface = toRuntimeSurface(boot.runtime_surface);
-          const runtimeHost = createRuntimeHost(runtimeSurface, boot.runtime_capabilities);
-          const client = new NanobotClient({
-            url,
-            maxFrameBytes: boot.limits?.transport.max_frame_bytes,
-            socketFactory: runtimeHost.socketFactory,
-            onReauth: async () => {
-              try {
-                const refreshed = await refreshReadyClient(client, runtimeSurface);
-                return refreshed.url;
-              } catch {
-                return null;
-              }
-            },
-          });
+          // task 13（Lumen）：深度后端不走 WS 消息流——用 LumenClient（无 socket），
+          // 消息流走 /v1/responses SSE（见 useNanobotStream.streamGenerate）。
+          const client = new LumenClient();
           bootstrapSecretRef.current = secret;
           client.connect();
           setState({

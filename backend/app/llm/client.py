@@ -1,7 +1,8 @@
 """LLM 客户端 — DeepSeek API 异步封装。
 
-Key 全部来自前端设置（会话级绑定，随 WS/REST 发送）——后端不读 .env 的 key。
-没有绑定任何 key → 调用时报"未配置 API Key"（没填就是没填）。
+Key 优先来自前端设置（会话级绑定，LobeChat/WebUI 传 Authorization）。
+本地 WebUI 没有填 key 的 UI（task 14 补）→ 回落到 config.deepseek_api_key（.env 可空）。
+两个都没有 → 调用时报"未配置 API Key"（没填就是没填）。
 """
 
 import asyncio
@@ -23,9 +24,22 @@ class LLMNotConfiguredError(RuntimeError):
     """未配置 API Key——配置错误，不是临时故障：不重试、不降级，直接上抛。"""
 
 
+def _fallback_client() -> AsyncOpenAI | None:
+    """.env 兜底 key（config.deepseek_api_key）构建的客户端；没配 → None。"""
+    from app.config import settings
+    fallback_key = (settings.deepseek_api_key or "").strip()
+    if not fallback_key:
+        return None
+    return AsyncOpenAI(
+        api_key=fallback_key,
+        base_url=settings.deepseek_base_url,
+        timeout=DEFAULT_TIMEOUT,
+    )
+
+
 def _assert_configured() -> None:
     """入口检查：当前会话有没有可用的 LLM 客户端。没有 → 明确报错（没填就是没填）。"""
-    if _session_client.get() is None:
+    if _session_client.get() is None and _fallback_client() is None:
         raise LLMNotConfiguredError(
             "未配置 API Key——请在 Lumen 设置 → 模型 里填写所用模型的 API Key")
 
@@ -113,11 +127,14 @@ def clear_session_client() -> None:
 
 
 def _get_client() -> AsyncOpenAI:
-    """当前会话的客户端；没有绑定 → 明确报错（没填就是没填，不静默回落）。"""
+    """当前会话的客户端；会话级 key 优先，其次 .env 兜底；都没有 → 明确报错。"""
     client = _session_client.get()
-    if client is None:
-        raise RuntimeError("未配置 API Key——请在 Lumen 设置 → 模型 里填写所用模型的 API Key")
-    return client
+    if client is not None:
+        return client
+    fallback = _fallback_client()
+    if fallback is not None:
+        return fallback
+    raise RuntimeError("未配置 API Key——请在 Lumen 设置 → 模型 里填写所用模型的 API Key")
 
 
 async def chat(prompt: str, system: str = "", model: str = None, temperature: float = 0.7,

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { usePageVisibility } from "@/hooks/usePageVisibility";
-import { fetchSessionAutomations } from "@/lib/api";
+import { fetchSessionAutomations } from "@/lib/lumen-api";
 import type { SessionAutomationJob } from "@/lib/types";
 
 const AUTOMATIONS_REFRESH_MS = 3000;

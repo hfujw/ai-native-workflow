@@ -59,7 +59,7 @@ def test_responses_generate_streams_thinking(monkeypatch):
 
     with client.stream(
         "POST", "/v1/responses",
-        json={"input": [{"role": "user", "content": "秦始皇是什么人"}], "model": "lumen-deep"},
+        json={"input": [{"role": "user", "content": "秦始皇是什么人"}], "model": "deepseek-v4-flash"},
     ) as r:
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("text/event-stream")
@@ -133,7 +133,7 @@ def test_responses_iteration_refines(monkeypatch):
 
     with client.stream(
         "POST", "/v1/responses",
-        json={"input": history_input, "model": "lumen-deep"},
+        json={"input": history_input, "model": "deepseek-v4-flash"},
     ) as r:
         assert r.status_code == 200
         text = "".join(r.iter_text())
@@ -150,4 +150,6 @@ def test_models_endpoint():
     assert r.status_code == 200
     data = r.json()
     assert data["object"] == "list"
-    assert any(m["id"] == "lumen-deep" for m in data["data"])
+    # 必须返回 DeepSeek 官方名——normalize_model() 对未知模型原样透传，
+    # 品牌名（lumen-deep）会打到 DeepSeek API 报"模型不存在"。
+    assert any(m["id"] == "deepseek-v4-flash" for m in data["data"])

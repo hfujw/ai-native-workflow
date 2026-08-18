@@ -108,7 +108,8 @@ export function webuiManualChunk(id: string): string | undefined {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const target = env.NANOBOT_API_URL ?? "http://127.0.0.1:8765";
+  // task 13（Lumen）：前端接深度后端（8001），不再接 nanobot（8765）。
+  const target = env.NANOBOT_API_URL ?? "http://127.0.0.1:8001";
   const hmrPath = "/__nanobot_vite_hmr";
 
   return {
@@ -128,7 +129,7 @@ export default defineConfig(({ mode }) => {
       exclude: ["@radix-ui/react-dialog"],
     },
     build: {
-      outDir: path.resolve(__dirname, "../nanobot/web/dist"),
+      outDir: path.resolve(__dirname, "dist"),
       emptyOutDir: true,
       sourcemap: false,
       rollupOptions: {
@@ -155,6 +156,9 @@ export default defineConfig(({ mode }) => {
         "/webui": { target, changeOrigin: true },
         "/api": { target, changeOrigin: true },
         "/auth": { target, changeOrigin: true },
+        // task 13（Lumen）：OpenAI 兼容网关 + 成品查看走深度后端。
+        "/v1": { target, changeOrigin: true },
+        "/works": { target, changeOrigin: true },
       },
     },
     test: {

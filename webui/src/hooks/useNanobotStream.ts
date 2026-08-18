@@ -1,35 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useClient } from "@/providers/ClientProvider";
-import { toMediaAttachment } from "@/lib/media";
-import {
-  mergeToolProgressEvents,
-  mergeToolProgressTraceLines,
-  normalizeToolProgressEvents,
-  toolTraceLinesFromEvents,
-} from "@/lib/tool-traces";
 import { hasPendingAgentActivity } from "@/lib/activity-timeline";
 import type { StreamError } from "@/lib/nanobot-client";
 import {
-  closeReasoningStream,
-  filterCoveredFileEditToolEvents,
   finalizeStreamedTurn,
   findActiveAssistantPlaceholderIndex,
-  findFileEditTraceIndex,
   findStreamingAssistantIndex,
   isReasoningOnlyPlaceholder,
   matchesTurn,
-  mergeFileEdits,
   pruneReasoningOnlyPlaceholders,
   replaceMessageAt,
   stampLastAssistantCompletion,
-  stripCoveredFileEditToolHintsFromMessages,
-  turnFieldsFromEvent,
 } from "@/lib/thread-event-projection";
 import type { UIMessageTurnFields } from "@/lib/thread-event-projection";
 import { formatQuotedUserMessage } from "@/lib/user-message-quote";
 import type {
-  InboundEvent,
   OutboundCliAppMention,
   OutboundMcpPresetMention,
   OutboundMedia,
@@ -55,7 +41,6 @@ type PendingStreamEvent =
   | { kind: "delta"; text: string; turn: UIMessageTurnFields; source?: UIMessage["source"] }
   | { kind: "reasoning"; text: string; turn: UIMessageTurnFields };
 
-const STREAM_END_IDLE_DELAY_MS = 1000;
 const BACKGROUND_STREAM_FLUSH_INTERVAL_MS = 1_000;
 
 /**
@@ -121,33 +106,6 @@ function attachReasoningChunk(
   ];
 }
 
-function absorbCompleteAssistantMessage(
-  prev: UIMessage[],
-  message: Omit<UIMessage, "id" | "role" | "createdAt">,
-): UIMessage[] {
-  const last = prev[prev.length - 1];
-  if (!last || !isReasoningOnlyPlaceholder(last) || !matchesTurn(last, message)) {
-    return [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        createdAt: Date.now(),
-        ...message,
-      },
-    ];
-  }
-  return [
-    ...prev.slice(0, -1),
-    {
-      ...last,
-      ...message,
-      isStreaming: false,
-      reasoningStreaming: false,
-    },
-  ];
-}
-
 /**
  * Subscribe to a chat by ID. Returns the in-memory message list for the chat,
  * a streaming flag, and a ``send`` function. Initial history must be seeded
@@ -183,20 +141,6 @@ export interface SubmittedTurn {
   sideChannel: boolean;
 }
 
-function eventExtendsModelActivity(ev: InboundEvent): boolean {
-  if (
-    ev.event === "delta"
-    || ev.event === "reasoning_delta"
-    || ev.event === "file_edit"
-  ) return true;
-  return ev.event === "message"
-    && (ev.kind === "tool_hint" || ev.kind === "progress" || ev.kind === "reasoning");
-}
-
-function eventTurnId(ev: InboundEvent): string | undefined {
-  return "turn_id" in ev && typeof ev.turn_id === "string" ? ev.turn_id : undefined;
-}
-
 function transitionTurnDelivery(
   messages: UIMessage[],
   turnId: string,
@@ -216,6 +160,27 @@ function transitionTurnDelivery(
     return { ...message, deliveryStatus: status };
   });
   return changed ? next : messages;
+}
+
+/** 组装 /v1/responses 的 input：历史里 user/assistant 文本行 + 最新一条用户消息。
+ *
+ * 附带完整历史（含上一轮 assistant 的 `✨ 成品已生成 [id]` 标记）——后端
+ * compat._find_artifact_id 靠它识别"迭代"而不是新生成。
+ */
+function buildResponsesInput(
+  messages: UIMessage[],
+  newContent: string,
+): { role: string; content: string }[] {
+  const rows: { role: string; content: string }[] = [];
+  for (const message of messages) {
+    if (message.role !== "user" && message.role !== "assistant") continue;
+    const content = message.content.trim();
+    if (!content) continue;
+    rows.push({ role: message.role, content });
+  }
+  const trimmed = newContent.trim();
+  if (trimmed) rows.push({ role: "user", content: trimmed });
+  return rows;
 }
 
 export function useNanobotStream(
@@ -281,6 +246,13 @@ export function useNanobotStream(
    * the loading spinner alive across tool-call boundaries without needing
    * backend changes. */
   const streamEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** task 13（Lumen）：在飞 /v1/responses SSE 请求的取消句柄；stop/切会话时中止。 */
+  const activeSseAbortRef = useRef<AbortController | null>(null);
+  /** task 13（Lumen）：最新消息快照——send 组装 /v1/responses 历史时用（state 异步，用 ref 同步读）。 */
+  const messagesRef = useRef<UIMessage[]>(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const dismissStreamError = useCallback(() => setStreamError(null), []);
 
@@ -302,20 +274,6 @@ export function useNanobotStream(
     streamEndTimerRef.current = null;
   }, []);
 
-  const isSideChannelEvent = useCallback((ev: InboundEvent) => {
-    const turnId = eventTurnId(ev);
-    return turnId !== undefined && sideChannelTurnIdsRef.current.has(turnId);
-  }, []);
-
-  const scheduleStreamEndTimer = useCallback((turn: UIMessageTurnFields = {}) => {
-    cancelStreamEndTimer();
-    streamEndTimerRef.current = setTimeout(() => {
-      streamEndTimerRef.current = null;
-      setIsStreaming(false);
-      setMessages((prev) => finalizeStreamedTurn(prev, turn));
-    }, STREAM_END_IDLE_DELAY_MS);
-  }, [cancelStreamEndTimer]);
-
   const createActivitySegmentId = useCallback((activate = true) => {
     activitySegmentCounterRef.current += 1;
     const id = `activity-${activitySegmentCounterRef.current}`;
@@ -325,11 +283,6 @@ export function useNanobotStream(
 
   const freshActivitySegmentId = useCallback(
     () => createActivitySegmentId(true),
-    [createActivitySegmentId],
-  );
-
-  const detachedActivitySegmentId = useCallback(
-    () => createActivitySegmentId(false),
     [createActivitySegmentId],
   );
 
@@ -649,6 +602,9 @@ export function useNanobotStream(
   // ``initialMessages`` update: a brand-new chat can receive an empty/404
   // history response after the optimistic first message has already rendered.
   useEffect(() => {
+    // 切会话：中止上一会话在飞的 SSE 请求，防止串流。
+    activeSseAbortRef.current?.abort();
+    activeSseAbortRef.current = null;
     const restoredRunStartedAt = chatId ? client.getRunStartedAt(chatId) : null;
     setMessages(initialMessages);
     setMessageOwnerChatId(chatId);
@@ -675,383 +631,154 @@ export function useNanobotStream(
     if (hasPendingToolCalls) setIsStreaming(true);
   }, [hasPendingToolCalls]);
 
-  useEffect(() => {
-    if (!chatId) return;
-
-    const handle = (ev: InboundEvent) => {
-      if (ev.event === "error") {
-        if (ev.detail === "message_too_big") {
-          applyStreamError({
-            kind: "message_too_big",
-            chatId,
-            turnId: ev.turn_id,
-          });
-        } else if (ev.detail === "workspace_scope_rejected") {
-          applyStreamError({
-            kind: "workspace_scope_rejected",
-            reason: ev.reason,
-            chatId,
-            turnId: ev.turn_id,
-          });
-        } else if (ev.turn_id) {
-          applyStreamError({
-            kind: "turn_rejected",
-            detail: ev.detail,
-            reason: ev.reason,
-            chatId,
-            turnId: ev.turn_id,
-          });
-        }
-        return;
-      }
-      const turnId = eventTurnId(ev);
-      if (turnId) {
-        setMessages((prev) => transitionTurnDelivery(prev, turnId, "accepted"));
-      }
-      if (ev.event === "message_accepted") return;
-      const sideChannelEvent = isSideChannelEvent(ev);
-      if (
-        streamEndTimerRef.current !== null
-        && !sideChannelEvent
-        && eventExtendsModelActivity(ev)
-      ) cancelStreamEndTimer();
-
-      if (ev.event === "delta") {
-        if (suppressStreamUntilTurnEndRef.current) return;
-        const chunk = typeof ev.text === "string" ? ev.text : "";
-        if (!chunk) return;
-        clearActivitySegment();
-        setIsStreaming(true);
-        pendingStreamEventsRef.current.push({
-          kind: "delta",
-          text: chunk,
-          turn: turnFieldsFromEvent(ev, "answer"),
-          source: ev.source,
-        });
-        schedulePendingStreamFlush();
-        return;
-      }
-
-      if (ev.event === "reasoning_delta") {
-        if (suppressStreamUntilTurnEndRef.current) return;
-        const chunk = ev.text;
-        if (!chunk) return;
-        if (fileEditSegmentRef.current) clearActivitySegment();
-        setIsStreaming(true);
-        pendingStreamEventsRef.current.push({
-          kind: "reasoning",
-          text: chunk,
-          turn: turnFieldsFromEvent(ev, "reasoning"),
-        });
-        schedulePendingStreamFlush();
-        return;
-      }
-
-      if (ev.event === "stream_end") {
-        const turn = turnFieldsFromEvent(ev, "answer");
-        const mergeNext = ev.resuming === true && ev.merge_next === true;
-        flushPendingStreamEvents({
-          closeAnswerSegment: !mergeNext,
-          ...(typeof ev.text === "string" ? { finalAnswerText: ev.text } : {}),
-          turn,
-          source: ev.source,
-        });
-        if (suppressStreamUntilTurnEndRef.current) return;
-        if (ev.resuming) {
-          cancelStreamEndTimer();
-          setIsStreaming(true);
-          if (!mergeNext) {
-            setMessages((prev) => finalizeStreamedTurn(prev, turn));
-          }
-          return;
-        }
-        scheduleStreamEndTimer(turn);
-        return;
-      }
-
-      const shouldCloseAnswerBeforeEvent =
-        ev.event === "file_edit"
-        || (
-          ev.event === "message"
-          && (ev.kind === "tool_hint" || ev.kind === "progress")
-        );
-      flushPendingStreamEvents({ closeAnswerSegment: shouldCloseAnswerBeforeEvent });
-
-      if (ev.event === "reasoning_end") {
-        if (suppressStreamUntilTurnEndRef.current) return;
-        setMessages((prev) => closeReasoningStream(prev, Date.now()));
-        return;
-      }
-
-      if (ev.event === "goal_state") {
-        setGoalState(ev.goal_state);
-        return;
-      }
-
-      if (ev.event === "goal_status") {
-        if (ev.status === "running" && typeof ev.started_at === "number") {
-          setRunStartedAt(ev.started_at);
-          setIsStreaming(true);
-        } else {
-          setRunStartedAt(null);
-          setIsStreaming(false);
-        }
-        return;
-      }
-
-      if (ev.event === "turn_end") {
-        if ("goal_state" in ev && ev.goal_state != null && typeof ev.goal_state === "object") {
-          setGoalState(ev.goal_state);
-        }
-        setRunStartedAt(null);
-        // Definitive signal that the turn is fully complete.  Cancel any
-        // pending debounce timer and stop the loading indicator immediately.
-        cancelStreamEndTimer();
-        setIsStreaming(false);
-        const completedAt = Date.now();
-        setMessages((prev) => {
-          let finalized = prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m));
-          finalized = pruneReasoningOnlyPlaceholders(finalized);
-          const latencyMs =
-            typeof ev.latency_ms === "number" && ev.latency_ms >= 0
-              ? Math.round(ev.latency_ms)
-              : undefined;
-          finalized = stampLastAssistantCompletion(
-            finalized,
-            {
-              ...(latencyMs !== undefined ? { latencyMs } : {}),
-              completedAt,
-            },
-            ev.turn_id,
-          );
-          buffer.current = null;
-          activeAssistantRef.current = null;
-          clearActivitySegment();
-          closedAssistantStreamIdsRef.current.clear();
-          return finalized;
-        });
-        suppressStreamUntilTurnEndRef.current = false;
-        onTurnEnd?.();
-        return;
-      }
-
-      if (ev.event === "message") {
-        if (
-          suppressStreamUntilTurnEndRef.current &&
-          (ev.kind === "tool_hint" || ev.kind === "progress" || ev.kind === "reasoning")
-        ) {
-          return;
-        }
-        // Back-compat: a legacy ``kind: "reasoning"`` message (no streaming
-        // partner) is treated as one complete delta + immediate end so the
-        // bubble renders identically to the streaming path.
-        if (ev.kind === "reasoning") {
-          const line = ev.text;
-          if (!line) return;
-          if (fileEditSegmentRef.current) clearActivitySegment();
-          setMessages((prev) => closeReasoningStream(
-            attachReasoningChunk(
-              prev,
-              line,
-              { ensure: ensureActivitySegmentId },
-              turnFieldsFromEvent(ev, "reasoning"),
-            ),
-            Date.now(),
-          ));
-          return;
-        }
-        // Intermediate agent breadcrumbs (tool-call hints, raw progress).
-        // Attach them to the last trace row if it was the last emitted item
-        // so a sequence of calls collapses into one compact trace group.
-        if (ev.kind === "tool_hint" || ev.kind === "progress") {
-          const structuredEvents = normalizeToolProgressEvents(ev.tool_events);
-          const turn = turnFieldsFromEvent(ev, "activity");
-          setMessages((prev) => {
-            const segmentId = ensureActivitySegmentId();
-            const base = prev;
-            const visibleStructuredEvents = filterCoveredFileEditToolEvents(base, structuredEvents);
-            const structuredLines = toolTraceLinesFromEvents(visibleStructuredEvents);
-            const lines = structuredLines.length > 0
-              ? structuredLines
-              : structuredEvents.length > 0
-                ? []
-                : ev.text
-                  ? [ev.text]
-                  : [];
-            if (lines.length === 0) return base;
-            const last = base[base.length - 1];
-            if (
-              last
-              && last.kind === "trace"
-              && !last.isStreaming
-              && (!last.activitySegmentId || last.activitySegmentId === segmentId)
-            ) {
-              const previousTraces = last.traces?.length
-                ? last.traces
-                : last.content
-                  ? [last.content]
-                  : [];
-              const mergedEvents = visibleStructuredEvents.length > 0
-                ? mergeToolProgressEvents(last.toolEvents, visibleStructuredEvents)
-                : last.toolEvents;
-              const mergedLines = visibleStructuredEvents.length > 0
-                ? mergeToolProgressTraceLines(
-                    previousTraces,
-                    last.toolEvents,
-                    structuredLines,
-                    visibleStructuredEvents,
-                  )
-                : null;
-              const merged: UIMessage = {
-                ...last,
-                traces: mergedLines ?? [...previousTraces, ...lines],
-                content: mergedLines
-                  ? mergedLines[mergedLines.length - 1]
-                  : lines[lines.length - 1],
-                toolEvents: mergedEvents,
-                activitySegmentId: last.activitySegmentId ?? segmentId,
-                ...turn,
-              };
-              return [...base.slice(0, -1), merged];
-            }
-            return [
-              ...base,
-              {
-                id: crypto.randomUUID(),
-                role: "tool",
-                kind: "trace",
-                content: lines[lines.length - 1],
-                traces: lines,
-                ...(visibleStructuredEvents.length ? { toolEvents: visibleStructuredEvents } : {}),
-                activitySegmentId: segmentId,
-                ...turn,
-                createdAt: Date.now(),
-              },
-            ];
-          });
-          return;
-        }
-
-        const media = ev.media_urls?.length
-          ? ev.media_urls.map((m) => toMediaAttachment(m))
-          : ev.media?.map((url) => toMediaAttachment({ url }));
-        const hasMedia = !!media && media.length > 0;
-        if (sideChannelEvent) {
-          setMessages((prev) => absorbCompleteAssistantMessage(prev, {
-            content: ev.text,
-            ...(hasMedia ? { media } : {}),
-            ...(ev.source ? { source: ev.source } : {}),
-            ...turnFieldsFromEvent(ev, "answer"),
-          }));
-          if (typeof ev.turn_id === "string") sideChannelTurnIdsRef.current.delete(ev.turn_id);
-          return;
-        }
-
-        // A complete (non-streamed) assistant message. If a stream was in
-        // flight, drop the placeholder so we don't render the text twice.
-        // Streaming state is closed by ``stream_end`` when present, or by
-        // ``turn_end`` for non-streamed and tool-heavy turns.
-        clearActivitySegment();
-        setMessages((prev) => {
-          const activeId = buffer.current?.messageId;
-          buffer.current = null;
-          activeAssistantRef.current = null;
-          const filtered = activeId ? prev.filter((m) => m.id !== activeId) : prev;
-          const content = ev.text;
-          const lat =
-            typeof ev.latency_ms === "number" && ev.latency_ms >= 0
-              ? Math.round(ev.latency_ms)
-              : undefined;
-          return absorbCompleteAssistantMessage(filtered, {
-            content,
-            ...(hasMedia ? { media } : {}),
-            ...(lat !== undefined ? { latencyMs: lat } : {}),
-            ...(ev.source ? { source: ev.source } : {}),
-            ...turnFieldsFromEvent(ev, "answer"),
-          });
-        });
-        if (hasMedia) {
-          suppressStreamUntilTurnEndRef.current = true;
-        }
-        return;
-      }
-      if (ev.event === "file_edit") {
-        const edits = Array.isArray(ev.edits) ? ev.edits : [];
-        if (edits.length === 0) return;
-        const normalized = mergeFileEdits(undefined, edits);
-        if (normalized.length === 0) return;
-        const turn = turnFieldsFromEvent(ev, "activity");
-        const opensFileEditPhase = normalized.some(
-          (edit) => edit.status === "editing" || edit.phase === "start",
-        );
-        let eventSegmentId = fileEditSegmentRef.current;
-        if (!eventSegmentId && opensFileEditPhase) {
-          eventSegmentId = detachedActivitySegmentId();
-          fileEditSegmentRef.current = eventSegmentId;
-        }
-        setMessages((prev) => {
-          let segmentId = eventSegmentId;
-          const base = stripCoveredFileEditToolHintsFromMessages(prev, normalized, turn);
-          const targetIndex = findFileEditTraceIndex(base, segmentId, normalized);
-          if (targetIndex !== null) {
-            const target = base[targetIndex];
-            segmentId = target.activitySegmentId ?? segmentId ?? detachedActivitySegmentId();
-            if (opensFileEditPhase) fileEditSegmentRef.current = segmentId;
-            const merged: UIMessage = {
-              ...target,
-              fileEdits: mergeFileEdits(target.fileEdits, normalized),
-              activitySegmentId: segmentId,
-              ...turn,
-            };
-            return replaceMessageAt(base, targetIndex, merged);
-          }
-          segmentId = segmentId ?? detachedActivitySegmentId();
-          if (opensFileEditPhase) fileEditSegmentRef.current = segmentId;
-          return [
-            ...base,
-            {
-              id: crypto.randomUUID(),
-              role: "tool",
-              kind: "trace",
-              content: "",
-              traces: [],
-              fileEdits: normalized,
-              activitySegmentId: segmentId,
-              ...turn,
-              createdAt: Date.now(),
-            },
-          ];
-        });
-        return;
-      }
-      // ``attached`` frames aren't actionable here.
-    };
-
-    const unsub = client.onChat(chatId, handle);
-    return () => {
-      unsub();
-      buffer.current = null;
-      activeAssistantRef.current = null;
-      closedAssistantStreamIdsRef.current.clear();
-      clearActivitySegment();
-      clearPendingStreamWork();
+  /** task 13（Lumen）：SSE 流收尾（等价 nanobot 的 turn_end）——flush 残量、停转、
+   * 落 isStreaming=false、清 run 生命周期、通知外层刷新历史。
+   */
+  const finalizeSseTurn = useCallback(
+    (chatId: string, turnId: string) => {
+      flushPendingStreamEvents({ closeAnswerSegment: true, turn: { turnId } });
       cancelStreamEndTimer();
-    };
-  }, [
-    applyStreamError,
-    cancelStreamEndTimer,
-    chatId,
-    client,
-    clearActivitySegment,
-    clearPendingStreamWork,
-    detachedActivitySegmentId,
-    ensureActivitySegmentId,
-    flushPendingStreamEvents,
-    isSideChannelEvent,
-    onTurnEnd,
-    schedulePendingStreamFlush,
-    scheduleStreamEndTimer,
-  ]);
+      setIsStreaming(false);
+      setRunStartedAt(null);
+      const completedAt = Date.now();
+      setMessages((prev) => {
+        let finalized = prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m));
+        finalized = pruneReasoningOnlyPlaceholders(finalized);
+        finalized = stampLastAssistantCompletion(finalized, { completedAt }, turnId);
+        buffer.current = null;
+        activeAssistantRef.current = null;
+        clearActivitySegment();
+        closedAssistantStreamIdsRef.current.clear();
+        return finalized;
+      });
+      suppressStreamUntilTurnEndRef.current = false;
+      client.endRun(chatId, turnId);
+      onTurnEnd?.();
+    },
+    [cancelStreamEndTimer, clearActivitySegment, client, flushPendingStreamEvents, onTurnEnd],
+  );
+
+  /** task 13（Lumen）：POST /v1/responses + 读 SSE。delta → 现有 PendingStreamEvent
+   * 管线（appendAnswerChunk 实时追加进 assistant 气泡）；[DONE]/completed → finalize。
+   */
+  const streamGenerate = useCallback(
+    async (chatId: string, turnId: string, content: string) => {
+      const controller = new AbortController();
+      activeSseAbortRef.current = controller;
+      const fail = (reason: string) => {
+        client.finishRunLocally(chatId);
+        applyStreamError({
+          kind: "turn_rejected",
+          detail: "lumen_stream_error",
+          reason,
+          chatId,
+          turnId,
+        });
+      };
+      let res: Response;
+      try {
+        res = await fetch("/v1/responses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            input: buildResponsesInput(messagesRef.current, content),
+            model: "deepseek-v4-flash",
+            session_id: chatId,
+          }),
+          signal: controller.signal,
+        });
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return;
+        fail((e as Error).message);
+        return;
+      }
+      if (!res.ok) {
+        let reason = `HTTP ${res.status}`;
+        try {
+          const body = (await res.json()) as { error?: { message?: string } };
+          if (body.error?.message) reason = body.error.message;
+        } catch {
+          // 保持 HTTP 状态兜底
+        }
+        fail(reason);
+        return;
+      }
+      const reader = res.body?.getReader();
+      if (!reader) {
+        fail("响应无流");
+        return;
+      }
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let completed = false;
+      const handleData = (payload: string): void => {
+        if (payload === "[DONE]") {
+          completed = true;
+          return;
+        }
+        try {
+          const event = JSON.parse(payload) as { type?: string; delta?: string };
+          if (event.type === "response.completed") {
+            completed = true;
+            return;
+          }
+          if (
+            event.type === "response.output_text.delta"
+            && typeof event.delta === "string"
+            && event.delta
+          ) {
+            pendingStreamEventsRef.current.push({
+              kind: "delta",
+              text: event.delta,
+              turn: { turnId },
+            });
+            schedulePendingStreamFlush();
+          }
+        } catch {
+          // 忽略无法解析的 data 行
+        }
+      };
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let boundary: number;
+          while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+            const block = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            for (const line of block.split("\n")) {
+              if (!line.startsWith("data:")) continue;
+              const payload = line.slice(5).trim();
+              if (!payload) continue;
+              handleData(payload);
+              if (completed) break;
+            }
+            if (completed) break;
+          }
+          if (completed) break;
+        }
+        if (!completed) {
+          // 尾部残块（流未以 \n\n 结尾）
+          for (const line of buffer.split("\n")) {
+            if (!line.startsWith("data:")) continue;
+            const payload = line.slice(5).trim();
+            if (!payload) continue;
+            handleData(payload);
+            if (completed) break;
+          }
+        }
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return;
+        fail((e as Error).message);
+        return;
+      } finally {
+        if (activeSseAbortRef.current === controller) activeSseAbortRef.current = null;
+      }
+      finalizeSseTurn(chatId, turnId);
+    },
+    [applyStreamError, client, finalizeSseTurn, schedulePendingStreamFlush],
+  );
 
   const send = useCallback(
     (content: string, images?: SendAttachment[], options?: SendOptions) => {
@@ -1111,24 +838,24 @@ export function useNanobotStream(
         ];
       });
       if (!sideChannel) setIsStreaming(true);
-      const wireMedia = hasAttachments ? images!.map((i) => i.media) : undefined;
-      const clientOptions = {
-        ...options,
-        turnId,
-        ...((sideChannel || continueActiveTurn) ? { startsNewRun: false } : {}),
-      };
-      delete clientOptions.quotedContext;
-      delete clientOptions.sideChannel;
-      delete clientOptions.finalizeActiveTurn;
-      delete clientOptions.continueActiveTurn;
-      client.sendMessage(chatId, outboundContent, wireMedia, clientOptions);
+      // Lumen：SSE 生成。先置本地 + client 的 run 状态（ThreadShell/App 靠
+      // getRunStartedAt / onRunStatus / hasUnsettledRun 追踪 running），
+      // 再把乐观用户消息标为 accepted（SSE 没有单独的 accepted 帧）。
+      const startedAt = Math.floor(Date.now() / 1000);
+      setRunStartedAt(startedAt);
+      client.beginRun(chatId, turnId, startedAt);
+      setMessages((prev) => transitionTurnDelivery(prev, turnId, "accepted"));
+      void streamGenerate(chatId, turnId, outboundContent);
       return { turnId, userMessageId, sideChannel };
     },
-    [cancelStreamEndTimer, chatId, clearActivitySegment, client, flushPendingStreamEvents],
+    [cancelStreamEndTimer, chatId, clearActivitySegment, client, flushPendingStreamEvents, streamGenerate],
   );
 
   const stop = useCallback(() => {
     if (!chatId) return;
+    // 中止在飞 SSE 请求——streamGenerate 的 AbortError 分支会直接返回（不收尾）。
+    activeSseAbortRef.current?.abort();
+    activeSseAbortRef.current = null;
     flushPendingStreamEvents();
     setIsStreaming(false);
     setMessages((prev) => {
@@ -1141,7 +868,6 @@ export function useNanobotStream(
     suppressStreamUntilTurnEndRef.current = false;
     setRunStartedAt(null);
     client.finishRunLocally(chatId);
-    client.sendMessage(chatId, "/stop");
   }, [chatId, clearActivitySegment, client, flushPendingStreamEvents]);
 
   const reconcileTurnComplete = useCallback(() => {

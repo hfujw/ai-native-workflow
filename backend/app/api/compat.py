@@ -38,6 +38,7 @@ class ResponsesRequest(BaseModel):
     model: str | None = None
     stream: bool = True
     tools: list | None = None  # LobeChat 可能声明可用工具——我们服务端自治，忽略
+    session_id: str | None = None  # WebUI 前端先建会话，前端定 project_id（后端兜底生成）
 
 
 # ── SSE 工具 ──
@@ -149,7 +150,9 @@ async def responses(req: ResponsesRequest, authorization: str | None = Header(No
         queue: asyncio.Queue = asyncio.Queue()
         _END = object()  # 终止哨兵：done 后消费完剩余文本再退出（防丢增量）
         terminal = {"done": False, "html": "", "error": ""}
-        session_id = artifact_id or uuid.uuid4().hex[:8]
+        # WebUI 前端先建会话（session_id=前端 chatId），生成/迭代都沿用同一个
+        # project_id；LobeChat 不传 session_id → 退回历史识别 / 后端生成。
+        session_id = (req.session_id or artifact_id) or uuid.uuid4().hex[:8]
         full_text = ""
 
         async def push(msg: dict):
@@ -213,8 +216,17 @@ async def responses(req: ResponsesRequest, authorization: str | None = Header(No
             if task and not task.done():
                 task.cancel()
 
-        # ── 落盘成品 + 最终文本 ──
+        # ── 最终文本 ──
         final_text = ""
+        if terminal["html"]:
+            final_text = f"\n\n{ARTIFACT_MARKER} [{session_id}]\nhttp://localhost:8001/works/{session_id}"
+        elif terminal["error"]:
+            final_text = f"\n\n❌ {terminal['error']}"
+
+        full_text += final_text
+
+        # ── 落盘成品（在 full_text += final_text 之后——落盘消息 = 实时流最终气泡，
+        #    历史回放才能和实时流内容一致，mergeLatestHistory 靠 content 重叠合并）──
         if terminal["html"]:
             from app.projects import save_project
             from app.workspace import save_page
@@ -234,17 +246,11 @@ async def responses(req: ResponsesRequest, authorization: str | None = Header(No
                     } if result else None,
                     "messages": [
                         {"role": "user", "text": query},
-                        {"role": "assistant", "text": "生成完成", "html": terminal["html"], "file_path": file_path},
+                        {"role": "assistant", "text": full_text, "html": terminal["html"], "file_path": file_path},
                     ],
                 })
-                final_text = f"\n\n{ARTIFACT_MARKER} [{session_id}]\nhttp://localhost:8001/works/{session_id}"
             except Exception as e:
                 logger.warning("compat=save_failed | session=%s | err=%s", session_id, e)
-                final_text = "\n\n（成品已生成，但保存到历史失败）"
-        elif terminal["error"]:
-            final_text = f"\n\n❌ {terminal['error']}"
-
-        full_text += final_text
 
         # ── 收尾事件 ──
         if final_text:
@@ -269,7 +275,11 @@ async def responses(req: ResponsesRequest, authorization: str | None = Header(No
 
 @router.get("/v1/models")
 async def models():
-    """模型列表（LobeChat 自定义服务商探测用）。"""
+    """模型列表（LobeChat 自定义服务商探测用）。
+
+    必须返回 DeepSeek 官方名——llm/client.normalize_model() 对未知模型原样透传，
+    传品牌名（lumen-deep）会打到 DeepSeek API 报"模型不存在"。
+    """
     return {"object": "list", "data": [
-        {"id": "lumen-deep", "object": "model", "owned_by": "lumen", "created": 0},
+        {"id": "deepseek-v4-flash", "object": "model", "owned_by": "deepseek", "created": 0},
     ]}

@@ -16,9 +16,11 @@ class Settings(BaseSettings):
     )
 
     # ── LLM ──
-    # Key 与模型全部来自前端设置（会话级绑定）——后端不读 .env，也不兜底默认模型。
-    # 没填 Key → LLMNotConfiguredError；没填模型 → LLMNotConfiguredError（前端必须填）。
+    # Key 优先来自前端设置（会话级绑定，LobeChat/WebUI 传 Authorization）。
+    # 本地 WebUI 没有填 key 的 UI（task 14 补）——deepseek_api_key 作 .env 兜底，
+    # 仅当无会话级 key 时生效；可空（空 = 没配，报 LLMNotConfiguredError）。
     deepseek_base_url: str = Field("https://api.deepseek.com")
+    deepseek_api_key: str = Field("", description="本地 WebUI 兜底 API Key（.env 填，可空）")
 
     # ── 搜索（用户在前端设置里填搜索服务的 Key——不回落 .env，没填 = 不联网） ──
 

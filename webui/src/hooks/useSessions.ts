@@ -2,13 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useClient } from "@/providers/ClientProvider";
 import i18n from "@/i18n";
+import { ApiError } from "@/lib/api";
 import {
-  ApiError,
   deleteSession as apiDeleteSession,
   fetchSessionAutomations,
   fetchWebuiThread,
   listSessions,
-} from "@/lib/api";
+  lumenSessionKey,
+  newLumenSessionId,
+} from "@/lib/lumen-api";
 import { hasPendingAgentActivity } from "@/lib/activity-timeline";
 import { deriveTitle } from "@/lib/format";
 import type {
@@ -205,15 +207,16 @@ export function useSessions(): {
   }, [client, refresh]);
 
   const createChat = useCallback(async (workspaceScope?: WorkspaceScopePayload | null): Promise<string> => {
-    const chatId = await client.newChat(CHAT_CREATE_TIMEOUT_MS, workspaceScope);
-    const key = `websocket:${chatId}`;
+    // Lumen：会话 = 生成主题，后端在首次 /v1/responses 落盘时才真实创建。
+    // 这里先本地占位一个会话（id = 8 位 hex，与后端 _find_artifact_id 正则兼容），
+    // 首次发送 POST session_id=chatId 后，历史刷新会用真实 project 行替换它。
+    const chatId = newLumenSessionId();
+    const key = lumenSessionKey(chatId);
     optimisticKeysRef.current.add(key);
-    // Optimistic insert; a subsequent refresh will replace it with the
-    // authoritative row once the server persists the session.
     setSessions((prev) => [
       {
         key,
-        channel: "websocket",
+        channel: "lumen",
         chatId,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -224,7 +227,7 @@ export function useSessions(): {
       ...prev.filter((s) => s.key !== key),
     ]);
     return chatId;
-  }, [client]);
+  }, []);
 
   const forkChat = useCallback(async (
     sourceChatId: string,
@@ -257,13 +260,13 @@ export function useSessions(): {
 
   const deleteChat = useCallback(
     async (key: string, options?: { deleteAutomations?: boolean }) => {
-      const result = await apiDeleteSession(client, key, options);
+      const result = await apiDeleteSession(key, options);
       if (!result.deleted) return result;
       optimisticKeysRef.current.delete(key);
       setSessions((prev) => prev.filter((s) => s.key !== key));
       return result;
     },
-    [client],
+    [],
   );
 
   const getSessionAutomations = useCallback(async (key: string) => {
