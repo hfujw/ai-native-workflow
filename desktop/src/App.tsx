@@ -454,6 +454,17 @@ export default function App() {
     const ok = await confirmDialog("确定删除这段历史对话？此操作不可恢复");
     if (!ok) return;
     const target = sessions.find((s) => s.id === id);
+    // 连带删该会话的所有 workspace 产物文件（否则删了对话，作品文件残留无从查看）
+    if (target) {
+      const files = new Set(
+        target.messages
+          .map((m) => m.file_path)
+          .filter((p): p is string => !!p)
+          .map((p) => p.split(/[\\/]/).pop() ?? "")
+          .filter((f) => !!f)
+      );
+      await Promise.allSettled([...files].map((f) => deleteWorkspaceFile(f)));
+    }
     setSessions(deleteSession(id));
     // 删的是主窗口正在查看/编辑的对话（按 ref 或首条消息匹配）→ 主窗口回到空的新对话。
     // 覆盖两种情况：① openSession 绑定过 ref；② 应用启动从 lumen.messages 恢复、ref 为空但内容相同。
@@ -477,6 +488,15 @@ export default function App() {
   const clearCurrentChat = async () => {
     const ok = await confirmDialog("确定清空当前对话？此操作不可恢复");
     if (!ok) return;
+    // 连带删当前对话的所有 workspace 产物文件
+    const files = new Set(
+      messages
+        .map((m) => m.file_path)
+        .filter((p): p is string => !!p)
+        .map((p) => p.split(/[\\/]/).pop() ?? "")
+        .filter((f) => !!f)
+    );
+    await Promise.allSettled([...files].map((f) => deleteWorkspaceFile(f)));
     stop();
     currentSessionIdRef.current = null;
     currentProjectIdRef.current = null;
