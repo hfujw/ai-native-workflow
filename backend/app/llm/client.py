@@ -248,25 +248,15 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
     response = None
     for attempt in range(MAX_RETRIES + 1):
         try:
-            # DeepSeek 兼容层不一定支持 stream_options——报错就降级
-            try:
-                response = await _get_client().chat.completions.create(
-                    model=effective_model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    stream=True,
-                    stream_options={"include_usage": True},
-                )
-            except Exception as e:
-                logger.debug("stream_options 不支持，降级重试: %s", e)
-                response = await _get_client().chat.completions.create(
-                    model=effective_model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    stream=True,
-                )
+            # 不用 stream_options：DeepSeek 每次都会"不支持→降级重试"，多一次建连还误导日志。
+            # usage 用字符数估算兜底（下方已有）。
+            response = await _get_client().chat.completions.create(
+                model=effective_model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True,
+            )
             break  # 建连成功，开始消费流
         except Exception as e:
             if attempt < MAX_RETRIES:
