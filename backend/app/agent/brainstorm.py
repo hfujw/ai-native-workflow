@@ -268,12 +268,31 @@ async def brainstorm_design(
     model: str | None = None,
     swarm_size: int | None = None,
     skill_config: dict | None = None,  # 风格 skill 的编排配置（方向 A）
+    push=None,                          # 实时推送回调（设计过程推给前端，不干等）
 ) -> dict:
     """对外主入口：发散（并行子脑人海战术）→ 收敛（综合）→ 批评（批评家挑刺）→ 修正。
 
     批评家只在综合出真实方案时介入（1 轮），失败静默跳过（不阻塞设计）。
+    push 回调：每阶段完成推实时 thinking，前端能看到设计过程（不是干等 136s）。
     """
+    if push:
+        try:
+            await push({"type": "thinking", "step": 0,
+                        "thought": "🎨 开始设计：多个创意脑并行发散（叙事/视觉/信息）…",
+                        "tool": "design"})
+        except Exception:
+            pass  # 推送失败不阻塞
+
     plans = await spawn_creative_agents(user_input, material, session_records, model, swarm_size)
+
+    if push:
+        try:
+            await push({"type": "thinking", "step": 0,
+                        "thought": f"🧠 {len(plans)} 个创意脑完成，大脑综合最佳方案…",
+                        "tool": "design"})
+        except Exception:
+            pass
+
     design = await synthesize_design(plans, user_input, material, session_records, model, skill_config)
     if not design.get("_synthesized"):
         return design  # 降级方案不批评（成本优先）
@@ -281,6 +300,13 @@ async def brainstorm_design(
     # 批评家挑刺（设计阶段，render 前）——问题零成本修正
     from app.llm.judge import critique_design
     issues = await critique_design(design, user_input, material, session_records, model)
+    if push:
+        try:
+            await push({"type": "thinking", "step": 0,
+                        "thought": f"🔍 方案批评家挑刺：{'发现 ' + str(len(issues)) + ' 个结构问题，修正中…' if issues else '方案结构合理，通过。'}",
+                        "tool": "design"})
+        except Exception:
+            pass
     if issues:
         fixed = await _fix_design(design, issues, user_input, session_records, model)
         if fixed:

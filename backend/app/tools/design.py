@@ -219,7 +219,8 @@ class DesignerAgent:
             # 失败自动降级到单脑 tool_design（brainstorm 内部兜底）
             design = await brainstorm_design(user_input, material, session_records=session_records,
                                              model=model, swarm_size=swarm_size,
-                                             skill_config=skill_config)
+                                             skill_config=skill_config,
+                                             push=push)  # 设计过程实时推前端（不干等）
 
             # 素材不够？
             if not self._check_design_fit(design, mat_count):

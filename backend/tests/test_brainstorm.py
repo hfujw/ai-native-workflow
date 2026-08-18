@@ -164,3 +164,37 @@ async def test_designer_agent_uses_brainstorm():
         assert out["tool"] == "design"
         m.assert_awaited()  # 主设计路径确实走 brainstorm（覆盖度不足可能重试多次）
         assert out["design"]["components"] == ["cards"]
+
+
+# ── 设计过程实时推送（不干等）──
+
+@pytest.mark.asyncio
+async def test_brainstorm_pushes_progress(monkeypatch):
+    """brainstorm 各阶段通过 push 回调推实时 thinking（前端不干等）。"""
+    from app.agent import brainstorm
+
+    calls = []
+
+    async def fake_push(msg):
+        calls.append(msg.get("thought", ""))
+
+    async def fake_spawn(*a, **kw):
+        return [{"components": ["timeline"], "structure": "S", "visual_hint": "V", "rationale": "R"}]
+
+    async def fake_synthesize(*a, **kw):
+        return {"components": ["timeline"], "structure": "S", "visual_hint": "V",
+                "rationale": "R", "tool": "design", "_synthesized": True}
+
+    async def fake_critique(*a, **kw):
+        return []
+
+    monkeypatch.setattr(brainstorm, "spawn_creative_agents", fake_spawn)
+    monkeypatch.setattr(brainstorm, "synthesize_design", fake_synthesize)
+    monkeypatch.setattr("app.llm.judge.critique_design", fake_critique)
+
+    await brainstorm.brainstorm_design("测试", [{"title": "x"}], push=fake_push)
+
+    # 应至少推出发散 + 综合 + 批评 3 条 thinking
+    assert len(calls) >= 3, f"实际推送 {len(calls)} 条: {calls}"
+    assert "创意脑" in "".join(calls)
+    assert "综合" in "".join(calls)
