@@ -312,6 +312,13 @@ export default function App() {
 
   /** 打开历史对话（=历史作品）：先存档当前对话（防丢），再从后端拉取恢复完整对话 */
   const openHistory = async (id: string) => {
+    // 生成中点历史 = 无确认静默停止当前生成（用户误点会丢半成品）。
+    // 和"新对话"同样逻辑：先确认，再切换。当前对话 messages 已由防抖持久化。
+    const isGeneratingNow = genStatus === "running" || genStatus === "connecting";
+    if (isGeneratingNow) {
+      const ok = await confirmDialog("当前对话正在生成，切换会停止它。确定切换？", "切换");
+      if (!ok) return;
+    }
     resetCurrentSession();
     currentProjectIdRef.current = id; // 标记主窗口正在回看这个作品（思考回放用）
     stop();
@@ -431,7 +438,21 @@ export default function App() {
       case "thinking": {
         const tool = String(msg.tool ?? "");
         const title = TOOL_TITLES[tool];
-        if (!title) return; // system 类提示不建卡片
+        // system 类提示（迭代达上限/强制回退/修改失败/关闭联网等）和首条
+        // tool="thinking"（"收到主题"）不建工具卡，但不能静默丢弃——
+        // 否则用户"改了没反应"却不知道后端已拒绝。追加到消息正文可见。
+        if (!title) {
+          const thought = String(msg.thought ?? "");
+          if (!thought) return;
+          setMessages((ms) =>
+            ms.map((m) =>
+              m.id === targetId
+                ? { ...m, text: m.text ? `${m.text}\n\n${thought}` : thought }
+                : m
+            )
+          );
+          return;
+        }
         const fullThought = String(msg.thought ?? "");
         const streamCid = runningCardRef.current;
         // 决策流式阶段建过"思考"卡 → 复用为真工具卡（换标题/工具名，thought 换完整版），一步一卡不重复
@@ -569,13 +590,19 @@ export default function App() {
           )
         );
         setIterable(true); // 进入可迭代状态：下次输入走 instruction 改页面
-        generatingSessionRef.current = null; // 生成完成，解锁其他对话发送
         // verify 通过 → 切回预览（展示验证过的成品），不再显示源码
         setCodeMsgId((cur) => (cur === targetId ? null : cur));
-        // 当前对话生成完 → 绑定 session_id 到 currentProjectIdRef，
-        // 让"思考过程"按钮显示（trace 按 session_id 命名，回放 AI 怎么想到这些的）
+        // 当前对话生成完 → 绑定 session_id 到 currentProjectIdRef 与 generatingSessionRef，
+        // 让"思考过程"按钮显示 + 迭代时 otherGenerating 不误判"另一个对话在生成"。
+        // generatingSessionRef 保持为作品 id（不是 null）：当前对话再迭代，
+        // otherGenerating = running && (作品id !== 作品id) = false；切到别的对话则 = true 禁用。
         const newProjectId = String(msg.session_id ?? "");
-        if (newProjectId) currentProjectIdRef.current = newProjectId;
+        if (newProjectId) {
+          currentProjectIdRef.current = newProjectId;
+          generatingSessionRef.current = newProjectId;
+        } else {
+          generatingSessionRef.current = null;
+        }
         loadHistory(); // 新作品入库 → 刷新创作区
         break;
       }
@@ -654,7 +681,9 @@ export default function App() {
       ]);
       const ok = sendInstruction(text);
       if (!ok) {
-        // 连接已断开（后端超时等）→ 移除占位消息，回退为新生成
+        // 连接已断开（迭代达上限后端关连接 / 中断）→ 明确告知，再回退为新生成。
+        // 之前静默回退：用户以为还在改原作品，实际开了新生成，做完又多一个作品。
+        toast("原生成连接已结束（可能已达修改上限），这条将作为新生成开始", "info");
         setMessages((ms) => ms.filter((m) => m.id !== newId && m.id !== userMsgId));
         startGeneration(text);
       }

@@ -65,7 +65,10 @@ export function useGenerate() {
         reachedTerminal = true;
         setStatus("ready");
       } else if (msg.type === "generation_failed") {
-        reachedTerminal = true; // 失败也是终点——终止按钮随之隐藏是对的
+        // 失败是业务终点：直接回到可发送状态（idle），不能还挂着"停止"按钮。
+        // 之前只置 reachedTerminal，onclose 会保持 running → 输入栏永久卡"停止"。
+        reachedTerminal = true;
+        setStatus("idle");
       }
       options.onMessage(msg);
     };
@@ -79,11 +82,18 @@ export function useGenerate() {
     };
 
     ws.onclose = () => {
-      // 已到终点（ready/失败）或用户主动 stop 过 → 不把状态回退成 done。
-      // 中途意外断开 → done（终止按钮隐藏，因为连接已死，无可停止）
       if (!settled) {
         settled = true;
-        setStatus((cur) => (reachedTerminal || cur === "idle" ? cur : "done"));
+        if (reachedTerminal) {
+          // 正常到终点：page_ready 已置 ready / generation_failed 已置 idle，
+          // 这里不改状态，避免把正确状态覆盖成 done。
+        } else {
+          // 中途意外断开（后端崩溃/超时/网络抖动）→ 明确提示，
+          // 不让用户以为"还在生成"。stop() 和 send() 关旧连接前都置了
+          // onclose=null，所以能走到这里的一定不是用户主动关闭。
+          setStatus((cur) => (cur === "idle" ? cur : "done"));
+          options.onError?.("生成连接已中断，本次生成未完成，请重试");
+        }
       }
       wsRef.current = null;
     };

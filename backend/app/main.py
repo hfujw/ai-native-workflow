@@ -55,7 +55,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import generate, history, meta, skills, workspace
+from app.api import compat, generate, history, meta, skills, workspace
 from app.api.ws import ws_manager
 from app.config import settings as _settings
 
@@ -87,3 +87,5 @@ app.include_router(generate.router)
 app.include_router(history.router)
 app.include_router(skills.router)
 app.include_router(workspace.router)
+# OpenAI 兼容网关（LobeChat 前端接入）
+app.include_router(compat.router)

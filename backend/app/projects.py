@@ -80,6 +80,9 @@ def save_project(project: dict) -> None:
             "trace_path": project.get("trace_path", existing.get("trace_path", "")),
             "file_path": project.get("file_path", existing.get("file_path", "")),
         })
+        # 编排上下文（design/content/material）——LobeChat 迭代时恢复，让 refine 真正懂"上次怎么设计的"
+        if project.get("state") is not None:
+            existing["state"] = project["state"]
         # 对话消息：合并（迭代时追加新消息）
         if project.get("messages"):
             existing["messages"] = project["messages"]
