@@ -74,7 +74,7 @@ Lumen 把**编排权交给 LLM**：流程不被人写死，每一步调哪个工
 
 ## 架构
 
-LLM 是决策中心，不是流水线工人：
+LLM 是决策中心，不是流水线工人——**流程不被人写死**，每一步由 LLM 自主决定调哪个工具、要不要搜、审查不过退给谁。
 
 ```mermaid
 flowchart TD
@@ -91,12 +91,40 @@ flowchart TD
     J -->|不通过| D
 ```
 
-**硬边界**
+### 编排核心（orchestrator）
+
+**async while 循环，不是状态图**。LLM 每步输出 `{thought, tool, params}`，orchestrator 执行工具、把结果反馈回上下文，再让 LLM 决定下一步。关键设计：
+
+- **决策严谨性**：`_decide` 半截 JSON 容错重试 + prompt 前缀稳定（KV 缓存友好）+ 最近 2 步工具结果结构化回填——LLM 真正"看到"上一步再决策，不是每次都重启。
+- **流式思考**：LLM 边生成边把 thought 增量推给前端，决策卡片逐字"长出来"，不干等。
+- **零素材防呆**：素材为 0 且没搜过时，禁止直接 design（否则空素材降级百科），强制先 search。
+- **强制回退**：verify 不过 / 审查不过时，orchestrator 直接 `force_next_tool` 跳回正确节点，不让 LLM 自己纠结。
+- **断路器**：连续 3 次 LLM 失败熔断 30 秒（CLOSED → OPEN → HALF_OPEN → CLOSED），防级联故障刷屏。
+
+### 四个 Agent（各自内部有决策循环）
+
+| Agent | 职责 | 内部机制 |
+|-------|------|---------|
+| **ResearcherAgent** | 素材检索 | 搜索无结果时 LLM 自动换词重搜 + 向量兜底；过滤广告/推广噪音；素材质量外置评估（规则判定，非 LLM 自评） |
+| **DesignerAgent** | 设计叙事 + 写文案 | 发散-收敛：多创意脑并行产出方案 → Top-K 预选 → 大脑综合 → 批评家挑刺修正；素材不够时通过消息总线向 Researcher 求助 |
+| **RenderAgent** | 生成 HTML | 自检循环（缺标签/占位符/base64 图片自动重试）+ 缓存（50 条 / 5 分钟 TTL）+ 后端自动注入 skill 交互脚本 |
+| **VerifyAgent** | 审查产物 | Playwright 真执行（抓 JS 错误）+ 硬规则（HTML 完整性/来源覆盖率） |
+
+### 质量审查（judge）
+
+verify 通过后进入**六维质量审查**：事实 / 覆盖 / 可读 / 美学 / 教育适配 / 互动。审查是"挑刺模式"——不评分，只找具体缺陷，每条可指导修改；事实/覆盖问题才强制回退，可读/美学问题带 issues 交付。产物另有一套**纯正则六维打分器**（artifact_quality），不依赖 LLM，客观可复现。
+
+### Skill 系统
+
+Skill 不是皮肤，是**编排策略**：每个 skill 带 `design_priority`（组件偏好）/ `compose_tone`（文案语气）/ `interaction`（交互基因）——注入 design/compose/render 的 prompt，让同一主题用不同 skill 产出结构迥异的页面。
+
+### 硬边界（LLM 不能突破）
 
 - 最多 20 步 · 搜索 ≤ 8 次
 - render 后必须 verify
 - 连续 2 次 verify 失败 → 诚实交付
 - 每步思考实时流式推送
+- 预算护栏：真实 token 成本按费率表计入虚拟 ¥1/次上限
 
 ---
 
