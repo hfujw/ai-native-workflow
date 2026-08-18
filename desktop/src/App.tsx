@@ -484,9 +484,9 @@ export default function App() {
     }
   };
 
-  /** 清空当前对话（侧边栏"当前对话"条目的删除）——不存档，直接弃掉。 */
+  /** 清空当前对话（侧边栏"当前对话"条目的删除）——彻底删：视图 + 历史会话 + workspace 文件 */
   const clearCurrentChat = async () => {
-    const ok = await confirmDialog("确定清空当前对话？此操作不可恢复");
+    const ok = await confirmDialog("确定删除当前对话？此操作不可恢复");
     if (!ok) return;
     // 连带删当前对话的所有 workspace 产物文件
     const files = new Set(
@@ -497,6 +497,15 @@ export default function App() {
         .filter((f) => !!f)
     );
     await Promise.allSettled([...files].map((f) => deleteWorkspaceFile(f)));
+    // 连带删历史列表里对应的会话——否则"清空"只清视图，历史里还在，要再删一次
+    const currentId = currentSessionIdRef.current;
+    const firstUser = messages.find((m) => m.role === "user")?.text ?? "";
+    const matchedId =
+      currentId ??
+      (firstUser
+        ? sessions.find((s) => s.messages.find((m) => m.role === "user")?.text === firstUser)?.id
+        : undefined);
+    if (matchedId) setSessions(deleteSession(matchedId));
     stop();
     currentSessionIdRef.current = null;
     currentProjectIdRef.current = null;
@@ -658,6 +667,10 @@ export default function App() {
         );
         setIterable(true); // 进入可迭代状态：下次输入走 instruction 改页面
         generatingSessionRef.current = null; // 生成完成，解锁其他对话发送
+        // 当前对话生成完 → 绑定 session_id 到 currentProjectIdRef，
+        // 让"思考过程"按钮显示（trace 按 session_id 命名，回放 AI 怎么想到这些的）
+        const newProjectId = String(msg.session_id ?? "");
+        if (newProjectId) currentProjectIdRef.current = newProjectId;
         loadHistory(); // 新作品入库 → 刷新创作区
         break;
       }
