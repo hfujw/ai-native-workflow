@@ -12,6 +12,7 @@ export default function Composer({
   onModelIdChange,
   iterable,
   sending,
+  otherGenerating,
   configHint,
 }: {
   onSend: (text: string) => void;
@@ -26,6 +27,8 @@ export default function Composer({
   iterable?: boolean;
   /** 生成/迭代进行中：发送按钮变终止按钮 */
   sending?: boolean;
+  /** 其他对话正在生成：当前对话发送禁用（单连接模型，防止切过来发又停掉别人的生成） */
+  otherGenerating?: boolean;
   /** 配置预检提示（未配 Key 等，发送前就提示，不等生成报错） */
   configHint?: string;
 }) {
@@ -36,7 +39,7 @@ export default function Composer({
   const groups = useMemo(() => groupModelsByProvider(models), [models]);
 
   const send = () => {
-    if (sending) return;
+    if (sending || otherGenerating) return;
     const text = input.trim();
     if (!text) return;
     onSend(text);
@@ -46,8 +49,12 @@ export default function Composer({
   return (
     <div className="composer-area">
       <div className="composer">
-        {/* 配置预检：发送前提示，不等生成报错 */}
-        {configHint && <div className="composer-hint">{configHint}</div>}
+        {/* 配置预检：发送前提示，不等生成报错；其他对话生成中优先提示 */}
+        {otherGenerating ? (
+          <div className="composer-hint">另一个对话正在生成——请等它完成或先停止，再发送新主题</div>
+        ) : configHint ? (
+          <div className="composer-hint">{configHint}</div>
+        ) : null}
         {/* 上行：输入文字 */}
         <textarea
           value={input}
@@ -109,9 +116,9 @@ export default function Composer({
 
           <button
             className={`send-btn ${sending ? "stop" : ""}`}
-            disabled={!sending && (!input.trim() || models.length === 0)}
+            disabled={!sending && (!input.trim() || models.length === 0 || otherGenerating)}
             onClick={sending ? onStop : send}
-            title={sending ? "停止生成" : "发送"}
+            title={sending ? "停止生成" : otherGenerating ? "另一对话正在生成" : "发送"}
           >
             {sending ? <IconSquare size={13} /> : <IconSend size={15} />}
           </button>

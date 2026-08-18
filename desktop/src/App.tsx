@@ -492,6 +492,9 @@ export default function App() {
   const targetIdRef = useRef<number | null>(null);
   const seqRef = useRef(0);
   const runningCardRef = useRef<string | null>(null);
+  /** 正在生成的会话 id（单连接模型：同一时间只能一个生成）。
+   *  其他对话在生成时，当前对话发送要禁用——防止"切过去发又停掉别人的生成" */
+  const generatingSessionRef = useRef<string | null>(null);
 
   /** 处理一条生成/迭代 WS 消息（更新 targetIdRef 指向的 assistant 消息） */
   const applyGenMsg = (msg: Record<string, unknown>) => {
@@ -634,6 +637,7 @@ export default function App() {
           )
         );
         setIterable(true); // 进入可迭代状态：下次输入走 instruction 改页面
+        generatingSessionRef.current = null; // 生成完成，解锁其他对话发送
         loadHistory(); // 新作品入库 → 刷新创作区
         break;
       }
@@ -646,6 +650,7 @@ export default function App() {
           )
         );
         setIterable(false);
+        generatingSessionRef.current = null; // 生成失败，解锁其他对话发送
         break;
       }
     }
@@ -654,6 +659,8 @@ export default function App() {
   /** 新开一次生成（或迭代连接断开时的回退） */
   const startGeneration = (text: string) => {
     setIterable(false);
+    // 记录这个生成属于哪个会话（单连接：生成期间其他会话发送要禁用）
+    generatingSessionRef.current = currentSessionIdRef.current;
     const userMsgId = Date.now();
     const assistId = Date.now() + 1;
     targetIdRef.current = assistId;
@@ -721,6 +728,7 @@ export default function App() {
   /** 停止生成：关掉 WS 连接 + 清掉残留的"进行中"卡片 + 标"已停止"（stop 只关连接，不清理 UI） */
   const handleStop = () => {
     stop();
+    generatingSessionRef.current = null;
     runningCardRef.current = null;
     const t = targetIdRef.current;
     setMessages((ms) => {
@@ -843,6 +851,9 @@ export default function App() {
     searchEnabled: genParams.searchEnabled,
     searchServices,
   });
+  // 单连接模型：有其他对话正在生成时，当前对话发送要禁用（防止切过来发又停掉别人的生成）
+  const isGenerating = genStatus === "running" || genStatus === "connecting";
+  const otherGenerating = isGenerating && generatingSessionRef.current !== currentSessionIdRef.current;
   // 当前对话（侧边栏"当前对话"条目）：聊天时左侧创作区也能看到它，受搜索过滤
   const currentTitle = messages.find((m) => m.role === "user")?.text ?? "新对话";
   const showCurrent = messages.length > 0 && currentTitle.includes(historySearch.trim());
@@ -1185,7 +1196,8 @@ export default function App() {
               modelId={composerModel}
               onModelIdChange={setComposerModel}
               iterable={iterable}
-              sending={genStatus === "running" || genStatus === "connecting"}
+              sending={isGenerating}
+              otherGenerating={otherGenerating}
               configHint={configHint}
             />
           </>

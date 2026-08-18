@@ -58,3 +58,27 @@ describe("Composer 发送按钮", () => {
     expect(screen.getByText("未配置模型 API Key——请到 设置→模型 填写")).toBeTruthy();
   });
 });
+
+describe("Composer 其他对话生成中", () => {
+  it("otherGenerating 时即使有输入也禁用发送", () => {
+    renderComposer({ otherGenerating: true });
+    const textarea = screen.getByPlaceholderText(/给 Lumen 提供灵感/);
+    fireEvent.change(textarea, { target: { value: "测试主题" } });
+    // otherGenerating 时按钮 title 变为"另一对话正在生成"
+    expect((screen.getByTitle("另一对话正在生成") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("otherGenerating 时显示提示文案", () => {
+    renderComposer({ otherGenerating: true });
+    expect(screen.getByText(/另一个对话正在生成/)).toBeTruthy();
+  });
+
+  it("otherGenerating 时 onSend 不被触发（Enter 发送防护）", () => {
+    const onSend = vi.fn();
+    renderComposer({ otherGenerating: true, onSend });
+    const textarea = screen.getByPlaceholderText(/给 Lumen 提供灵感/);
+    fireEvent.change(textarea, { target: { value: "测试主题" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+});
