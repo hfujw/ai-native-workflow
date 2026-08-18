@@ -1,15 +1,19 @@
 <div align="center">
 
-# <img src="https://raw.githubusercontent.com/hfujw/lumen/master/desktop/src/assets/lumen.svg" width="48" height="48" alt="Lumen logo"> Lumen
+<img src="https://raw.githubusercontent.com/hfujw/lumen/master/desktop/src/assets/lumen.svg" width="48" height="48" alt="Lumen logo">
 
-**AI 自主编排的教育内容引擎**
+<h1>Lumen</h1>
 
-输入任意主题，LLM 自主决定怎么搜、怎么设计、怎么写、怎么审，<br>
-输出一张结构清晰、视觉精美的交互式知识网页。面向年轻人与儿童。
+<p><strong>AI 自主编排的教育内容引擎</strong></p>
 
-[![CI](https://img.shields.io/github/actions/workflow/status/hfujw/lumen/ci.yml)](https://github.com/hfujw/lumen/actions)
-![Tests](https://img.shields.io/badge/tests-220%20passed-brightgreen)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+<p>输入任意主题，LLM 自主决定怎么搜、怎么设计、怎么写、怎么审，<br>
+输出一张结构清晰、视觉精美的交互式知识网页。面向年轻人与儿童。</p>
+
+<p>
+  <a href="https://github.com/hfujw/lumen/actions"><img src="https://img.shields.io/github/actions/workflow/status/hfujw/lumen/ci.yml" alt="CI"></a>
+  <img src="https://img.shields.io/badge/tests-220%20passed-brightgreen" alt="Tests">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
+</p>
 
 </div>
 
