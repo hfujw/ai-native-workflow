@@ -421,8 +421,9 @@ export default function App() {
     );
   };
 
-  /** 切换对话：先存档当前（稳定 id），再清空 ref——下次存档开新条目 */
+  /** 切换对话：先停生成、再存档当前（防存半成品），清空 ref——下次存档开新条目 */
   const resetCurrentSession = () => {
+    stop(); // ① 先停生成——否则 archive 会存"进行中"的半截 messages
     archiveCurrent();
     currentSessionIdRef.current = null;
   };
@@ -431,20 +432,18 @@ export default function App() {
   const startNewChat = () => {
     resetCurrentSession();
     currentProjectIdRef.current = null;
-    stop(); // 关掉进行中的生成连接
     setIterable(false);
     setView("chat");
     setMessages([]);
     setHistorySearch("");
   };
 
-  /** 打开历史对话：先存档当前（防丢），再加载目标会话。
+  /** 打开历史对话：先停生成、再存档当前（防丢），然后加载目标会话。
    *  ⑥ 把当前会话 id 绑定到打开的会话——否则下次"新对话"存档会开新条目，同一对话重复两份 */
   const openSession = (s: SavedSession) => {
-    resetCurrentSession();
+    resetCurrentSession(); // 先停生成 + 存档当前（现在不会存半成品了）
     currentProjectIdRef.current = null;
     currentSessionIdRef.current = s.id;
-    stop();
     setIterable(false);
     setMessages(s.messages);
     setView("chat");
