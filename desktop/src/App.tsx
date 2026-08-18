@@ -645,9 +645,11 @@ export default function App() {
         break;
       }
       case "html_chunk": {
-        // 流式渲染：页面逐步"长出来"
+        // 流式渲染：页面逐步"长出来"——finalized=true 让 iframe 实时显示（否则只显示"正在渲染…"）
         setMessages((ms) =>
-          ms.map((m) => (m.id === targetId ? { ...m, html: String(msg.html ?? "") } : m))
+          ms.map((m) =>
+            m.id === targetId ? { ...m, html: String(msg.html ?? ""), finalized: true } : m
+          )
         );
         break;
       }
