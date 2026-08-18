@@ -239,20 +239,41 @@ async def generate_page(websocket: WebSocket):
                 logger.info("WS 断开，取消生成 | session=%s", session_id)
 
         watch_task = asyncio.create_task(_watch_disconnect())
+        result = None
         try:
             result = await asyncio.wait_for(orch_task, timeout=settings.generation_timeout)
         except asyncio.CancelledError:
-            # WS 断开 → _watch_disconnect 取消了 orch_task → 这里收尾，不再往下跑
+            # WS 断开 → _watch_disconnect 取消了 orch_task → 收尾，但仍要落盘已生成的产物（否则对话消失）
             orch_task.cancel()
             logger.info("生成被用户终止 | session=%s", session_id)
-            return
         except asyncio.TimeoutError:
             orch_task.cancel()
             logger.warning("生成超时 | session=%s | timeout=%ds", session_id, settings.generation_timeout)
             await ws_manager.send_failed(session_id, "生成超时，请稍后重试", DEMO_TOPICS)
-            return
         finally:
             watch_task.cancel()  # 生成结束，断开监听不再需要
+
+        # 断开/超时/正常都要落盘——只要有 session 就存一条记录，对话不消失。
+        # 之前断开/超时直接 return，用户"写半天对话消失"。
+        if result is None:
+            from app.projects import save_project as _save
+            _save({
+                "id": session_id,
+                "topic": user_input,
+                "created_at": int(_time.time()),
+                "status": "interrupted",
+                "steps": 0, "cost": 0, "iterations": 1,
+                "html": "",  # 不完整，不存 html（避免半成品当成品）
+                "trace_path": f"logs/traces/{session_id}.jsonl",
+                "file_path": saved_file["path"] if saved_file["path"] else "",
+                "messages": [
+                    {"role": "user", "text": user_input},
+                    {"role": "assistant", "text": "生成被中断（未完成）",
+                     "file_path": saved_file["path"] if saved_file["path"] else ""},
+                ],
+            })
+            logger.info("生成中断但已落盘 | session=%s", session_id)
+            return
 
         logger.info("生成结束 | session=%s | status=%s | steps=%d | llm_calls=%d",
                     session_id, result.get("status"), result.get("steps"),

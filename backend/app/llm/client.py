@@ -275,7 +275,16 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
         completion_tokens = 0
         cache_hit_tokens = 0
         completion_chars = 0
-        async for chunk in response:
+        # 流式空闲超时：超过 N 秒没收到 chunk → 判定 API 卡住，主动中断（避免干等 600s）。
+        # DeepSeek 大输出（20000+ tokens）时可能连接建立后长时间无数据——不能无限等。
+        STREAM_IDLE_TIMEOUT = 60
+        it = response.__aiter__()
+        while True:
+            # 每个 chunk 包超时：卡住时 asyncio.TimeoutError 上抛，上层重试/降级
+            try:
+                chunk = await asyncio.wait_for(it.__anext__(), timeout=STREAM_IDLE_TIMEOUT)
+            except StopAsyncIteration:
+                break
             if chunk.choices and chunk.choices[0].delta.content:
                 text = chunk.choices[0].delta.content
                 yield text
