@@ -12,7 +12,10 @@ import os
 from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
-DEFAULT_TIMEOUT = 120
+# HTTP 请求超时（秒）——必须 ≥ 最慢的 LLM 调用时长。
+# render 生成完整教育网页一次要 16000 tokens（约 5 分钟），旧值 120s 会在生成中途
+# 触发 httpx 连接超时 → 所有阶段连环"DeepSeek 超时"失败。提到 600s 对齐 generation_timeout。
+DEFAULT_TIMEOUT = 600
 MAX_RETRIES = 2
 
 
