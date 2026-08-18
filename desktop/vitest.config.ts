@@ -8,8 +8,5 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: [],
-    // 用 threads pool 替代默认 forks：forks 跨线程 clone jsdom 对象时，
-    // 在 Node 20 的 undici 下触发 webidl.util.markAsUncloneable is not a function（CI 红）。
-    pool: "threads",
   },
 });

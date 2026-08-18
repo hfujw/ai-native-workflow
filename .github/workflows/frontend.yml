@@ -12,7 +12,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # jsdom 30 依赖 webidl.util.markAsUncloneable（Node 22+ 才有的 API）——
+          # Node 20 下 vitest 启动 jsdom worker 必崩，锁 22
+          node-version: 22
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - run: npm ci
