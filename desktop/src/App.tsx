@@ -645,12 +645,16 @@ export default function App() {
         break;
       }
       case "html_chunk": {
-        // 流式渲染：HTML 逐步"长出来"——默认显示源码（实时看代码），生成物等 verify 通过再预览
+        // 流式渲染：HTML 作为普通文本流显示（像聊天消息长出来，不是代码窗口）
+        // 生成物（iframe 预览）等 verify 通过（page_ready）后才出现
+        const chunkHtml = String(msg.html ?? "");
         setMessages((ms) =>
-          ms.map((m) => (m.id === targetId ? { ...m, html: String(msg.html ?? "") } : m))
+          ms.map((m) => {
+            if (m.id !== targetId) return m;
+            // 只更新 html（供后续预览用）；text 里放个轻提示，不显示代码框
+            return { ...m, html: chunkHtml, text: chunkHtml ? "正在生成页面…" : m.text };
+          })
         );
-        // 自动切到源码视图（用户看到代码实时生成，而不是空白"正在渲染"）
-        if (codeMsgId !== targetId) setCodeMsgId(targetId);
         break;
       }
       case "page_ready": {
