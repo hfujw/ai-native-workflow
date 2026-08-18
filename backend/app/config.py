@@ -13,6 +13,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         extra="ignore",  # 未定义的环境变量不报错
+        # 读 backend/.env（本地兜底 key 等）——pydantic-settings 默认不读 .env，
+        # 必须显式声明 env_file；真实环境变量仍优先于 .env
+        env_file=".env",
+        env_file_encoding="utf-8",
     )
 
     # ── LLM ──

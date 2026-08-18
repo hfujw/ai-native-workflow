@@ -13,8 +13,11 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _clear_session():
+def _clear_session(monkeypatch):
     from app.llm.client import clear_session_client
+    from app.config import settings
+    # 隔离本地 .env 的 DEEPSEEK_API_KEY 兜底——这批测试专测"未绑定/无 key 必须报错"
+    monkeypatch.setattr(settings, "deepseek_api_key", "")
     clear_session_client()
     yield
     clear_session_client()

@@ -56,6 +56,7 @@ import {
   fetchWorkspaces,
   runPairingAction,
 } from "@/lib/api";
+import { lumenSessionKey } from "@/lib/lumen-api";
 import {
   createRuntimeHost,
   toRuntimeSurface,
@@ -1462,7 +1463,7 @@ function Shell({
     try {
       const scope = workspaceScope ?? activeWorkspaceScope;
       const chatId = await createChat(scope);
-      const key = `websocket:${chatId}`;
+      const key = lumenSessionKey(chatId);
       pendingCreatedSessionKeyRef.current = key;
       navigate({
         view: "chat",
@@ -1541,7 +1542,7 @@ function Shell({
       );
       navigate({
         view: "chat",
-        activeKey: `websocket:${chatId}`,
+        activeKey: lumenSessionKey(chatId),
         settingsSection: "overview",
       });
       setMobileSidebarOpen(false);

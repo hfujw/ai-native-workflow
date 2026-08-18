@@ -54,3 +54,8 @@ FULL_TRACE.md
 
 # 生成页面工作区（每个对话一页，便于分享/后续文件工具）
 backend/workspace/
+
+# 密钥/本地配置——绝不进仓库
+.env
+.env.*
+!.env.example

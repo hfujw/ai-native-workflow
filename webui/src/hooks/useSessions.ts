@@ -240,12 +240,12 @@ export function useSessions(): {
       title,
       CHAT_CREATE_TIMEOUT_MS,
     );
-    const key = `websocket:${chatId}`;
+    const key = lumenSessionKey(chatId);
     optimisticKeysRef.current.add(key);
     setSessions((prev) => [
       {
         key,
-        channel: "websocket",
+        channel: "lumen",
         chatId,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
