@@ -77,18 +77,49 @@ Lumen 把**编排权交给 LLM**：流程不被人写死，每一步调哪个工
 LLM 是决策中心，不是流水线工人——**流程不被人写死**，每一步由 LLM 自主决定调哪个工具、要不要搜、审查不过退给谁。
 
 ```mermaid
-flowchart TD
-    U[用户输入主题] --> WS[WebSocket]
-    WS --> O[Orchestrator<br/>async 主循环]
-    O --> D[LLM 决策中心<br/>每步自主选工具]
-    D -->|可选| S[ResearcherAgent<br/>自主换词搜索]
-    D -->|可选| DE[DesignerAgent<br/>多脑发散 → Top-K → 批评家]
-    D --> R[RenderAgent<br/>自检 + 缓存 + 重试]
-    D --> V[Verify<br/>Playwright 真执行]
-    V -->|通过| J[Judge<br/>六维审查]
-    J -->|通过| OUT[交互式 HTML<br/>落盘工作区]
-    V -->|不通过| D
-    J -->|不通过| D
+flowchart LR
+    subgraph INPUT["输入"]
+        U[用户输入主题]
+    end
+
+    subgraph CORE["编排核心 Orchestrator"]
+        O[async while 主循环<br/>步骤 1/20 · 预算护栏]
+        D["LLM 决策中心<br/>{thought, tool, params}<br/>前缀稳定 + 最近2步反馈"]
+        O --> D
+        D -- "tool = search/design/compose<br/>render/verify" --> O
+    end
+
+    subgraph TOOLS["工具 Agent（各自内部决策循环）"]
+        S["ResearcherAgent<br/>搜索 → LLM 换词 → 向量兜底<br/>广告过滤 · 素材外置评估"]
+        DE["DesignerAgent<br/>多脑并行发散<br/>→ Top-K 预选 → 大脑综合<br/>→ 批评家挑刺修正"]
+        R["RenderAgent<br/>LLM 生成 → 自检循环<br/>→ 缓存(50条/5min)<br/>→ 注入 skill 交互脚本"]
+        V["VerifyAgent<br/>Playwright 真执行<br/>+ 硬规则检查"]
+    end
+
+    subgraph QUALITY["质量审查"]
+        J["Judge 六维审查<br/>事实/覆盖/可读/美学<br/>教育适配/互动<br/>挑刺模式"]
+        Q["artifact_quality<br/>纯正则六维打分<br/>（不依赖 LLM）"]
+    end
+
+    subgraph OUTPUT["产出"]
+        OUT["交互式 HTML<br/>落盘 workspace"]
+        EXP["导出 / examples 归档"]
+    end
+
+    INPUT --> O
+    D --> S
+    D --> DE
+    D --> R
+    D --> V
+    S -- "素材 material" --> D
+    DE -- "design + content" --> D
+    R -- "html" --> D
+    V -- "通过" --> J
+    V -- "不通过 → 回退" --> D
+    J -- "通过" --> Q
+    J -- "不通过(事实/覆盖) → 回退" --> D
+    Q --> OUT
+    OUT --> EXP
 ```
 
 ### 编排核心（orchestrator）
