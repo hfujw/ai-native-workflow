@@ -413,27 +413,6 @@ export default function App() {
   };
 
   /** 清空当前对话（侧边栏"当前对话"条目的删除）——彻底删：视图 + 历史会话 + workspace 文件 */
-  const clearCurrentChat = async () => {
-    const ok = await confirmDialog("确定删除当前对话？此操作不可恢复");
-    if (!ok) return;
-    // 连带删当前对话的所有 workspace 产物文件
-    const files = new Set(
-      messages
-        .map((m) => m.file_path)
-        .filter((p): p is string => !!p)
-        .map((p) => p.split(/[\\/]/).pop() ?? "")
-        .filter((f) => !!f)
-    );
-    await Promise.allSettled([...files].map((f) => deleteWorkspaceFile(f)));
-    stop();
-    currentProjectIdRef.current = null;
-    runningCardRef.current = null;
-    setIterable(false);
-    setView("chat");
-    setMessages([]);
-    setHistorySearch("");
-  };
-
   // 生成/迭代消息流的卡片配对：按消息顺序配对（thinking 记当前卡片，tool_result 更新它）
   // ——不依赖后端 step 编号（迭代时 step 都是 0，会互相覆盖）
   const targetIdRef = useRef<number | null>(null);
@@ -804,8 +783,6 @@ export default function App() {
   const isGenerating = genStatus === "running" || genStatus === "connecting";
   const otherGenerating = isGenerating && generatingSessionRef.current !== currentProjectIdRef.current;
   // 当前对话（侧边栏"当前对话"条目）：聊天时左侧创作区也能看到它，受搜索过滤
-  const currentTitle = messages.find((m) => m.role === "user")?.text ?? "新对话";
-  const showCurrent = messages.length > 0 && currentTitle.includes(historySearch.trim());
 
   // 作品页：当前对话的真实产出
   // 标题取该作品前最近一条用户消息
@@ -875,30 +852,18 @@ export default function App() {
               </button>
             )}
           </div>
-          {messages.length > 0 && (
-            <>
-              <div className="history-subhead">历史</div>
-              {/* 当前对话：聊天时左侧也能看到，标记为"当前"，可清空 */}
-              {showCurrent && (
-                <div className="history-item current">
-                  <IconMessageCircle size={12} className="history-item-icon" />
-                  <span className="history-text current-label" title="当前对话">{currentTitle}</span>
-                  <button className="history-more" onClick={clearCurrentChat} title="清空当前对话">
-                    <IconTrash size={13} />
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-
           <div className="history-list" ref={historyRef}>
             {filteredHistory.length === 0 ? (
               <div className="history-empty">
-                {history.length === 0 ? "还没有历史，开始第一个创作吧" : "没有匹配的历史"}
+                {history.length === 0 ? "还没有对话，开始第一个创作吧" : "没有匹配的对话"}
               </div>
             ) : (
               filteredHistory.map((item) => (
-                <div key={item.id} className="history-item" onMouseLeave={() => setHistoryMenu(null)}>
+                <div
+                  key={item.id}
+                  className={`history-item ${currentProjectIdRef.current === item.id ? "current" : ""}`}
+                  onMouseLeave={() => setHistoryMenu(null)}
+                >
                   {renamingItem === item.id ? (
                     <input
                       className="history-rename-input"
@@ -911,7 +876,7 @@ export default function App() {
                     />
                   ) : (
                     <>
-                      <IconHistory size={12} className="history-item-icon" />
+                      <IconMessageCircle size={12} className="history-item-icon" />
                       <span className="history-text" onClick={() => openHistory(item.id)}>{item.topic}</span>
                     </>
                   )}
