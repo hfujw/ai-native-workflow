@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     tool_compose_temperature: float = Field(0.5, ge=0, le=2)
     tool_compose_max_tokens: int = Field(4096, ge=100, le=16384)
     tool_render_temperature: float = Field(0.3, ge=0, le=2)
-    tool_render_max_tokens: int = Field(16384, ge=100, le=32768)
+    tool_render_max_tokens: int = Field(32768, ge=100, le=32768)  # render 生成完整教育网页需要更多 token，16384 会截断
 
     @field_validator("log_prompts", mode="before")
     @classmethod

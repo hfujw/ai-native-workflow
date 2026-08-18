@@ -13,6 +13,7 @@ import re
 import time
 from typing import ClassVar
 
+from app.config import settings
 from app.llm.circuit_breaker import CircuitOpenError
 from app.llm.client import chat, chat_stream
 from app.llm.parser import strip_fence
@@ -120,6 +121,7 @@ async def tool_render(
             temperature=0.3,
             session_records=session_records,
             model=model,
+            max_tokens=settings.tool_render_max_tokens,  # 32768——完整网页需要，16384 会截断
         )
         code = strip_fence(code)
         if not code.lower().startswith("<!doctype"):
@@ -173,6 +175,7 @@ async def tool_render_stream(
             temperature=0.3,
             session_records=session_records,
             model=model,  # 会话模型透传——缺了会静默回落默认模型（对抗审查 N1）
+            max_tokens=settings.tool_render_max_tokens,  # 32768——完整网页需要，16384 会截断
             label="render",
         ):
             accumulated += chunk
