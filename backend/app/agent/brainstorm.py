@@ -287,8 +287,15 @@ async def brainstorm_design(
 
     if push:
         try:
+            # 逐脑推"建议了什么"——前端能看到各创意脑的思考过程，不是只有阶段切换
+            brain_lines = []
+            for p in plans:
+                angle_name = p.get("_angle_name", "创意脑")
+                comps = p.get("components", [])
+                comps_str = "、".join(comps) if comps else "未定"
+                brain_lines.append(f"🧠 {angle_name}脑：建议用「{comps_str}」呈现")
             await push({"type": "thinking", "step": 0,
-                        "thought": f"🧠 {len(plans)} 个创意脑完成，大脑综合最佳方案…",
+                        "thought": "创意脑发散完成：\n" + "\n".join(brain_lines) + "\n\n大脑综合最佳方案…",
                         "tool": "design"})
         except Exception:
             pass
