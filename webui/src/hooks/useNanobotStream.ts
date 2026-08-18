@@ -183,6 +183,31 @@ function buildResponsesInput(
   return rows;
 }
 
+/** 任务 14：lumen.tool 事件 → 工具卡（trace 行）。同一 turn 的连续工具合并成一张卡。 */
+function appendToolTraceRow(
+  prev: UIMessage[],
+  summary: string,
+  turnId: string,
+): UIMessage[] {
+  const last = prev[prev.length - 1];
+  if (last && last.kind === "trace" && last.turnId === turnId) {
+    const traces = [...(last.traces ?? [last.content]), summary];
+    return [...prev.slice(0, -1), { ...last, traces, content: summary }];
+  }
+  return [
+    ...prev,
+    {
+      id: crypto.randomUUID(),
+      role: "tool",
+      kind: "trace",
+      content: summary,
+      traces: [summary],
+      turnId,
+      createdAt: Date.now(),
+    },
+  ];
+}
+
 export function useNanobotStream(
   chatId: string | null,
   initialMessages: UIMessage[] = [],
@@ -717,9 +742,34 @@ export function useNanobotStream(
           return;
         }
         try {
-          const event = JSON.parse(payload) as { type?: string; delta?: string };
+          const event = JSON.parse(payload) as {
+            type?: string;
+            delta?: string;
+            text?: string;
+            summary?: string;
+          };
           if (event.type === "response.completed") {
             completed = true;
+            return;
+          }
+          // task 14（Lumen 结构化）：思考增量 → 思考块（reasoning），工具结果 → 工具卡
+          if (
+            event.type === "lumen.reasoning.delta"
+            && typeof event.text === "string"
+            && event.text
+          ) {
+            pendingStreamEventsRef.current.push({
+              kind: "reasoning",
+              text: event.text,
+              turn: { turnId },
+            });
+            schedulePendingStreamFlush();
+            return;
+          }
+          if (event.type === "lumen.tool" && typeof event.summary === "string" && event.summary) {
+            // 先冲掉在飞思考增量（思考块 → 工具卡 的顺序不能乱），再插工具卡
+            flushPendingStreamEvents();
+            setMessages((prev) => appendToolTraceRow(prev, event.summary as string, turnId));
             return;
           }
           if (
@@ -777,7 +827,7 @@ export function useNanobotStream(
       }
       finalizeSseTurn(chatId, turnId);
     },
-    [applyStreamError, client, finalizeSseTurn, schedulePendingStreamFlush],
+    [applyStreamError, client, finalizeSseTurn, flushPendingStreamEvents, schedulePendingStreamFlush],
   );
 
   const send = useCallback(

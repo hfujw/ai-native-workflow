@@ -19,10 +19,12 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { ArtifactCard } from "@/components/ArtifactCard";
 import { AttachmentTile } from "@/components/AttachmentTile";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { MarkdownText } from "@/components/MarkdownText";
 import { SlashCommandText } from "@/components/SlashCommandText";
+import { extractArtifactId, stripArtifactMarker } from "@/lib/lumen-api";
 import { ReasoningRow } from "@/components/thread/activity/ReasoningRow";
 import { UserMessageText } from "@/components/UserMessageText";
 import {
@@ -370,6 +372,10 @@ export function MessageBubble({
   const reasoning = message.role === "assistant" ? message.reasoning ?? "" : "";
   const reasoningStreaming = !!(message.role === "assistant" && message.reasoningStreaming);
   const hasReasoning = reasoning.length > 0 || reasoningStreaming;
+  // task 14：成品卡——assistant 内容带 `✨ 成品已生成 [id]` 时，剥掉 raw 标记文本
+  // 并渲染 iframe 预览卡
+  const artifactId = message.role === "assistant" ? extractArtifactId(message.content) : null;
+  const displayContent = artifactId ? stripArtifactMarker(message.content) : message.content;
   const automationSourceKind = message.source?.kind;
   const automationSourceName = message.source?.label?.trim();
   const automationSourceLabel = (
@@ -423,17 +429,20 @@ export function MessageBubble({
         <ThinkingState />
       ) : empty && message.isStreaming ? null : (
         <>
-          <div data-assistant-selectable={message.isStreaming ? undefined : "true"}>
-            {/* A mode switch rebuilds Streamdown's subtree and moves the scroll anchor. */}
-            <MarkdownText
-              streaming={!!message.isStreaming}
-              preserveStreamingLayout
-              onOpenFilePreview={onOpenFilePreview}
-            >
-              {message.content}
-            </MarkdownText>
-          </div>
+          {displayContent.trim().length > 0 ? (
+            <div data-assistant-selectable={message.isStreaming ? undefined : "true"}>
+              {/* A mode switch rebuilds Streamdown's subtree and moves the scroll anchor. */}
+              <MarkdownText
+                streaming={!!message.isStreaming}
+                preserveStreamingLayout
+                onOpenFilePreview={onOpenFilePreview}
+              >
+                {displayContent}
+              </MarkdownText>
+            </div>
+          ) : null}
           {media.length > 0 ? <MessageMedia media={media} align="left" /> : null}
+          {artifactId ? <ArtifactCard artifactId={artifactId} /> : null}
         </>
       )}
       {showAssistantFooterSlot ? (

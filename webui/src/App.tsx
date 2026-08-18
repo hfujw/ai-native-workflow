@@ -93,7 +93,7 @@ const TOKEN_REFRESH_MIN_DELAY_MS = 5_000;
 const PAIRING_POLL_INTERVAL_MS = 5_000;
 const PAIRING_IDLE_POLL_INTERVAL_MS = 15_000;
 const PAIRING_DISMISS_SNOOZE_MS = 30_000;
-type ShellView = "chat" | "settings" | "skills";
+type ShellView = "chat" | "settings" | "skills" | "gallery";
 type ShellRoute = {
   view: ShellView;
   activeKey: string | null;
@@ -104,6 +104,10 @@ const loadSettingsView = () => import("@/components/settings/SettingsView");
 const SettingsView = lazy(async () => {
   const module = await loadSettingsView();
   return { default: module.SettingsView };
+});
+const GalleryView = lazy(async () => {
+  const module = await import("@/components/GalleryView");
+  return { default: module.GalleryView };
 });
 const SessionSearchDialog = lazy(async () => {
   const module = await import("@/components/SessionSearchDialog");
@@ -214,6 +218,9 @@ function readShellRoute(): ShellRoute {
   }
   if (path === "/skills") {
     return { view: "skills", activeKey, settingsSection: "skills" };
+  }
+  if (path === "/gallery") {
+    return { view: "gallery", activeKey, settingsSection: "overview" };
   }
   if (path.startsWith("/temporary/")) {
     const encoded = path.slice("/temporary/".length);
@@ -1845,6 +1852,12 @@ function Shell({
     setMobileSidebarOpen(false);
   }, [activeKey, navigate]);
 
+  const onOpenGallery = useCallback(() => {
+    setSessionSearchOpen(false);
+    navigate({ view: "gallery", activeKey, settingsSection: "overview" });
+    setMobileSidebarOpen(false);
+  }, [activeKey, navigate]);
+
   const onSettingsSectionChange = useCallback(
     (section: SettingsSectionKey) => {
       navigate({
@@ -2088,6 +2101,12 @@ function Shell({
       });
       return;
     }
+    if (view === "gallery") {
+      document.title = t("app.documentTitle.chat", {
+        title: t("gallery.title", { defaultValue: "作品画廊" }),
+      });
+      return;
+    }
     document.title = activeSession
       ? t("app.documentTitle.chat", { title: headerTitle })
       : t("app.documentTitle.base");
@@ -2112,9 +2131,10 @@ function Shell({
     onNewChatInProject,
     onOpenSettings,
     onOpenSkills,
+    onOpenGallery,
     onSettingsIntent,
     onOpenSearch: onOpenSessionSearch,
-    activeUtility: view === "skills" ? view : null,
+    activeUtility: view === "skills" || view === "gallery" ? view : null,
     onToggleArchived,
     pinnedKeys: sidebarState.pinned_keys,
     archivedKeys: sidebarState.archived_keys,
@@ -2312,7 +2332,14 @@ function Shell({
                 skills={skills}
               />
             </div>
-            {view !== "chat" && (
+            {view === "gallery" ? (
+              <div className="absolute inset-0 flex flex-col">
+                <Suspense fallback={<SurfaceLoadingFallback />}>
+                  <GalleryView sessions={sessions} loading={loading} onSelect={onSelectChat} />
+                </Suspense>
+              </div>
+            ) : null}
+            {view !== "chat" && view !== "gallery" && (
               <div className="absolute inset-0 flex flex-col">
                 <Suspense fallback={<SurfaceLoadingFallback />}>
                   <SettingsView

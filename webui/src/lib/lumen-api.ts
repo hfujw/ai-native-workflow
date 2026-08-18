@@ -70,6 +70,29 @@ function lastMessageText(project: LumenProject): string {
   return "";
 }
 
+/** 后端落盘的 assistant 文本 = 思考流全文 + `✨ 成品已生成 [id]` 标记。
+ * 实时流里思考走 reasoning 块、标记走 content——回放按标记拆分，保持一致。 */
+const ARTIFACT_MARKER = "✨ 成品已生成";
+const ARTIFACT_ID_PATTERN = /✨ 成品已生成\s*\[([0-9a-f]{8})\]/;
+
+function splitAssistantText(text: string): { reasoning: string; content: string } {
+  const idx = text.indexOf(ARTIFACT_MARKER);
+  if (idx === -1) return { reasoning: "", content: text };
+  return { reasoning: text.slice(0, idx), content: text.slice(idx) };
+}
+
+/** 从 assistant 内容里提取成品 id（没有 → null）。 */
+export function extractArtifactId(content: string): string | null {
+  const match = ARTIFACT_ID_PATTERN.exec(content);
+  return match ? match[1] : null;
+}
+
+/** 剥掉成品标记+链接（成品卡渲染时，raw 标记文本不再显示）。 */
+export function stripArtifactMarker(content: string): string {
+  const idx = content.indexOf(ARTIFACT_MARKER);
+  return idx === -1 ? content : content.slice(0, idx);
+}
+
 /** GET /api/history → 会话列表（新的在前）。 */
 export async function listSessions(token: string, base: string = ""): Promise<ChatSummary[]> {
   const res = await fetchWithTimeout(`${base}/api/history`, {
@@ -125,13 +148,22 @@ export async function fetchWebuiThread(
   const project = (await res.json()) as LumenProject;
 
   const messages: UIMessage[] = (project.messages ?? []).map((m, idx) => {
-    const role = m.role === "user" ? "user" : "assistant";
-    return {
+    const role: UIMessage["role"] = m.role === "user" ? "user" : "assistant";
+    const createdAt = project.created_at ? project.created_at * 1000 + idx : Date.now();
+    const base = {
       id: `hist-${project.id}-${idx}`,
       role,
-      content: m.text ?? "",
-      createdAt: project.created_at ? project.created_at * 1000 + idx : Date.now(),
-      ...(role === "assistant" ? { completedAt: (project.created_at ?? 0) * 1000 + idx } : {}),
+      createdAt,
+    };
+    if (role === "user") {
+      return { ...base, content: m.text ?? "" };
+    }
+    const split = splitAssistantText(m.text ?? "");
+    return {
+      ...base,
+      reasoning: split.reasoning,
+      content: split.content,
+      completedAt: createdAt,
     };
   });
 

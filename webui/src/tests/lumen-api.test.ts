@@ -2,12 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   deleteSession,
+  extractArtifactId,
   fetchSessionAutomations,
   fetchWebuiThread,
   listSessions,
   lumenSessionKey,
   newLumenSessionId,
   projectIdFromKey,
+  stripArtifactMarker,
 } from "@/lib/lumen-api";
 
 function jsonResponse(body: unknown): Response {
@@ -94,7 +96,10 @@ describe("fetchWebuiThread", () => {
     expect(payload!.messages[0].role).toBe("user");
     expect(payload!.messages[0].content).toBe("秦始皇是谁");
     expect(payload!.messages[1].role).toBe("assistant");
-    expect(payload!.messages[1].content).toContain("成品已生成");
+    // 回放拆分：✨ 成品标记前 → reasoning，标记起 → content
+    expect(payload!.messages[1].reasoning).toContain("搜索完成");
+    expect(payload!.messages[1].reasoning).not.toContain("成品已生成");
+    expect(payload!.messages[1].content).toContain("✨ 成品已生成");
     expect(payload!.has_pending_tool_calls).toBe(false);
     expect(payload!.completed_turn_ids).toEqual([]);
     expect(String(fetchMock.mock.calls[0][0])).toBe("/api/history/a1b2c3d4");
@@ -129,5 +134,18 @@ describe("fetchSessionAutomations", () => {
   it("always returns an empty job list (Lumen has no automations)", async () => {
     const payload = await fetchSessionAutomations("token", "lumen:a1b2c3d4");
     expect(payload.jobs).toEqual([]);
+  });
+});
+
+describe("artifact helpers", () => {
+  it("extracts the 8-hex artifact id from assistant content", () => {
+    expect(extractArtifactId("✨ 成品已生成 [a1b2c3d4]\nhttp://x")).toBe("a1b2c3d4");
+    expect(extractArtifactId("没有成品的普通文本")).toBeNull();
+  });
+
+  it("strips the artifact marker from displayed content", () => {
+    const content = "部分总结\n\n✨ 成品已生成 [a1b2c3d4]\nhttp://x";
+    expect(stripArtifactMarker(content)).toBe("部分总结\n\n");
+    expect(stripArtifactMarker("没有标记")).toBe("没有标记");
   });
 });

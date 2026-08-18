@@ -81,6 +81,43 @@ def test_responses_generate_streams_thinking(monkeypatch):
     assert saved["project"]["messages"][0]["role"] == "user"
 
 
+def test_responses_webui_mode_emits_structured_events(monkeypatch):
+    """WebUI 模式（传 session_id）：思考流拆结构化事件，output_text.delta 只留成品标记。"""
+
+    async def fake_orchestrator(state):
+        push = state.get("_push")
+        await push({"type": "thinking", "tool": "search", "thought": "先搜索关键事实"})
+        await push({"type": "tool_result", "tool": "search", "summary": "找到 5 条素材"})
+        await push({"type": "complete", "html": "<html>成品</html>"})
+        return {"status": "success", "html": "<html>成品</html>"}
+
+    monkeypatch.setattr("app.agent.orchestrator.orchestrator_node", fake_orchestrator)
+    monkeypatch.setattr("app.workspace.save_page", lambda *a: "/works/x.html")
+    monkeypatch.setattr("app.projects.save_project", lambda p: None)
+
+    with client.stream(
+        "POST", "/v1/responses",
+        json={
+            "input": [{"role": "user", "content": "秦始皇"}],
+            "model": "deepseek-v4-flash",
+            "session_id": "a1b2c3d4",
+        },
+    ) as r:
+        text = "".join(r.iter_text())
+    events = _events(text)
+
+    reasoning = "".join(e["text"] for e in events if e["type"] == "lumen.reasoning.delta")
+    assert reasoning == "先搜索关键事实\n"
+
+    tools = [e["summary"] for e in events if e["type"] == "lumen.tool"]
+    assert tools == ["找到 5 条素材"]
+
+    # 思考文本不进 output_text.delta（只进结构化事件）；成品标记才作为答案文本
+    deltas = "".join(e.get("delta", "") for e in events if e["type"] == "response.output_text.delta")
+    assert "先搜索关键事实" not in deltas
+    assert "✨ 成品已生成" in deltas
+
+
 def test_responses_no_user_message_400(monkeypatch):
     """空 input → 400。"""
 

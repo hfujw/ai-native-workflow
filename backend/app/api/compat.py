@@ -103,6 +103,26 @@ def _msg_to_text(msg: dict) -> str | None:
     return None
 
 
+def _msg_structured(msg: dict) -> dict | None:
+    """orchestrator 推送 → WebUI 结构化事件（思考块/工具卡）。
+
+    WebUI 模式（前端传 session_id）下，思考流不进 output_text.delta 纯文本，
+    而是拆成结构化事件供前端渲染 ReasoningRow / 工具卡片——这就是
+    "DecisionLog 思考过程全透明"的载体。LobeChat（无 session_id）保持纯文本。
+    """
+    t = msg.get("type")
+    if t == "thinking":
+        text = msg.get("thought", "")
+        return {"type": "lumen.reasoning.delta", "text": f"{text}\n"} if text else None
+    if t == "thinking_stream":
+        chunk = msg.get("chunk", "")
+        return {"type": "lumen.reasoning.delta", "text": chunk} if chunk else None
+    if t == "tool_result":
+        summary = msg.get("summary", "")
+        return {"type": "lumen.tool", "summary": summary} if summary else None
+    return None
+
+
 def _friendly_error(e: Exception) -> str:
     msg = str(e).lower()
     if "api key" in msg or "auth" in msg or "unauthorized" in msg:
@@ -153,13 +173,24 @@ async def responses(req: ResponsesRequest, authorization: str | None = Header(No
         # WebUI 前端先建会话（session_id=前端 chatId），生成/迭代都沿用同一个
         # project_id；LobeChat 不传 session_id → 退回历史识别 / 后端生成。
         session_id = (req.session_id or artifact_id) or uuid.uuid4().hex[:8]
+        # WebUI 模式：session_id 是前端传的 → 思考流拆结构化事件（思考块/工具卡）；
+        # 否则（LobeChat）保持纯文本流。
+        webui_mode = bool(req.session_id)
         full_text = ""
 
         async def push(msg: dict):
             nonlocal full_text
             text = _msg_to_text(msg)
             if text:
+                # full_text 始终累积纯文本——落盘/回放/refine 识别都用它
                 full_text += text
+            if webui_mode:
+                structured = _msg_structured(msg)
+                if structured is not None:
+                    await queue.put(structured)
+                elif text:
+                    await queue.put(text)
+            elif text:
                 await queue.put(text)
             if msg.get("type") == "complete":
                 terminal["done"] = True
@@ -201,8 +232,12 @@ async def responses(req: ResponsesRequest, authorization: str | None = Header(No
                 item = await asyncio.wait_for(queue.get(), timeout=90)
                 if item is _END:
                     break
-                yield _sse({"type": "response.output_text.delta", "item_id": msg_id,
-                            "output_index": 0, "content_index": 0, "delta": item})
+                if isinstance(item, dict):
+                    # WebUI 结构化事件（lumen.reasoning.delta / lumen.tool）原样转发
+                    yield _sse(item)
+                else:
+                    yield _sse({"type": "response.output_text.delta", "item_id": msg_id,
+                                "output_index": 0, "content_index": 0, "delta": item})
             if task and not task.done():
                 await asyncio.wait_for(task, timeout=30)
             if task and not task.cancelled():

@@ -7,6 +7,7 @@ import {
 import {
   Archive,
   Brain,
+  GalleryVerticalEnd,
   Menu,
   Search,
   Settings,
@@ -46,9 +47,10 @@ interface SidebarProps {
   onNewChatInProject: (projectPath: string, projectName: string) => void;
   onOpenSettings: () => void;
   onOpenSkills: () => void;
+  onOpenGallery: () => void;
   onSettingsIntent?: () => void;
   onOpenSearch: () => void;
-  activeUtility?: "skills" | null;
+  activeUtility?: "skills" | "gallery" | null;
   onToggleArchived: () => void;
   onCollapse: () => void;
   onExpand?: () => void;
@@ -182,6 +184,14 @@ export function Sidebar(props: SidebarProps) {
           active={props.activeUtility === "skills"}
           selectionRef={activeActionRef}
           icon={<Brain className="h-4 w-4" />}
+        />
+        <SidebarActionButton
+          collapsed={collapsed}
+          label={t("gallery.title", { defaultValue: "作品画廊" })}
+          onClick={props.onOpenGallery}
+          active={props.activeUtility === "gallery"}
+          selectionRef={activeActionRef}
+          icon={<GalleryVerticalEnd className="h-4 w-4" />}
         />
         {props.archivedCount ? (
           <SidebarActionButton
