@@ -404,19 +404,10 @@ export default function App() {
   const archiveCurrent = () => {
     if (messages.length === 0) return;
     if (!currentSessionIdRef.current) {
-      // 只在"当前 messages 与某历史会话完全相同"时绑定（应用启动恢复的同一对话）——
-      // 否则开新 id。绝不用"首条消息匹配"（同名新对话会覆盖旧对话）。
-      // 用首条消息 + 消息数精确匹配，避免增殖（点别的对话时当前对话被重复存档）。
-      const firstUser = messages.find((m) => m.role === "user")?.text ?? "";
-      const sameLen = messages.length;
-      const match = firstUser
-        ? sessions.find(
-            (s) =>
-              s.messages.find((m) => m.role === "user")?.text === firstUser &&
-              s.messages.length === sameLen
-          )
-        : undefined;
-      currentSessionIdRef.current = match?.id ?? `s${Date.now()}`;
+      // ref 为 null 只有两种情况：应用启动恢复的对话 / 极端异常。
+      // 开新 id——绝不用"首条消息/消息数"匹配历史（那会导致同名增殖或覆盖）。
+      // 正常路径 startNewChat/openSession 都分配了固定 id，archive 不靠猜。
+      currentSessionIdRef.current = `s${Date.now()}`;
     }
     const title = messages.find((m) => m.role === "user")?.text ?? "对话";
     setSessions(
@@ -436,10 +427,17 @@ export default function App() {
     currentSessionIdRef.current = null;
   };
 
-  /** 新对话：当前对话存档，另开一个空对话 */
-  const startNewChat = () => {
+  /** 新对话：当前对话存档，另开一个空对话（立即分配新 id——永不复用旧 id，杜绝增殖） */
+  const startNewChat = async () => {
+    // 单连接模型：当前对话在生成时切走会停止它——先明确告知用户
+    const isGeneratingNow = genStatus === "running" || genStatus === "connecting";
+    if (isGeneratingNow) {
+      const ok = await confirmDialog("当前对话正在生成，切换会停止它。确定切换？", "切换");
+      if (!ok) return;
+    }
     resetCurrentSession();
     currentProjectIdRef.current = null;
+    currentSessionIdRef.current = `s${Date.now()}`; // 新对话从创建就有固定 id，archive 不再靠猜
     setIterable(false);
     setView("chat");
     setMessages([]);
@@ -448,7 +446,13 @@ export default function App() {
 
   /** 打开历史对话：先停生成、再存档当前（防丢），然后加载目标会话。
    *  ⑥ 把当前会话 id 绑定到打开的会话——否则下次"新对话"存档会开新条目，同一对话重复两份 */
-  const openSession = (s: SavedSession) => {
+  const openSession = async (s: SavedSession) => {
+    // 单连接模型：当前对话在生成时切走会停止它——先明确告知用户
+    const isGeneratingNow = genStatus === "running" || genStatus === "connecting";
+    if (isGeneratingNow) {
+      const ok = await confirmDialog("当前对话正在生成，切换会停止它。确定切换？", "切换");
+      if (!ok) return;
+    }
     resetCurrentSession(); // 先停生成 + 存档当前（现在不会存半成品了）
     currentProjectIdRef.current = null;
     currentSessionIdRef.current = s.id;
