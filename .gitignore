@@ -17,6 +17,7 @@ backend/chroma_data/
 backend/demos/*.html
 backend/data/
 backend/skills/
+backend/.lumen-secret
 
 # ── 测试 & 调试输出 ──
 test_output.html
