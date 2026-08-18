@@ -73,6 +73,7 @@ class WSManager:
             "type": "page_ready",
             "page_html": page_html,
             "file_path": file_path,  # 工作区落盘路径（空=未落盘）
+            "session_id": session_id,  # 当前作品的 session id（思考回放用它找 trace）
         })
 
     async def send_failed(self, session_id: str, reason: str, suggestions: list):

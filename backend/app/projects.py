@@ -80,10 +80,14 @@ def save_project(project: dict) -> None:
             "trace_path": project.get("trace_path", existing.get("trace_path", "")),
             "file_path": project.get("file_path", existing.get("file_path", "")),
         })
+        # 对话消息：合并（迭代时追加新消息）
+        if project.get("messages"):
+            existing["messages"] = project["messages"]
         projects.remove(existing)
         projects.insert(0, existing)
     else:
         _ensure_versions(project)
+        project.setdefault("messages", [])
         projects.insert(0, project)
 
     _write(projects)
@@ -113,13 +117,36 @@ def pin_project(project_id: str) -> bool:
 
 
 def delete_project(project_id: str) -> bool:
-    """删除历史作品。返回是否真的删掉了。"""
+    """删除历史作品——级联删 workspace 文件 + trace 文件（不留孤儿）。返回是否真的删掉了。"""
     projects = _load()
+    target = next((p for p in projects if p.get("id") == project_id), None)
     before = len(projects)
     projects = [p for p in projects if p.get("id") != project_id]
     if len(projects) == before:
         return False
     _write(projects)
+
+    # 级联删除 workspace 文件（<project_id>_*.html）
+    if target:
+        workspace_dir = os.path.join(os.path.dirname(__file__), "..", "workspace")
+        try:
+            for name in os.listdir(workspace_dir):
+                if name.startswith(f"{project_id}_") and name.endswith(".html"):
+                    try:
+                        os.remove(os.path.join(workspace_dir, name))
+                    except OSError as e:
+                        logger.warning("级联删 workspace 失败 %s: %s", name, e)
+        except OSError:
+            pass  # workspace 目录不存在
+
+    # 级联删除 trace 文件
+    trace_path = os.path.join(os.path.dirname(__file__), "..", "logs", "traces", f"{project_id}.jsonl")
+    try:
+        if os.path.isfile(trace_path):
+            os.remove(trace_path)
+    except OSError as e:
+        logger.warning("级联删 trace 失败: %s", e)
+
     return True
 
 
@@ -132,3 +159,11 @@ def get_project(project_id: str) -> dict | None:
     """按 id 取单个 project（含 versions）。"""
     project = next((p for p in _load() if p.get("id") == project_id), None)
     return _ensure_versions(project) if project else None
+
+
+def get_project_messages(project_id: str) -> list:
+    """按 id 取该 project 的对话消息（前端切换历史对话时恢复）。无则返回空列表。"""
+    project = get_project(project_id)
+    if not project:
+        return []
+    return project.get("messages", [])

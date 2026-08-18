@@ -19,8 +19,6 @@ import {
 } from "./lib/api";
 import type { GenParams, ModelItem, Msg, ProviderCreds, SearchService, ToolCall, ToolId } from "./lib/api";
 import { computeConfigHint } from "./lib/preflight";
-import { dedupeSessions, deleteSession, loadSessions, saveSession } from "./lib/sessions";
-import type { SavedSession } from "./lib/sessions";
 import { confirmDialog } from "./lib/confirm";
 import { toast } from "./lib/toast";
 import {
@@ -243,21 +241,6 @@ export default function App() {
   const [starters, setStarters] = useState<string[]>([]);
   /** 后端连接状态（⑧：侧边栏状态点，定期 ping——正常桌面应用要有连接指示灯） */
   const [backendOnline, setBackendOnline] = useState(false);
-  /** 历史对话（"新对话"时当前对话自动存档到这里，可找回） */
-  const [sessions, setSessions] = useState<SavedSession[]>(() => {
-    // 旧数据迁移：早期版本同一对话可能被拆成多份 → 启动时按首条用户消息合并
-    const raw = loadSessions();
-    const merged = dedupeSessions(raw);
-    if (merged.length !== raw.length) {
-      try {
-        localStorage.setItem("lumen.savedSessions", JSON.stringify(merged));
-      } catch {
-        /* 静默 */
-      }
-    }
-    return merged;
-  });
-
   const historyRef = useRef<HTMLDivElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   useClickOutside(historyRef, historyMenu !== null, () => setHistoryMenu(null));
@@ -327,27 +310,40 @@ export default function App() {
     };
   }, []);
 
-  /** 回看历史作品：先存档当前对话（防丢），再拉取记录显示 */
+  /** 打开历史对话（=历史作品）：先存档当前对话（防丢），再从后端拉取恢复完整对话 */
   const openHistory = async (id: string) => {
     resetCurrentSession();
-    currentProjectIdRef.current = id; // 标记主窗口正在回看这个作品
+    currentProjectIdRef.current = id; // 标记主窗口正在回看这个作品（思考回放用）
     stop();
     setIterable(false);
     try {
       const p = await fetchProject(id);
-      const versions = p.versions ?? [];
-      const last = versions[versions.length - 1];
-      setMessages([
-        { id: Date.now(), role: "user", text: p.topic },
-        {
-          id: Date.now() + 1,
-          role: "assistant",
-          text: `历史作品回看 · 生成于 ${new Date(p.created_at * 1000).toLocaleString()} · ${p.steps} 步 · 共 ${p.iterations} 版`,
-          html: last?.html ?? "",
-          finalized: true,
-          file_path: p.file_path ?? "", // 恢复工作区路径——"复制路径"按钮才能显示
-        },
-      ]);
+      // 新模型：project 存了 messages（完整对话）→ 直接恢复；旧数据没有 → 回退拼 2 条
+      if (p.messages && p.messages.length > 0) {
+        const restored = p.messages.map((m: { role: string; text?: string; html?: string; file_path?: string }, i: number) => ({
+          id: Date.now() + i,
+          role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+          text: m.text ?? "",
+          html: m.html ?? "",
+          finalized: !!m.html,
+          file_path: m.file_path ?? "",
+        }));
+        setMessages(restored);
+      } else {
+        const versions = p.versions ?? [];
+        const last = versions[versions.length - 1];
+        setMessages([
+          { id: Date.now(), role: "user", text: p.topic },
+          {
+            id: Date.now() + 1,
+            role: "assistant",
+            text: `历史作品回看 · 生成于 ${new Date(p.created_at * 1000).toLocaleString()} · ${p.steps} 步 · 共 ${p.iterations} 版`,
+            html: last?.html ?? "",
+            finalized: true,
+            file_path: p.file_path ?? "",
+          },
+        ]);
+      }
       setView("chat");
     } catch {
       // 拉取失败：提示
@@ -392,42 +388,16 @@ export default function App() {
     }
   }, [theme]);
 
-  /** 当前对话的存档 id：稳定持有（ref）——同一对话多次存档只更新同一份，
-   *  不再"每次存档都新建一条"（修复对话被拆散 + 点击列表顶部多出条目的问题） */
-  const currentSessionIdRef = useRef<string | null>(null);
   /** 正在主窗口回看的后端作品 id——删除作品时若正是它，主窗口要回到新对话 */
   const currentProjectIdRef = useRef<string | null>(null);
 
-  /** 存档当前对话（有内容才存；同一对话用同一 id，切换对话时重置）。
-   *  ② ref 为空时先按"首条消息"找已存会话绑定——否则应用启动恢复的对话
-   *  会被用新 id 再存一份（数据重复=侧边栏增殖） */
-  const archiveCurrent = () => {
-    if (messages.length === 0) return;
-    if (!currentSessionIdRef.current) {
-      // ref 为 null 只有两种情况：应用启动恢复的对话 / 极端异常。
-      // 开新 id——绝不用"首条消息/消息数"匹配历史（那会导致同名增殖或覆盖）。
-      // 正常路径 startNewChat/openSession 都分配了固定 id，archive 不靠猜。
-      currentSessionIdRef.current = `s${Date.now()}`;
-    }
-    const title = messages.find((m) => m.role === "user")?.text ?? "对话";
-    setSessions(
-      saveSession({
-        id: currentSessionIdRef.current,
-        title,
-        updatedAt: Date.now(),
-        messages,
-      })
-    );
-  };
-
-  /** 切换对话：先停生成、再存档当前（防存半成品），清空 ref——下次存档开新条目 */
+  /** 切换对话：先停生成（当前对话 messages 已由防抖 effect 持久化到 lumen.messages） */
   const resetCurrentSession = () => {
-    stop(); // ① 先停生成——否则 archive 会存"进行中"的半截 messages
-    archiveCurrent();
-    currentSessionIdRef.current = null;
+    stop(); // 先停生成，防止"进行中"的半截消息污染
+    currentProjectIdRef.current = null;
   };
 
-  /** 新对话：当前对话存档，另开一个空对话（立即分配新 id——永不复用旧 id，杜绝增殖） */
+  /** 新对话：当前对话清空（消息已由防抖持久化），另开一个空对话 */
   const startNewChat = async () => {
     // 单连接模型：当前对话在生成时切走会停止它——先明确告知用户
     const isGeneratingNow = genStatus === "running" || genStatus === "connecting";
@@ -436,64 +406,10 @@ export default function App() {
       if (!ok) return;
     }
     resetCurrentSession();
-    currentProjectIdRef.current = null;
-    currentSessionIdRef.current = `s${Date.now()}`; // 新对话从创建就有固定 id，archive 不再靠猜
     setIterable(false);
     setView("chat");
     setMessages([]);
     setHistorySearch("");
-  };
-
-  /** 打开历史对话：先停生成、再存档当前（防丢），然后加载目标会话。
-   *  ⑥ 把当前会话 id 绑定到打开的会话——否则下次"新对话"存档会开新条目，同一对话重复两份 */
-  const openSession = async (s: SavedSession) => {
-    // 单连接模型：当前对话在生成时切走会停止它——先明确告知用户
-    const isGeneratingNow = genStatus === "running" || genStatus === "connecting";
-    if (isGeneratingNow) {
-      const ok = await confirmDialog("当前对话正在生成，切换会停止它。确定切换？", "切换");
-      if (!ok) return;
-    }
-    resetCurrentSession(); // 先停生成 + 存档当前（现在不会存半成品了）
-    currentProjectIdRef.current = null;
-    currentSessionIdRef.current = s.id;
-    setIterable(false);
-    setMessages(s.messages);
-    setView("chat");
-  };
-
-  const removeSession = async (id: string) => {
-    // ⑤ 删除零确认 → 加确认（历史对话删了不可恢复）
-    const ok = await confirmDialog("确定删除这段历史对话？此操作不可恢复");
-    if (!ok) return;
-    const target = sessions.find((s) => s.id === id);
-    // 连带删该会话的所有 workspace 产物文件（否则删了对话，作品文件残留无从查看）
-    if (target) {
-      const files = new Set(
-        target.messages
-          .map((m) => m.file_path)
-          .filter((p): p is string => !!p)
-          .map((p) => p.split(/[\\/]/).pop() ?? "")
-          .filter((f) => !!f)
-      );
-      await Promise.allSettled([...files].map((f) => deleteWorkspaceFile(f)));
-    }
-    setSessions(deleteSession(id));
-    // 删的是主窗口正在查看/编辑的对话（按 ref 或首条消息匹配）→ 主窗口回到空的新对话。
-    // 覆盖两种情况：① openSession 绑定过 ref；② 应用启动从 lumen.messages 恢复、ref 为空但内容相同。
-    // 不清 ref 的话，下一步"新对话"的 archiveCurrent() 会把它原样存档回来——删除等于没删。
-    const targetFirst = target?.messages.find((m) => m.role === "user")?.text ?? "";
-    const currentFirst = messages.find((m) => m.role === "user")?.text ?? "";
-    const isDisplayed =
-      currentSessionIdRef.current === id || (targetFirst !== "" && targetFirst === currentFirst);
-    if (isDisplayed) {
-      currentSessionIdRef.current = null;
-      currentProjectIdRef.current = null;
-      stop();
-      setIterable(false);
-      setView("chat");
-      setMessages([]);
-      setHistorySearch("");
-    }
   };
 
   /** 清空当前对话（侧边栏"当前对话"条目的删除）——彻底删：视图 + 历史会话 + workspace 文件 */
@@ -509,17 +425,7 @@ export default function App() {
         .filter((f) => !!f)
     );
     await Promise.allSettled([...files].map((f) => deleteWorkspaceFile(f)));
-    // 连带删历史列表里对应的会话——否则"清空"只清视图，历史里还在，要再删一次
-    const currentId = currentSessionIdRef.current;
-    const firstUser = messages.find((m) => m.role === "user")?.text ?? "";
-    const matchedId =
-      currentId ??
-      (firstUser
-        ? sessions.find((s) => s.messages.find((m) => m.role === "user")?.text === firstUser)?.id
-        : undefined);
-    if (matchedId) setSessions(deleteSession(matchedId));
     stop();
-    currentSessionIdRef.current = null;
     currentProjectIdRef.current = null;
     runningCardRef.current = null;
     setIterable(false);
@@ -713,7 +619,7 @@ export default function App() {
   const startGeneration = (text: string) => {
     setIterable(false);
     // 记录这个生成属于哪个会话（单连接：生成期间其他会话发送要禁用）
-    generatingSessionRef.current = currentSessionIdRef.current;
+    generatingSessionRef.current = currentProjectIdRef.current;
     const userMsgId = Date.now();
     const assistId = Date.now() + 1;
     targetIdRef.current = assistId;
@@ -867,7 +773,6 @@ export default function App() {
     // 删的是主窗口正在回看的作品 → 主窗口回到空的新对话
     if (currentProjectIdRef.current === id) {
       currentProjectIdRef.current = null;
-      currentSessionIdRef.current = null;
       stop();
       setIterable(false);
       setView("chat");
@@ -885,15 +790,6 @@ export default function App() {
         : (messages.find((m) => m.role === "user")?.text ?? "新对话");
 
   const filteredHistory = history.filter((h) => h.topic.includes(historySearch.trim()));
-  // ⑮ 搜索框同时过滤历史对话——否则搜索词对上面那排对话列表完全无效（误导）
-  // ① 排除当前对话的内容（首条消息一致）——它已在"当前对话"条目显示，历史里不重复
-  //   （用内容而非仅 id，覆盖"应用启动恢复的会话 ref 为空"的场景，修"点击就增殖"）
-  const currentFirst = messages.find((m) => m.role === "user")?.text ?? "";
-  const filteredSessions = sessions.filter(
-    (s) =>
-      s.title.includes(historySearch.trim()) &&
-      (currentFirst === "" || s.messages.find((m) => m.role === "user")?.text !== currentFirst)
-  );
   // ⑨ 首次引导：没有任何 provider 配置过 Key → 空状态提示去设置
   const hasAnyApiKey = Object.values(providerCreds).some((c) => c.apiKey);
   // 配置预检：发送前就提示，不等生成才报"未配置 Key"
@@ -906,7 +802,7 @@ export default function App() {
   });
   // 单连接模型：有其他对话正在生成时，当前对话发送要禁用（防止切过来发又停掉别人的生成）
   const isGenerating = genStatus === "running" || genStatus === "connecting";
-  const otherGenerating = isGenerating && generatingSessionRef.current !== currentSessionIdRef.current;
+  const otherGenerating = isGenerating && generatingSessionRef.current !== currentProjectIdRef.current;
   // 当前对话（侧边栏"当前对话"条目）：聊天时左侧创作区也能看到它，受搜索过滤
   const currentTitle = messages.find((m) => m.role === "user")?.text ?? "新对话";
   const showCurrent = messages.length > 0 && currentTitle.includes(historySearch.trim());
@@ -979,9 +875,9 @@ export default function App() {
               </button>
             )}
           </div>
-          {(sessions.length > 0 || messages.length > 0) && (
+          {messages.length > 0 && (
             <>
-              <div className="history-subhead">历史对话</div>
+              <div className="history-subhead">历史</div>
               {/* 当前对话：聊天时左侧也能看到，标记为"当前"，可清空 */}
               {showCurrent && (
                 <div className="history-item current">
@@ -992,26 +888,13 @@ export default function App() {
                   </button>
                 </div>
               )}
-              {filteredSessions.map((s) => (
-                <div key={s.id} className="history-item" onMouseLeave={() => setHistoryMenu(null)}>
-                  <IconHistory size={12} className="history-item-icon" />
-                  <span className="history-text" onClick={() => openSession(s)}>{s.title}</span>
-                  <button className="history-more" onClick={() => removeSession(s.id)} title="删除对话">
-                    <IconTrash size={13} />
-                  </button>
-                </div>
-              ))}
             </>
           )}
 
           <div className="history-list" ref={historyRef}>
             {filteredHistory.length === 0 ? (
               <div className="history-empty">
-                {history.length === 0
-                  ? sessions.length === 0
-                    ? "还没有作品，开始第一个创作吧"
-                    : "历史对话里还没有生成的作品"
-                  : "没有匹配的作品"}
+                {history.length === 0 ? "还没有历史，开始第一个创作吧" : "没有匹配的历史"}
               </div>
             ) : (
               filteredHistory.map((item) => (
@@ -1019,7 +902,7 @@ export default function App() {
                   {renamingItem === item.id ? (
                     <input
                       className="history-rename-input"
-                      placeholder="重命名作品"
+                      placeholder="重命名"
                       value={renameText}
                       onChange={(e) => setRenameText(e.target.value)}
                       autoFocus

@@ -259,6 +259,7 @@ async def generate_page(websocket: WebSocket):
                     len(session_cost_records))
 
         # 保存生成历史（可回看/续，Phase C 更新迭代数）
+        # messages：精简对话记录——topic + 每版产物。前端打开历史时据此重建消息流。
         from app.projects import save_project
         save_project({
             "id": session_id,
@@ -271,6 +272,11 @@ async def generate_page(websocket: WebSocket):
             "html": result.get("html", ""),
             "trace_path": f"logs/traces/{session_id}.jsonl",
             "file_path": saved_file["path"],
+            "messages": [
+                {"role": "user", "text": user_input},
+                {"role": "assistant", "text": "生成完成", "html": result.get("html", ""),
+                 "file_path": saved_file["path"]},
+            ],
         })
 
         if result.get("status") == "success":
@@ -325,6 +331,12 @@ async def generate_page(websocket: WebSocket):
                     "html": result["html"],
                     "trace_path": f"logs/traces/{session_id}.jsonl",
                     "file_path": saved_file["path"],
+                    # 迭代：追加一条"用户指令 + 新版本产物"
+                    "messages": [
+                        {"role": "user", "text": instruction},
+                        {"role": "assistant", "text": "已更新", "html": result["html"],
+                         "file_path": f"{session_id}_{user_input[:40]}_v{iterations}.html"},
+                    ],
                 })
                 # 迭代新版本 = 新产物文件（v2/v3…，不覆盖旧版）
                 saved_file["path"] = save_page(session_id, user_input, result["html"], iterations)

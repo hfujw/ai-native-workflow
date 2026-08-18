@@ -15,6 +15,8 @@ export type Project = {
   trace_path?: string;
   /** 页面工作区文件路径（产物落盘位置） */
   file_path?: string;
+  /** 对话消息（新模型：project 即对话，存完整消息流；旧数据可能没有） */
+  messages?: { role: string; text?: string; html?: string; file_path?: string }[];
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
