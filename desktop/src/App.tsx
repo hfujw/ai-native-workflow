@@ -645,12 +645,12 @@ export default function App() {
         break;
       }
       case "html_chunk": {
-        // 流式渲染：页面逐步"长出来"——finalized=true 让 iframe 实时显示（否则只显示"正在渲染…"）
+        // 流式渲染：HTML 逐步"长出来"——默认显示源码（实时看代码），生成物等 verify 通过再预览
         setMessages((ms) =>
-          ms.map((m) =>
-            m.id === targetId ? { ...m, html: String(msg.html ?? ""), finalized: true } : m
-          )
+          ms.map((m) => (m.id === targetId ? { ...m, html: String(msg.html ?? "") } : m))
         );
+        // 自动切到源码视图（用户看到代码实时生成，而不是空白"正在渲染"）
+        if (codeMsgId !== targetId) setCodeMsgId(targetId);
         break;
       }
       case "page_ready": {
@@ -669,6 +669,8 @@ export default function App() {
         );
         setIterable(true); // 进入可迭代状态：下次输入走 instruction 改页面
         generatingSessionRef.current = null; // 生成完成，解锁其他对话发送
+        // verify 通过 → 切回预览（展示验证过的成品），不再显示源码
+        setCodeMsgId((cur) => (cur === targetId ? null : cur));
         // 当前对话生成完 → 绑定 session_id 到 currentProjectIdRef，
         // 让"思考过程"按钮显示（trace 按 session_id 命名，回放 AI 怎么想到这些的）
         const newProjectId = String(msg.session_id ?? "");
