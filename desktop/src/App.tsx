@@ -911,7 +911,7 @@ export default function App() {
                     />
                   ) : (
                     <>
-                      <IconSparkle size={12} className="history-item-icon" />
+                      <IconMessageCircle size={12} className="history-item-icon" />
                       <span className="history-text" onClick={() => openHistory(item.id)}>{item.topic}</span>
                     </>
                   )}
