@@ -76,10 +76,63 @@ function lastMessageText(project: LumenProject): string {
 const ARTIFACT_MARKER = "✨ 成品已生成";
 const ARTIFACT_ID_PATTERN = /✨ 成品已生成\s*\[([0-9a-f]{8})\]/;
 
-function splitAssistantText(text: string): { reasoning: string; content: string } {
-  const idx = text.indexOf(ARTIFACT_MARKER);
-  if (idx === -1) return { reasoning: "", content: text };
-  return { reasoning: text.slice(0, idx), content: text.slice(idx) };
+/** 回放重构：扁平 assistant 文本 → [思考块][工具卡]…[成品]。
+ * 落盘文本 = 思考 + `✅ 工具结果` 行 + `✨ 成品已生成 [id]`。
+ * 按 ✅ 行切开——✅ 前是思考段（→ reasoning 块），✅ 行本身 → 工具卡。
+ * 与实时流（lumen.reasoning.delta / lumen.tool）同构，刷新后不会塌成一个 thought。 */
+function reconstructAssistantRows(
+  text: string,
+  projectId: string,
+  projectIdx: number,
+  baseCreated: number,
+): UIMessage[] {
+  const markerIdx = text.indexOf(ARTIFACT_MARKER);
+  const reasoningPart = markerIdx === -1 ? text : text.slice(0, markerIdx);
+  const contentPart = markerIdx === -1 ? "" : text.slice(markerIdx);
+  const rows: UIMessage[] = [];
+  let reasoningBuf = "";
+  let sub = 0;
+  const nextCreatedAt = () => baseCreated + projectIdx + sub;
+  const flushReasoning = () => {
+    const trimmed = reasoningBuf.trim();
+    if (trimmed) {
+      rows.push({
+        id: `hist-${projectId}-${projectIdx}-${sub++}`,
+        role: "assistant",
+        content: "",
+        reasoning: reasoningBuf,
+        createdAt: nextCreatedAt(),
+      });
+    }
+    reasoningBuf = "";
+  };
+  for (const line of reasoningPart.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("✅")) {
+      flushReasoning();
+      rows.push({
+        id: `hist-${projectId}-${projectIdx}-${sub++}`,
+        role: "tool",
+        kind: "trace",
+        content: trimmed,
+        traces: [trimmed],
+        createdAt: nextCreatedAt(),
+      });
+    } else {
+      reasoningBuf += `${line}\n`;
+    }
+  }
+  flushReasoning();
+  if (contentPart.trim()) {
+    rows.push({
+      id: `hist-${projectId}-${projectIdx}-${sub++}`,
+      role: "assistant",
+      content: contentPart,
+      completedAt: nextCreatedAt(),
+      createdAt: nextCreatedAt(),
+    });
+  }
+  return rows;
 }
 
 /** 从 assistant 内容里提取成品 id（没有 → null）。 */
@@ -148,24 +201,21 @@ export async function fetchWebuiThread(
   if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`);
   const project = (await res.json()) as LumenProject;
 
-  const messages: UIMessage[] = (project.messages ?? []).map((m, idx) => {
+  const baseCreated = project.created_at ? project.created_at * 1000 : Date.now();
+  const messages: UIMessage[] = (project.messages ?? []).flatMap((m, idx) => {
     const role: UIMessage["role"] = m.role === "user" ? "user" : "assistant";
-    const createdAt = project.created_at ? project.created_at * 1000 + idx : Date.now();
-    const base = {
-      id: `hist-${project.id}-${idx}`,
-      role,
-      createdAt,
-    };
+    const createdAt = baseCreated + idx;
     if (role === "user") {
-      return { ...base, content: m.text ?? "" };
+      return [{
+        id: `hist-${project.id}-${idx}`,
+        role,
+        content: m.text ?? "",
+        createdAt,
+      }];
     }
-    const split = splitAssistantText(m.text ?? "");
-    return {
-      ...base,
-      reasoning: split.reasoning,
-      content: split.content,
-      completedAt: createdAt,
-    };
+    // 回放重构：把扁平文本（思考+✅工具行+成品标记）拆成 思考块 + 工具卡 + 成品，
+    // 与实时流（lumen.reasoning.delta / lumen.tool）同构——否则刷新后塌成一个 thought
+    return reconstructAssistantRows(m.text ?? "", project.id, idx, baseCreated);
   });
 
   return {

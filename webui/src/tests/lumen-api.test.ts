@@ -99,14 +99,15 @@ describe("fetchWebuiThread", () => {
 
     const payload = await fetchWebuiThread("token", "lumen:a1b2c3d4");
     expect(payload).not.toBeNull();
-    expect(payload!.messages).toHaveLength(2);
+    // 回放重构：扁平文本 → [user][工具卡][成品]（✅ 行拆成工具卡，标记起为 content）
+    expect(payload!.messages).toHaveLength(3);
     expect(payload!.messages[0].role).toBe("user");
     expect(payload!.messages[0].content).toBe("秦始皇是谁");
-    expect(payload!.messages[1].role).toBe("assistant");
-    // 回放拆分：✨ 成品标记前 → reasoning，标记起 → content
-    expect(payload!.messages[1].reasoning).toContain("搜索完成");
-    expect(payload!.messages[1].reasoning).not.toContain("成品已生成");
-    expect(payload!.messages[1].content).toContain("✨ 成品已生成");
+    expect(payload!.messages[1].role).toBe("tool");
+    expect(payload!.messages[1].kind).toBe("trace");
+    expect(payload!.messages[1].content).toBe("✅ 搜索完成");
+    expect(payload!.messages[2].role).toBe("assistant");
+    expect(payload!.messages[2].content).toContain("✨ 成品已生成");
     expect(payload!.has_pending_tool_calls).toBe(false);
     expect(payload!.completed_turn_ids).toEqual([]);
     expect(String(fetchMock.mock.calls[0][0])).toBe("/api/history/a1b2c3d4");
