@@ -129,7 +129,8 @@ async def orchestrator_node(state: dict) -> dict:
     while ctx["steps"] < ctx["max_steps"]:
 
         # 0. 断路器熔断检查：服务故障中 → 立即终止（不再每轮重试刷屏）
-        from app.llm.circuit_breaker import llm_breaker, State as _CBState
+        from app.llm.circuit_breaker import State as _CBState
+        from app.llm.circuit_breaker import llm_breaker
         if llm_breaker.state == _CBState.OPEN:
             ctx["_circuit_open"] = True
             break

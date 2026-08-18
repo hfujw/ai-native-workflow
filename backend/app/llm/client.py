@@ -8,7 +8,6 @@ import asyncio
 import contextvars
 import logging
 import os
-import time
 
 from openai import AsyncOpenAI
 
@@ -140,7 +139,7 @@ async def chat(prompt: str, system: str = "", model: str = None, temperature: fl
         raise LLMNotConfiguredError("未配置模型——请在 Lumen 设置 → 模型 里填写所用模型")
 
     last_error = None
-    from app.llm.circuit_breaker import llm_breaker, CircuitOpenError
+    from app.llm.circuit_breaker import CircuitOpenError, llm_breaker
     for attempt in range(MAX_RETRIES + 1):
         try:
             create_kwargs = dict(
@@ -229,7 +228,6 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
 
     不修改 chat() 签名。session_records 写入独立账本，label 用于日志定位。
     """
-    import time as _time
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -245,7 +243,6 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
     # 建连可重试（此刻还没 yield 任何内容，重开是安全的）。
     # 一旦开始消费流就不再重试——流无法干净重开，中断直接上抛（_decide 有失败计数兜底）。
     response = None
-    last_error = None
     for attempt in range(MAX_RETRIES + 1):
         try:
             # DeepSeek 兼容层不一定支持 stream_options——报错就降级
@@ -269,7 +266,6 @@ async def chat_stream(prompt: str, system: str = "", model: str = None,
                 )
             break  # 建连成功，开始消费流
         except Exception as e:
-            last_error = e
             if attempt < MAX_RETRIES:
                 wait = 2 ** attempt
                 logger.warning("LLM stream 建连失败 (attempt %d/%d): %s, %ds 后重试…",

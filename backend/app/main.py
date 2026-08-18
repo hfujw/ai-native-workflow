@@ -42,6 +42,7 @@ for _n in ("uvicorn.access", "httpx", "httpcore", "openai"):
 
 # 会话日志：每次生成一个独立文件（logs/sessions/<id>.log），detail.log 只留非会话
 from app.observability.session_log import install as install_session_log
+
 install_session_log()
 
 logger = logging.getLogger(__name__)

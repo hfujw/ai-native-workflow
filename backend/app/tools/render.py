@@ -13,8 +13,8 @@ import re
 import time
 from typing import ClassVar
 
-from app.llm.client import chat, chat_stream
 from app.llm.circuit_breaker import CircuitOpenError
+from app.llm.client import chat, chat_stream
 from app.llm.parser import strip_fence
 
 logger = logging.getLogger(__name__)

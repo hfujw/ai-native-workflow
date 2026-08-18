@@ -16,8 +16,8 @@
 import json
 import logging
 
-from app.llm.client import chat_json
 from app.llm.circuit_breaker import CircuitOpenError
+from app.llm.client import chat_json
 from app.llm.parser import safe_parse_json
 from app.skills import skill_prompt
 
