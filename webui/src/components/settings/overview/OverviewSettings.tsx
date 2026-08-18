@@ -5,18 +5,12 @@ import {
   Check,
   ChevronRight,
   ExternalLink,
-  Globe2,
-  HardDrive,
-  ImageIcon,
   Loader2,
-  Mic,
-  Server,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { DEFAULT_TRANSCRIPTION_SETTINGS } from "@/components/settings/capabilities/TranscriptionSettings";
 import type { SettingsSectionKey } from "@/components/settings/contracts";
 import { settingsProviderConfigured } from "@/components/settings/shared/ModelControls";
 import {
@@ -39,7 +33,6 @@ import type {
 import { providerBrand, providerDisplayLabel } from "@/lib/provider-brand";
 import type { SettingsPayload } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { shortWorkspacePath } from "@/lib/workspace";
 import { useClient } from "@/providers/ClientProvider";
 
 export function OverviewSettings({
@@ -105,17 +98,7 @@ export function OverviewSettings({
       ? tx("settings.values.configured", "Configured")
       : tx("settings.values.notConfigured", "Not configured")
   }`;
-  const transcription = settings.transcription ?? DEFAULT_TRANSCRIPTION_SETTINGS;
-  const voiceStatus = transcription.enabled
-    ? tx("settings.values.enabled", "Enabled")
-    : tx("settings.values.disabled", "Disabled");
-  const voiceCaption = `${providerDisplayLabel(transcription.providers, transcription.provider)} · ${
-    transcription.provider_configured
-      ? tx("settings.values.configured", "Configured")
-      : tx("settings.values.notConfigured", "Not configured")
-  }`;
   const isNativeHost = (settings.surface ?? settings.runtime_surface) === "native";
-  const workspaceCaption = shortWorkspacePath(settings.runtime.workspace_path);
   const runtimeTitle = isNativeHost
     ? tx("settings.rows.engine", "Engine")
     : tx("settings.rows.gateway", "Gateway");
@@ -144,59 +127,6 @@ export function OverviewSettings({
             caption={activeModelCaption}
             showBrandLogos={showBrandLogos}
             onClick={() => onSelectSection("models")}
-          />
-        </SettingsGroup>
-      </section>
-
-      <section>
-        <SettingsSectionTitle>{tx("settings.sections.capabilities", "Capabilities")}</SettingsSectionTitle>
-        <SettingsGroup>
-          <OverviewListRow
-            icon={Globe2}
-            valueLogoProvider={settings.web_search.provider}
-            title={tx("settings.overview.webSearch", "Web search")}
-            value={webStatus}
-            caption={webCaption}
-            showBrandLogos={showBrandLogos}
-            onClick={() => onSelectSection("browser")}
-          />
-          <OverviewListRow
-            icon={ImageIcon}
-            valueLogoProvider={settings.image_generation.provider}
-            title={tx("settings.overview.imageGeneration", "Image generation")}
-            value={imageStatus}
-            caption={imageCaption}
-            showBrandLogos={showBrandLogos}
-            onClick={() => onSelectSection("image")}
-          />
-          <OverviewListRow
-            icon={Mic}
-            valueLogoProvider={transcription.provider}
-            title={tx("settings.overview.voiceInput", "Voice input")}
-            value={voiceStatus}
-            caption={voiceCaption}
-            showBrandLogos={showBrandLogos}
-            onClick={() => onSelectSection("voice")}
-          />
-        </SettingsGroup>
-      </section>
-
-      <section>
-        <SettingsSectionTitle>{tx("settings.sections.system", "System")}</SettingsSectionTitle>
-        <SettingsGroup>
-          <OverviewListRow
-            icon={Server}
-            title={runtimeTitle}
-            value={runtimeValue}
-            caption={runtimeCaption}
-            onClick={() => onSelectSection("runtime")}
-          />
-          <OverviewListRow
-            icon={HardDrive}
-            title={tx("settings.overview.workspace", "Workspace")}
-            value={tx("settings.values.defaultWorkspace", "Default workspace")}
-            caption={workspaceCaption}
-            onClick={() => onSelectSection("runtime")}
           />
         </SettingsGroup>
       </section>

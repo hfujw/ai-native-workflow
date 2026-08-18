@@ -1,18 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { imageGenerationFormFromPayload } from "@/components/settings/capabilities/ImageGenerationSettings";
-import {
-  networkSafetyFormFromPayload,
-  visibleWebuiDefaultAccessMode,
-} from "@/components/settings/capabilities/SecuritySettings";
-import {
-  DEFAULT_TRANSCRIPTION_SETTINGS,
-  transcriptionFormFromPayload,
-} from "@/components/settings/capabilities/TranscriptionSettings";
-import { useCapabilitySettingsActions } from "@/components/settings/capabilities/useCapabilitySettingsActions";
-import { useCapabilitySettingsState } from "@/components/settings/capabilities/useCapabilitySettingsState";
-import { webSearchFormFromPayload } from "@/components/settings/capabilities/WebSettings";
 import type {
   ApplySettingsPayload,
   PendingRestartSections,
@@ -100,14 +88,6 @@ export function useSettingsController({
     setProviderForms, setProviderOAuthCompleting, setProviderOAuthDialogError,
     setProviderOAuthFlow, setProviderOAuthResponse, visibleProviderKeys,
   } = modelState;
-  const capabilityState = useCapabilitySettingsState(initialSettings);
-  const {
-    imageGenerationForm, imageGenerationSaving, networkSafetyForm, networkSafetySaving,
-    setImageGenerationForm, setNetworkSafetyForm, setTranscriptionForm, setWebSearchForm,
-    setWebSearchKeyEditing, setWebSearchKeyVisible, transcriptionForm,
-    transcriptionSaving, webSearchForm, webSearchKeyEditing, webSearchKeyVisible,
-    webSearchSaving,
-  } = capabilityState;
   const systemState = useSystemSettingsState();
   const {
     apiService, apiServiceAction, apiServiceError, apiServiceLoading, appsKindFilter, appsQuery,
@@ -151,10 +131,6 @@ export function useSettingsController({
         setModelPresetCreating(false);
       }
       setModelCallOrder(payload.model_call_order ?? []);
-      setWebSearchForm((prev) => webSearchFormFromPayload(payload, prev));
-      setImageGenerationForm(imageGenerationFormFromPayload(payload));
-      setTranscriptionForm(transcriptionFormFromPayload(payload));
-      setNetworkSafetyForm(networkSafetyFormFromPayload(payload));
       if (payload.restart_required_sections) {
         setPendingRestartSections(pendingRestartSectionsFromPayload(payload));
       }
@@ -266,42 +242,6 @@ export function useSettingsController({
     );
   }, [form, settings]);
 
-  const imageGenerationDirty = useMemo(() => {
-    if (!settings) return false;
-    return (
-      imageGenerationForm.enabled !== settings.image_generation.enabled ||
-      imageGenerationForm.provider !== settings.image_generation.provider ||
-      imageGenerationForm.model !== settings.image_generation.model ||
-      imageGenerationForm.defaultAspectRatio !== settings.image_generation.default_aspect_ratio ||
-      imageGenerationForm.defaultImageSize !== settings.image_generation.default_image_size ||
-      imageGenerationForm.maxImagesPerTurn !== settings.image_generation.max_images_per_turn
-    );
-  }, [imageGenerationForm, settings]);
-
-  const transcriptionDirty = useMemo(() => {
-    if (!settings) return false;
-    const transcription = settings.transcription ?? DEFAULT_TRANSCRIPTION_SETTINGS;
-    return (
-      transcriptionForm.enabled !== transcription.enabled ||
-      transcriptionForm.provider !== transcription.provider ||
-      transcriptionForm.model !== transcription.model ||
-      transcriptionForm.language !== (transcription.language ?? "") ||
-      transcriptionForm.maxDurationSec !== transcription.max_duration_sec ||
-      transcriptionForm.maxUploadMb !== transcription.max_upload_mb
-    );
-  }, [settings, transcriptionForm]);
-
-  const networkSafetyDirty = useMemo(() => {
-    if (!settings) return false;
-    const currentLocalServiceAccess =
-      settings.advanced.webui_allow_local_service_access ?? settings.advanced.allow_local_preview_access ?? true;
-    const currentDefaultAccess = visibleWebuiDefaultAccessMode(settings.advanced.webui_default_access_mode);
-    return (
-      networkSafetyForm.webuiAllowLocalServiceAccess !== currentLocalServiceAccess ||
-      networkSafetyForm.webuiDefaultAccessMode !== currentDefaultAccess
-    );
-  }, [networkSafetyForm, settings]);
-
   const configuredModelProviderOptions = useMemo(
     () =>
       settings?.providers
@@ -400,20 +340,6 @@ export function useSettingsController({
     modelDirty,
     configuredModelProviderOptions,
   });
-  const capabilityActions = useCapabilitySettingsActions({
-    state: capabilityState,
-    settings,
-    client,
-    t,
-    applyPayload,
-    maybeRestartHostEngine,
-    setPendingRestartSections,
-    setError,
-    installCapabilities,
-    imageGenerationDirty,
-    transcriptionDirty,
-    networkSafetyDirty,
-  });
   const {
     beginModelPresetCreation,
     cancelModelPresetCreation,
@@ -429,14 +355,6 @@ export function useSettingsController({
     toggleProviderKeyEditing,
     toggleProviderKeyVisibility,
   } = modelActions;
-  const {
-    handleWebSearchProviderChange,
-    resetWebSearchDraft,
-    saveImageGenerationSettings,
-    saveNetworkSafetySettings,
-    saveTranscriptionSettings,
-    saveWebSearch,
-  } = capabilityActions;
   const {
     handleApiServiceAction,
     handleAutomationAction,
@@ -505,12 +423,12 @@ export function useSettingsController({
     handleNanobotFeatureAction,
     handleSaveCustomMcp,
     handleToggleProvider,
-    handleWebSearchProviderChange,
+
     hasPendingRestart,
     hostEngineApplying,
-    imageGenerationDirty,
-    imageGenerationForm,
-    imageGenerationSaving,
+
+
+
     installCapabilities,
     loading,
     localPrefs,
@@ -539,9 +457,9 @@ export function useSettingsController({
     nanobotFeatures,
     nanobotFeaturesError,
     nanobotFeaturesLoading,
-    networkSafetyDirty,
-    networkSafetyForm,
-    networkSafetySaving,
+
+
+
     pendingRestartSections,
     providerForms,
     providerOAuthCompleting,
@@ -550,15 +468,15 @@ export function useSettingsController({
     providerOAuthResponse,
     providerSaving,
     remoteBrowserAccess,
-    resetWebSearchDraft,
+
     restartViaSettingsSurface,
     runProviderOAuth,
-    saveImageGenerationSettings,
+
     saveModelSettings,
-    saveNetworkSafetySettings,
+
     saveProvider,
-    saveTranscriptionSettings,
-    saveWebSearch,
+
+
     saving,
     selectSection,
     setAppsKindFilter,
@@ -573,7 +491,7 @@ export function useSettingsController({
     setCliAppsMessage,
     setCustomMcpForm,
     setForm,
-    setImageGenerationForm,
+
     setLocalPrefs,
     setMcpConfigImport,
     setMcpError,
@@ -586,27 +504,27 @@ export function useSettingsController({
     setNanobotFeatureConfirm,
     setNanobotFeatures,
     setNanobotFeaturesError,
-    setNetworkSafetyForm,
+
     setProviderForms,
     setProviderOAuthDialogError,
     setProviderOAuthResponse,
-    setTranscriptionForm,
-    setWebSearchForm,
-    setWebSearchKeyEditing,
-    setWebSearchKeyVisible,
+
+
+
+
     settings,
     t,
     toggleProviderKeyEditing,
     toggleProviderKeyVisibility,
     token,
-    transcriptionDirty,
-    transcriptionForm,
-    transcriptionSaving,
+
+
+
     visibleProviderKeys,
-    webSearchForm,
-    webSearchKeyEditing,
-    webSearchKeyVisible,
-    webSearchSaving,
+
+
+
+
   };
 }
 

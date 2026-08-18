@@ -7,12 +7,10 @@ import {
 import {
   Archive,
   Brain,
-  CalendarClock,
   Menu,
   Search,
   Settings,
   SquarePen,
-  Blocks,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -47,12 +45,10 @@ interface SidebarProps {
   onRequestRenameProject: (projectKey: string, label: string) => void;
   onNewChatInProject: (projectPath: string, projectName: string) => void;
   onOpenSettings: () => void;
-  onOpenApps: () => void;
   onOpenSkills: () => void;
-  onOpenAutomations: () => void;
   onSettingsIntent?: () => void;
   onOpenSearch: () => void;
-  activeUtility?: "apps" | "skills" | "automations" | null;
+  activeUtility?: "skills" | null;
   onToggleArchived: () => void;
   onCollapse: () => void;
   onExpand?: () => void;
@@ -180,30 +176,12 @@ export function Sidebar(props: SidebarProps) {
         />
         <SidebarActionButton
           collapsed={collapsed}
-          label={t("sidebar.apps")}
-          onClick={props.onOpenApps}
-          onIntent={props.onSettingsIntent}
-          active={props.activeUtility === "apps"}
-          selectionRef={activeActionRef}
-          icon={<Blocks className="h-4 w-4" />}
-        />
-        <SidebarActionButton
-          collapsed={collapsed}
           label={t("sidebar.skills.title")}
           onClick={props.onOpenSkills}
           onIntent={props.onSettingsIntent}
           active={props.activeUtility === "skills"}
           selectionRef={activeActionRef}
           icon={<Brain className="h-4 w-4" />}
-        />
-        <SidebarActionButton
-          collapsed={collapsed}
-          label={t("sidebar.automations", { defaultValue: "Automations" })}
-          onClick={props.onOpenAutomations}
-          onIntent={props.onSettingsIntent}
-          active={props.activeUtility === "automations"}
-          selectionRef={activeActionRef}
-          icon={<CalendarClock className="h-4 w-4" />}
         />
         {props.archivedCount ? (
           <SidebarActionButton

@@ -356,28 +356,9 @@ export function SettingsPage({
         onConfirm={(feature) => handleNanobotFeatureAction("enable", feature.name, true)}
       />
 
-      <AutomationDeleteDialog
-        job={automationPendingDelete}
-        deleting={automationAction === `delete:${automationPendingDelete?.id ?? ""}`}
-        onOpenChange={(open) => {
-          if (!open) setAutomationPendingDelete(null);
-        }}
-        onConfirm={(job) => handleAutomationAction("delete", job)}
-      />
-
-      <AutomationEditDialog
-        job={automationPendingEdit}
-        saving={automationAction === `update:${automationPendingEdit?.id ?? ""}`}
-        onOpenChange={(open) => {
-          if (!open) setAutomationPendingEdit(null);
-        }}
-        onSave={handleAutomationEdit}
-      />
-
       <div
         className={cn(
-          "min-w-0 flex-1 bg-settings-canvas [scrollbar-gutter:stable]",
-          activeSection === "channels" ? "overflow-y-auto xl:overflow-hidden" : "overflow-y-auto",
+          "min-w-0 flex-1 bg-settings-canvas [scrollbar-gutter:stable] overflow-y-auto",
         )}
       >
         <div
@@ -387,8 +368,7 @@ export function SettingsPage({
           className={cn(
             "mx-auto w-full animate-in fade-in-0 slide-in-from-bottom-1 px-4 py-6 duration-200 ease-out",
             "motion-reduce:animate-none sm:px-8 sm:py-8 lg:py-12",
-            activeSection === "channels" ? "max-w-[1240px] xl:px-10" : "max-w-[920px]",
-            activeSection === "channels" && "flex min-h-full flex-col xl:h-full xl:min-h-0",
+            "max-w-[920px]",
             hostChromeInset && "pt-[4.25rem] sm:pt-[4.25rem] lg:pt-[4.75rem]",
           )}
         >
@@ -423,11 +403,7 @@ export function SettingsPage({
             </SettingsGroup>
           ) : settings ? (
             <div
-              className={cn(
-                "space-y-5",
-                activeSection === "channels" &&
-                  "flex min-h-0 flex-1 flex-col xl:overflow-hidden",
-              )}
+              className={cn("space-y-5")}
             >
               {error ? (
                 <div className="rounded-[18px] border border-destructive/20 bg-destructive/5 px-4 py-3 text-[13px] text-destructive">

@@ -426,7 +426,7 @@ function normalizeWorkspaceScope(scope: WorkspaceScopePayload): WorkspaceScopePa
   const accessMode = scope.access_mode === "restricted" ? "restricted" : "full";
   return {
     ...scope,
-    project_name: scope.project_name ?? projectNameFromPath(scope.project_path),
+    project_name: scope.project_name ?? scope.project_path.split(/[\\/]/).pop() ?? "",
     access_mode: accessMode,
     restrict_to_workspace: accessMode === "restricted",
   };
@@ -752,13 +752,11 @@ function channelLabel(channel: string): string {
 }
 
 function pairingChannelPresentation(channel: string) {
-  const key = pairingChannelKey(channel);
-  const plugin = channelUiPresentation(key);
   return {
-    label: plugin?.displayName ?? channel,
-    initials: plugin?.initials ?? channel.slice(0, 2).toUpperCase(),
-    color: plugin?.color ?? "#10B981",
-    logoUrl: plugin?.logoUrl,
+    label: channel,
+    initials: channel.slice(0, 2).toUpperCase(),
+    color: "#10B981",
+    logoUrl: undefined,
   };
 }
 
@@ -1220,7 +1218,7 @@ function Shell({
   const activeWorkspaceScope = useMemo<WorkspaceScopePayload | null>(() => {
     if (temporaryChatRequested) {
       return workspaces?.default_scope
-        ? normalizeWorkspaceScope(scopeWithAccessMode(workspaces.default_scope, "restricted"))
+        ? normalizeWorkspaceScope({ ...workspaces.default_scope, access_mode: "restricted" })
         : null;
     }
     if (activeChatId && workspaceOverrides[activeChatId]) {
@@ -1508,7 +1506,7 @@ function Shell({
         const chatId = await client.newTemporaryChat();
         const session = createTemporaryChatSession(chatId);
         const restrictedScope = workspaceScope
-          ? normalizeWorkspaceScope(scopeWithAccessMode(workspaceScope, "restricted"))
+          ? normalizeWorkspaceScope({ ...workspaceScope, access_mode: "restricted" })
           : null;
         const nextSession: ChatSummary = {
           ...session,
@@ -1593,7 +1591,7 @@ function Shell({
       navigate(defaultShellRoute());
       setDraftWorkspaceScope(normalizeWorkspaceScope({
         project_path: trimmed,
-        project_name: projectName || projectNameFromPath(trimmed),
+        project_name: projectName || (trimmed.split(/[\\/]/).pop() ?? ""),
         access_mode: base.access_mode,
         restrict_to_workspace: base.access_mode === "restricted",
       }));
