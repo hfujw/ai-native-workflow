@@ -404,11 +404,9 @@ export default function App() {
   const archiveCurrent = () => {
     if (messages.length === 0) return;
     if (!currentSessionIdRef.current) {
-      const firstUser = messages.find((m) => m.role === "user")?.text ?? "";
-      const match = firstUser
-        ? sessions.find((s) => s.messages.find((m) => m.role === "user")?.text === firstUser)
-        : undefined;
-      currentSessionIdRef.current = match?.id ?? `s${Date.now()}`;
+      // 新对话就开新 id——绝不按首条消息匹配旧会话（否则同名新对话会覆盖旧对话）。
+      // 应用启动恢复的对话由 openSession 绑定 id，不走这里。
+      currentSessionIdRef.current = `s${Date.now()}`;
     }
     const title = messages.find((m) => m.role === "user")?.text ?? "对话";
     setSessions(

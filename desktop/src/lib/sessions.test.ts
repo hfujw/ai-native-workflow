@@ -17,23 +17,23 @@ globalThis.localStorage = {
 const msg = (text: string): Msg => ({ id: 1, role: "user", text });
 
 describe("dedupeSessions", () => {
-  it("按首条用户消息合并重复会话，保留 updatedAt 最新", () => {
+  it("同 id 重复会话合并，保留 updatedAt 最新", () => {
     const a = { id: "a", title: "恐龙", updatedAt: 1, messages: [msg("恐龙")] };
-    const b = { id: "b", title: "恐龙", updatedAt: 2, messages: [msg("恐龙")] };
+    const b = { id: "a", title: "恐龙", updatedAt: 2, messages: [msg("恐龙")] };
     const merged = dedupeSessions([a, b]);
     expect(merged).toHaveLength(1);
-    expect(merged[0].id).toBe("b");
+    expect(merged[0].updatedAt).toBe(2);
   });
 
-  it("首条消息不同则不合并", () => {
-    const a = { id: "a", title: "恐龙", updatedAt: 1, messages: [msg("恐龙")] };
-    const b = { id: "b", title: "黑洞", updatedAt: 2, messages: [msg("黑洞")] };
+  it("同名但不同 id 的对话不合并（两个独立对话）", () => {
+    const a = { id: "a", title: "七大洲", updatedAt: 1, messages: [msg("七大洲")] };
+    const b = { id: "b", title: "七大洲", updatedAt: 2, messages: [msg("七大洲")] };
     expect(dedupeSessions([a, b])).toHaveLength(2);
   });
 
-  it("空首条消息用 id 兜底，不误合并", () => {
-    const a = { id: "a", title: "", updatedAt: 1, messages: [] };
-    const b = { id: "b", title: "", updatedAt: 2, messages: [] };
+  it("不同 id 不同首条消息不合并", () => {
+    const a = { id: "a", title: "恐龙", updatedAt: 1, messages: [msg("恐龙")] };
+    const b = { id: "b", title: "黑洞", updatedAt: 2, messages: [msg("黑洞")] };
     expect(dedupeSessions([a, b])).toHaveLength(2);
   });
 });

@@ -52,17 +52,15 @@ export function deleteSession(id: string): SavedSession[] {
   return sessions;
 }
 
-/** 旧数据迁移：早期版本每次存档都新建条目，同一对话可能被拆成多份。
- *  按"首条用户消息"合并——只保留每组里 updatedAt 最新的那份。 */
+/** 会话去重——按 id 去重（同一 id 保留最新），绝不按首条消息合并。
+ *  两个不同对话即使首条消息相同（同名主题），也是不同对话，不能合并。 */
 export function dedupeSessions(sessions: SavedSession[]): SavedSession[] {
-  const byFirstUser = new Map<string, SavedSession>();
+  const byId = new Map<string, SavedSession>();
   for (const s of sessions) {
-    const firstUser = s.messages.find((m) => m.role === "user")?.text ?? "";
-    const key = firstUser || s.id;
-    const existing = byFirstUser.get(key);
+    const existing = byId.get(s.id);
     if (!existing || s.updatedAt > existing.updatedAt) {
-      byFirstUser.set(key, s);
+      byId.set(s.id, s);
     }
   }
-  return [...byFirstUser.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+  return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
 }
