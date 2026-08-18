@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" font-family="'Songti SC', 'Noto Sans SC', sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0E0F12"/>
+      <stop offset="1" stop-color="#17181D"/>
+    </linearGradient>
+    <linearGradient id="node" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1F2127"/>
+      <stop offset="1" stop-color="#17181D"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="760" fill="url(#bg)"/>
+
+  <!-- 标题 -->
+  <text x="600" y="42" text-anchor="middle" font-size="20" font-weight="700" fill="#ECECF0">Lumen 系统架构</text>
+  <text x="600" y="66" text-anchor="middle" font-size="13" fill="#9BA0AA">LLM 是决策中心，不是流水线工人</text>
+
+  <!-- 输入 -->
+  <rect x="40" y="100" width="140" height="54" rx="10" fill="url(#node)" stroke="#3964FE" stroke-width="1.5"/>
+  <text x="110" y="133" text-anchor="middle" font-size="14" fill="#ECECF0">用户输入主题</text>
+
+  <!-- 编排核心 -->
+  <rect x="230" y="80" width="300" height="200" rx="14" fill="none" stroke="#3964FE" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.7"/>
+  <text x="380" y="102" text-anchor="middle" font-size="14" font-weight="700" fill="#3964FE">编排核心 Orchestrator</text>
+  <rect x="250" y="115" width="260" height="48" rx="8" fill="url(#node)" stroke="#3964FE" stroke-width="1"/>
+  <text x="380" y="140" text-anchor="middle" font-size="13" fill="#ECECF0">async while 主循环（1/20 步）</text>
+  <text x="380" y="156" text-anchor="middle" font-size="11" fill="#9BA0AA">预算护栏 · 断路器 · 强制回退</text>
+  <rect x="250" y="175" width="260" height="86" rx="8" fill="url(#node)" stroke="#3964FE" stroke-width="1"/>
+  <text x="380" y="197" text-anchor="middle" font-size="13" fill="#ECECF0">LLM 决策中心</text>
+  <text x="380" y="215" text-anchor="middle" font-size="11" fill="#9BA0AA">{thought, tool, params}</text>
+  <text x="380" y="231" text-anchor="middle" font-size="11" fill="#9BA0AA">前缀稳定 · 最近2步反馈</text>
+  <text x="380" y="247" text-anchor="middle" font-size="11" fill="#9BA0AA">流式思考推送</text>
+  <text x="380" y="271" text-anchor="middle" font-size="11" fill="#34D399">↑ 决策 → 执行 → 反馈 循环</text>
+
+  <!-- 工具 Agent -->
+  <rect x="580" y="60" width="580" height="250" rx="14" fill="none" stroke="#FBBF24" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.7"/>
+  <text x="870" y="82" text-anchor="middle" font-size="14" font-weight="700" fill="#FBBF24">工具 Agent（各自内部决策循环）</text>
+
+  <rect x="600" y="95" width="260" height="95" rx="10" fill="url(#node)" stroke="#FBBF24" stroke-width="1"/>
+  <text x="730" y="118" text-anchor="middle" font-size="14" fill="#ECECF0">ResearcherAgent</text>
+  <text x="730" y="138" text-anchor="middle" font-size="11" fill="#9BA0AA">搜索 → LLM 换词 → 向量兜底</text>
+  <text x="730" y="154" text-anchor="middle" font-size="11" fill="#9BA0AA">广告过滤 · 素材外置评估</text>
+  <text x="730" y="170" text-anchor="middle" font-size="11" fill="#9BA0AA">素材不够 → 消息总线求助</text>
+
+  <rect x="600" y="200" width="260" height="95" rx="10" fill="url(#node)" stroke="#FBBF24" stroke-width="1"/>
+  <text x="730" y="223" text-anchor="middle" font-size="14" fill="#ECECF0">DesignerAgent</text>
+  <text x="730" y="243" text-anchor="middle" font-size="11" fill="#9BA0AA">多脑并行发散 → Top-K 预选</text>
+  <text x="730" y="259" text-anchor="middle" font-size="11" fill="#9BA0AA">→ 大脑综合 → 批评家挑刺</text>
+  <text x="730" y="275" text-anchor="middle" font-size="11" fill="#9BA0AA">产出 design + content</text>
+
+  <rect x="880" y="95" width="260" height="95" rx="10" fill="url(#node)" stroke="#FBBF24" stroke-width="1"/>
+  <text x="1010" y="118" text-anchor="middle" font-size="14" fill="#ECECF0">RenderAgent</text>
+  <text x="1010" y="138" text-anchor="middle" font-size="11" fill="#9BA0AA">LLM 生成 → 自检循环重试</text>
+  <text x="1010" y="154" text-anchor="middle" font-size="11" fill="#9BA0AA">缓存（50条 / 5min）</text>
+  <text x="1010" y="170" text-anchor="middle" font-size="11" fill="#9BA0AA">注入 skill 交互脚本</text>
+
+  <rect x="880" y="200" width="260" height="95" rx="10" fill="url(#node)" stroke="#FBBF24" stroke-width="1"/>
+  <text x="1010" y="223" text-anchor="middle" font-size="14" fill="#ECECF0">VerifyAgent</text>
+  <text x="1010" y="243" text-anchor="middle" font-size="11" fill="#9BA0AA">Playwright 真执行</text>
+  <text x="1010" y="259" text-anchor="middle" font-size="11" fill="#9BA0AA">+ 硬规则检查</text>
+  <text x="1010" y="275" text-anchor="middle" font-size="11" fill="#9BA0AA">HTML 完整性 · 来源覆盖</text>
+
+  <!-- 质量审查 -->
+  <rect x="230" y="340" width="300" height="200" rx="14" fill="none" stroke="#34D399" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.7"/>
+  <text x="380" y="362" text-anchor="middle" font-size="14" font-weight="700" fill="#34D399">质量审查</text>
+  <rect x="250" y="375" width="260" height="74" rx="8" fill="url(#node)" stroke="#34D399" stroke-width="1"/>
+  <text x="380" y="398" text-anchor="middle" font-size="13" fill="#ECECF0">Judge 六维审查</text>
+  <text x="380" y="416" text-anchor="middle" font-size="11" fill="#9BA0AA">事实/覆盖/可读/美学/教育/互动</text>
+  <text x="380" y="432" text-anchor="middle" font-size="11" fill="#9BA0AA">挑刺模式 · 事实/覆盖才回退</text>
+  <rect x="250" y="458" width="260" height="66" rx="8" fill="url(#node)" stroke="#34D399" stroke-width="1"/>
+  <text x="380" y="481" text-anchor="middle" font-size="13" fill="#ECECF0">artifact_quality</text>
+  <text x="380" y="499" text-anchor="middle" font-size="11" fill="#9BA0AA">纯正则六维打分（不依赖 LLM）</text>
+  <text x="380" y="515" text-anchor="middle" font-size="11" fill="#9BA0AA">产物落盘时自动评分</text>
+
+  <!-- 产出 -->
+  <rect x="580" y="350" width="580" height="180" rx="14" fill="none" stroke="#ECECF0" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.7"/>
+  <text x="870" y="372" text-anchor="middle" font-size="14" font-weight="700" fill="#ECECF0">产出</text>
+  <rect x="600" y="385" width="260" height="70" rx="10" fill="url(#node)" stroke="#ECECF0" stroke-width="1"/>
+  <text x="730" y="410" text-anchor="middle" font-size="14" fill="#ECECF0">交互式 HTML</text>
+  <text x="730" y="430" text-anchor="middle" font-size="11" fill="#9BA0AA">落盘 workspace/ 每版独立文件</text>
+  <text x="730" y="446" text-anchor="middle" font-size="11" fill="#9BA0AA">可导出下载 / 复制路径</text>
+  <rect x="880" y="385" width="260" height="70" rx="10" fill="url(#node)" stroke="#ECECF0" stroke-width="1"/>
+  <text x="1010" y="410" text-anchor="middle" font-size="14" fill="#ECECF0">examples 归档</text>
+  <text x="1010" y="430" text-anchor="middle" font-size="11" fill="#9BA0AA">产物 HTML 进仓库</text>
+  <text x="1010" y="446" text-anchor="middle" font-size="11" fill="#9BA0AA">零配置浏览器打开体验</text>
+
+  <!-- 连线 -->
+  <line x1="180" y1="127" x2="250" y2="127" stroke="#646873" stroke-width="2"/>
+  <line x1="250" y1="225" x2="200" y2="225" stroke="#646873" stroke-width="2"/>
+  <line x1="510" y1="218" x2="600" y2="143" stroke="#646873" stroke-width="2"/>
+  <line x1="510" y1="180" x2="600" y2="248" stroke="#646873" stroke-width="2"/>
+  <line x1="510" y1="200" x2="880" y2="143" stroke="#646873" stroke-width="2"/>
+  <line x1="510" y1="160" x2="880" y2="248" stroke="#646873" stroke-width="2"/>
+  <line x1="380" y1="280" x2="380" y2="340" stroke="#646873" stroke-width="2"/>
+  <line x1="380" y1="510" x2="380" y2="530" stroke="#646873" stroke-width="2"/>
+  <line x1="530" y1="420" x2="600" y2="420" stroke="#646873" stroke-width="2"/>
+
+  <!-- 回退标注 -->
+  <text x="440" y="295" font-size="11" fill="#F87171">verify 不过 / 审查不过 → 强制回退</text>
+  <text x="440" y="545" font-size="11" fill="#34D399">通过 → 交付</text>
+</svg>
