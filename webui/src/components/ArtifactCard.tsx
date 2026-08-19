@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
 import { apiBase, isTauri } from "@/lib/http";
+import { dragStartHandler } from "@/lib/desktop";
 
 /** 成品卡（task 14）：assistant 消息里带 `✨ 成品已生成 [id]` 时渲染。
  * "预览"= 全屏覆盖成品大图（iframe 铺满窗口），Esc / 关闭按钮退出。
@@ -59,7 +60,10 @@ export function ArtifactCard({
       </div>
       {open ? (
         <div className="fixed inset-0 z-[200] flex flex-col bg-background">
-          <div className="flex h-10 shrink-0 items-center justify-end px-3">
+          <div
+            onMouseDown={dragStartHandler()}
+            className="flex h-10 shrink-0 items-center justify-end px-3"
+          >
             <button
               type="button"
               onClick={() => setOpen(false)}

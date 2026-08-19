@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -20,4 +20,15 @@ export function useWindowDrag(ref: RefObject<HTMLElement | null>): void {
     el.addEventListener("mousedown", onMouseDown);
     return () => el.removeEventListener("mousedown", onMouseDown);
   }, [ref]);
+}
+
+/** 给条件渲染的元素用（如全屏预览覆盖层）：直接当 onMouseDown 用。 */
+export function dragStartHandler(): (event: ReactMouseEvent<HTMLElement>) => void {
+  return (event) => {
+    if (!isTauri()) return;
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button, input, select, textarea, a, [data-no-drag]")) return;
+    void getCurrentWindow().startDragging();
+  };
 }
