@@ -118,9 +118,7 @@ npm run dev   # http://127.0.0.1:5173
 
 LLM 是决策中心，不是流水线工人——**流程不被人写死**，每一步由 LLM 自主决定。
 
-<p align="center">
-  <img src="screenshots/architecture.svg" width="1000" alt="Lumen 系统架构图">
-</p>
+> 🖼️ **架构图占位**（作者自绘中，待补充）——文字版架构见下方。
 
 ### 编排核心（orchestrator）
 
