@@ -26,6 +26,8 @@ from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from app.tools.search import bind_search_service
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -39,6 +41,9 @@ class ResponsesRequest(BaseModel):
     stream: bool = True
     tools: list | None = None  # LobeChat 可能声明可用工具——我们服务端自治，忽略
     session_id: str | None = None  # WebUI 前端先建会话，前端定 project_id（后端兜底生成）
+    # WebUI 前端填的搜索服务 {name, api_key, base_url}（现在固定 Tavily，后续可扩展任意服务；
+    # 前端填了就优先，None = 不联网，只走本地 KB）
+    search_service: dict | None = None
 
 
 # ── SSE 工具 ──
@@ -153,6 +158,12 @@ async def responses(req: ResponsesRequest, authorization: str | None = Header(No
         from app.llm.client import bind_session_client
         bind_session_client(api_key)
         logger.info("compat=session_client | key_bound=%s", bool(api_key))
+
+    # WebUI 前端填的搜索服务 {name, api_key, base_url}——前端填了就优先（后续可扩展任意服务）
+    search_svc = req.search_service or None
+    if search_svc and (search_svc.get("api_key") or search_svc.get("apiKey") or "").strip():
+        bind_search_service(search_svc)
+        logger.info("compat=search_bound | svc=%s", search_svc.get("name", "?"))
 
     rsp_id = f"rsp_{uuid.uuid4().hex[:8]}"
     msg_id = f"msg_{uuid.uuid4().hex[:8]}"

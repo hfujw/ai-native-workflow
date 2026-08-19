@@ -118,6 +118,70 @@ def test_responses_webui_mode_emits_structured_events(monkeypatch):
     assert "✨ 成品已生成" in deltas
 
 
+def test_responses_binds_frontend_search_service(monkeypatch):
+    """前端传 search_service（Tavily key）→ 后端绑定搜索服务（前端填了就优先）。"""
+
+    async def fake_orchestrator(state):
+        push = state.get("_push")
+        await push({"type": "thinking", "tool": "search", "thought": "开始搜索"})
+        await push({"type": "complete", "html": "<html>成品</html>"})
+        return {"html": "<html>成品</html>"}
+
+    monkeypatch.setattr("app.agent.orchestrator.orchestrator_node", fake_orchestrator)
+    monkeypatch.setattr("app.workspace.save_page", lambda *a: "/works/x.html")
+    monkeypatch.setattr("app.projects.save_project", lambda p: None)
+
+    bound = {}
+    from app.tools.search import bind_search_service
+    monkeypatch.setattr(
+        "app.api.compat.bind_search_service",
+        lambda svc: bound.update(svc),
+    )
+
+    with client.stream(
+        "POST", "/v1/responses",
+        json={
+            "input": [{"role": "user", "content": "地球"}],
+            "model": "deepseek-v4-flash",
+            "session_id": "abc12345",
+            "search_service": {"name": "Tavily", "api_key": "tvly-test", "base_url": "https://api.tavily.com"},
+        },
+    ) as r:
+        list(r.iter_text())
+
+    assert bound.get("name") == "Tavily"
+    assert bound.get("api_key") == "tvly-test"
+    assert "api.tavily.com" in bound.get("base_url", "")
+
+
+def test_responses_no_search_service_means_offline(monkeypatch):
+    """不传 search_service → 不联网（不绑定搜索服务）。"""
+
+    async def fake_orchestrator(state):
+        push = state.get("_push")
+        await push({"type": "thinking", "tool": "search", "thought": "离线搜索"})
+        await push({"type": "complete", "html": "<html>成品</html>"})
+        return {"html": "<html>成品</html>"}
+
+    monkeypatch.setattr("app.agent.orchestrator.orchestrator_node", fake_orchestrator)
+    monkeypatch.setattr("app.workspace.save_page", lambda *a: "/works/x.html")
+    monkeypatch.setattr("app.projects.save_project", lambda p: None)
+
+    called = {"bound": False}
+    monkeypatch.setattr(
+        "app.api.compat.bind_search_service",
+        lambda svc: called.update(bound=True),
+    )
+
+    with client.stream(
+        "POST", "/v1/responses",
+        json={"input": [{"role": "user", "content": "地球"}], "model": "deepseek-v4-flash"},
+    ) as r:
+        list(r.iter_text())
+
+    assert called["bound"] is False
+
+
 def test_responses_no_user_message_400(monkeypatch):
     """空 input → 400。"""
 

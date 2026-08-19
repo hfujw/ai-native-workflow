@@ -17,7 +17,13 @@ import {
   installLumenSkill,
   listSessions,
 } from "@/lib/lumen-api";
-import { getLumenKey, setLumenKey } from "@/lib/lumen-key";
+import {
+  getLumenKey,
+  getLumenSearchService,
+  setLumenKey,
+  setLumenSearchService,
+  TAVILY_DEFAULT,
+} from "@/lib/lumen-key";
 import type { SkillSummary } from "@/lib/types";
 
 const MODEL = "deepseek-v4-flash";
@@ -151,9 +157,12 @@ function OverviewSection() {
 function ModelsSection() {
   const { t } = useTranslation();
   const [key, setKey] = useState(() => getLumenKey());
+  const [searchKey, setSearchKey] = useState(() => getLumenSearchService()?.api_key ?? "");
   const [saved, setSaved] = useState(false);
   const save = () => {
     setLumenKey(key);
+    // 现在固定 Tavily；后续支持任意搜索服务时，这里扩展 provider 选择即可
+    setLumenSearchService({ ...TAVILY_DEFAULT, api_key: searchKey });
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2000);
   };
@@ -201,6 +210,24 @@ function ModelsSection() {
               </span>
             ) : null}
           </div>
+        </div>
+        <div className="rounded-2xl border bg-card p-4">
+          <label className="block text-sm font-medium text-foreground">
+            {t("lumen.models.searchKey", { defaultValue: "网页搜索 Key（Tavily）" })}
+          </label>
+          <Input
+            type="password"
+            value={searchKey}
+            onChange={(e) => setSearchKey(e.target.value)}
+            placeholder="tvly-..."
+            autoComplete="off"
+            className="mt-2"
+          />
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t("lumen.models.searchHint", {
+              defaultValue: "前端填了就优先（搜真实网页）；不填 = 不联网，只搜本地知识库，素材较少。后续将支持任意搜索服务。",
+            })}
+          </p>
         </div>
         <div className="rounded-2xl border bg-card p-4 text-sm text-muted-foreground">
           {t("lumen.models.modelInfo", {

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useClient } from "@/providers/ClientProvider";
 import { hasPendingAgentActivity } from "@/lib/activity-timeline";
-import { getLumenKey } from "@/lib/lumen-key";
+import { getLumenKey, getLumenSearchService } from "@/lib/lumen-key";
 import type { StreamError } from "@/lib/nanobot-client";
 import {
   finalizeStreamedTurn,
@@ -713,6 +713,8 @@ export function useNanobotStream(
             input: buildResponsesInput(messagesRef.current, content),
             model: "deepseek-v4-flash",
             session_id: chatId,
+            // 网页搜索服务（现在固定 Tavily，前端填了就优先；没填后端不联网）
+            search_service: getLumenSearchService(),
           }),
           signal: controller.signal,
         });
