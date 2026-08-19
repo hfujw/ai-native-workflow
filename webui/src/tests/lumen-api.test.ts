@@ -132,9 +132,11 @@ describe("deleteSession", () => {
     expect((init as RequestInit).method).toBe("DELETE");
   });
 
-  it("reports not deleted when the backend says no", async () => {
+  it("treats a not-found project as already deleted (idempotent)", async () => {
+    // 新建会话未落盘就删除：后端 delete_project 找不到 → ok:false（HTTP 200）。
+    // 对 UI 而言会话应视为已删（否则卡在列表删不掉）。
     vi.stubGlobal("fetch", stubFetch(async () => jsonResponse({ ok: false })));
-    expect((await deleteSession("lumen:a1b2c3d4")).deleted).toBe(false);
+    expect((await deleteSession("lumen:a1b2c3d4")).deleted).toBe(true);
   });
 });
 

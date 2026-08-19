@@ -426,6 +426,8 @@ function writeSessionUpdateChatIds(chatIds: Set<string>): void {
       SESSION_UPDATES_STORAGE_KEY,
       JSON.stringify(Array.from(chatIds)),
     );
+    // 旧版 completed-runs 键只读不写——迁移完成后顺手清掉，不留永久残留
+    window.localStorage.removeItem(LEGACY_COMPLETED_RUNS_STORAGE_KEY);
   } catch {
     // ignore storage errors (private mode, etc.)
   }

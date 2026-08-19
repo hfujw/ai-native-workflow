@@ -22,7 +22,7 @@ import logging
 import time
 import uuid
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -142,7 +142,11 @@ def _friendly_error(e: Exception) -> str:
 # ── 主端点 ──
 
 @router.post("/v1/responses")
-async def responses(req: ResponsesRequest, authorization: str | None = Header(None)):
+async def responses(
+    req: ResponsesRequest,
+    request: Request,
+    authorization: str | None = Header(None),
+):
     msgs = _parse_input(req.input)
     query = _last_user_text(msgs)
     if not query:
@@ -245,11 +249,27 @@ async def responses(req: ResponsesRequest, authorization: str | None = Header(No
 
         result = None
         # ── 流式转发思考文本 ──
+        # 断连检测：前端 stop / 关页面 = SSE 断开。Starlette 只在 yield 之间检查断连，
+        # 队列长时间无事件时会卡住 → 这里每 1s 轮询一次：断连立即 return（finally 里
+        # task.cancel() 取消编排任务，且跳过下方落盘——被删会话不会被救回）。
+        # is_disconnected() 用 anyio CancelScope 实现，非阻塞：无缓冲 disconnect 消息即返回 False。
+        stall_limit = int(settings.generate_stall_timeout)
+        silent_seconds = 0
         try:
             while True:
-                # 单步 LLM 调用（尤其 render 生成整页 HTML）可长达几分钟——
-                # 90s 队列超时会把正常长生成误判中断。对齐 LLM 调用上限 600s。
-                item = await asyncio.wait_for(queue.get(), timeout=600)
+                if await request.is_disconnected():
+                    logger.info("compat=disconnect | session=%s", session_id)
+                    return
+                try:
+                    # 1s 小超时：既允许每轮轮询断连，又不改变"无事件则一直等"的语义。
+                    item = await asyncio.wait_for(queue.get(), timeout=1)
+                except asyncio.TimeoutError:
+                    silent_seconds += 1
+                    if silent_seconds >= stall_limit:
+                        # 完全静默超时（无任何 SSE 事件）→ 判卡死，走下方超时分支取消任务
+                        raise asyncio.TimeoutError
+                    continue
+                silent_seconds = 0
                 if item is _END:
                     break
                 if isinstance(item, dict):
@@ -263,6 +283,8 @@ async def responses(req: ResponsesRequest, authorization: str | None = Header(No
             if task and not task.cancelled():
                 result = task.result()
         except asyncio.TimeoutError:
+            # 静默超时也要让用户看到明确的失败原因（而不是流无声结束）
+            terminal["error"] = _friendly_error(asyncio.TimeoutError("timeout"))
             logger.warning("compat=timeout | session=%s", session_id)
         except Exception as e:
             terminal["error"] = _friendly_error(e)

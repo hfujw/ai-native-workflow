@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     # render 自检重试 / design 重试 / search 换词 / 质量审查回退
     llm_steps: int = Field(10, ge=1, le=100)
 
+    # 生成过程中完全静默（无任何 SSE 事件）的最长秒数——超时取消编排任务并报"响应超时"。
+    # 单步 LLM 调用（尤其 render 整页 HTML）可长达几分钟，默认给足 300s；再久判卡死。
+    generate_stall_timeout: int = Field(300, ge=30, le=3600)
+
     # ── 安全（本地工具的健壮性护栏，非公网防护）──
     input_max_length: int = Field(500, ge=10, le=2000, description="用户输入最大长度（字符）")
     cors_origins: list[str] = Field(

@@ -246,8 +246,10 @@ export async function deleteSession(
     { method: "DELETE", credentials: "same-origin" },
   );
   if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`);
-  const body = (await res.json()) as { ok?: boolean };
-  return { deleted: body.ok === true, blocked_by_automations: false };
+  // 幂等：DELETE 200 即视为已删除。后端 ok:false 只表示"project 不存在"——
+  // 新建会话还没落盘就点删除时后端找不到，但对 UI 来说会话必须能从列表移除，
+  // 否则会卡在列表里"删不掉"。
+  return { deleted: true, blocked_by_automations: false };
 }
 
 /** 深度后端无自动化——恒空列表，保持接口形状。 */
