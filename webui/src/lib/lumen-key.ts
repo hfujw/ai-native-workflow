@@ -39,7 +39,7 @@ export interface LumenSearchService {
   base_url: string;
 }
 
-const TAVILY_DEFAULT: LumenSearchService = {
+export const TAVILY_DEFAULT: LumenSearchService = {
   name: "Tavily",
   api_key: "",
   base_url: "https://api.tavily.com",
