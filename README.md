@@ -12,7 +12,7 @@
 <p>
   <img src="https://img.shields.io/badge/python-%3E%3D3.13-blue" alt="Python 3.13">
   <img src="https://img.shields.io/badge/node-%3E%3D18-green" alt="Node 18">
-  <img src="https://img.shields.io/badge/tests-backend%20231%20%2F%20frontend%20587-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-backend%20226%20%2F%20frontend%20587-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 </p>
 
@@ -55,30 +55,13 @@ Lumen 是给 LLM 装可插拔 skill 的 AI 原生工作台。它可以：
 
 ---
 
-## 真实运行
+## WebUI
 
-**① 创作区：输入主题，AI 实时展示思考过程**
+**创作区：输入主题，AI 实时展示思考过程**
 
 <p align="center">
   <img src="screenshots/01-composer.png" width="900" alt="创作区：输入主题，AI 实时展示思考过程"><br>
   <sub>创作区：输入主题，AI 实时展示思考过程</sub>
-</p>
-
-<!-- 🖼️ 截图待补充：以下两张用当前 WebUI 实际运行截图替换（建议 900px 宽，存为
-     screenshots/02-thinking.png 和 03-artifact.png） -->
-
-**② 思考流：决策过程透明展示（思考块 + 工具卡）**
-
-<p align="center">
-  <img src="screenshots/02-thinking.png" width="900" alt="思考流（占位，待截图）"><br>
-  <sub>⚠️ 截图占位：替换为思考流截图</sub>
-</p>
-
-**③ 产物预览 + 作品画廊**
-
-<p align="center">
-  <img src="screenshots/03-artifact.png" width="900" alt="成品预览（占位，待截图）"><br>
-  <sub>⚠️ 截图占位：替换为成品预览 + 画廊截图</sub>
 </p>
 
 ---
@@ -237,7 +220,7 @@ webui/                       WebUI 前端（React + Vite）
 - 可下载 / 安装 / 删除；系统人格内置不可删
 
 **工程**
-- 后端 231 测试全绿 · 前端 587 测试全绿 · tsc 0 错误 · CI 双工作流
+- 后端 226 测试全绿 · 前端 587 测试全绿 · tsc 0 错误 · CI 双工作流
 - DecisionLog 全透明：每次生成的决策轨迹落盘 JSONL，可回放
 
 ---
