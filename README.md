@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/hfujw/lumen/master/webui/public/brand/lumen.svg" width="48" height="48" alt="Lumen logo">
+<img src="webui/public/brand/lumen.svg" width="56" height="56" alt="Lumen logo">
 
-<h1>Lumen</h1>
+# Lumen
 
 <p><strong>给 LLM 装可插拔 skill 的 AI 原生工作台</strong></p>
 
@@ -10,7 +10,9 @@
 输出一张结构清晰、视觉精美的交互式知识网页。全程透明、可迭代。</p>
 
 <p>
-  <img src="https://img.shields.io/badge/tests-backend%20231%20%2F%20frontend%20680-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/python-%3E%3D3.13-blue" alt="Python 3.13">
+  <img src="https://img.shields.io/badge/node-%3E%3D18-green" alt="Node 18">
+  <img src="https://img.shields.io/badge/tests-backend%20231%20%2F%20frontend%20587-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 </p>
 
@@ -23,104 +25,64 @@
 | 你想做什么 | 去哪 |
 |:---|:---|
 | 快速体验产物质量（不安装） | [直接打开产物 HTML](examples/dinosaur-extinction.html) |
-| 安装并跑第一个主题 | [快速开始](#快速开始) |
-| 了解技术架构 | [架构](#架构) |
+| 安装并跑第一个主题 | [快速开始](#-快速开始) |
+| 了解它能做什么 | [它能做什么](#-它能做什么) |
 | 配置模型 / 搜索 / Skill | [首次使用](#首次使用) |
-| 查看或扩展代码 | [项目结构](#项目结构) |
+| 查看或扩展代码 | [项目结构](#-项目结构) |
 
 ---
 
-## 这是什么
+## 它能做什么
 
-Lumen 把**编排权交给 LLM**：流程不被人写死，每一步调哪个工具、审查不过退给谁，由 LLM 自己决定。人只负责输入主题，AI 负责当主编。
+Lumen 是给 LLM 装可插拔 skill 的 AI 原生工作台。它可以：
 
-| | 常规 AI 写作 | Lumen |
-|:---|:---|:---|
-| **流程** | 人写死模板，AI 填空 | LLM 自主决定工具链与回退策略 |
-| **设计** | 单一路径生成 | 多创意脑并行发散 → 大脑综合 → 批评家挑刺 |
-| **审查** | LLM 自评"我觉得不错" | Playwright 真执行 + 四维质量审查 |
-| **风格** | 换 CSS 皮肤 | Skill 改变编排策略：组件选择、文案语气、交互基因全不同 |
-| **诚实** | 素材不足时编造 | 自动降级"资料有限"页面，不编造 |
+- 输入任意主题，LLM **自主编排**搜索 → 设计 → 渲染 → 审查 → 迭代的完整工作流
+- 用可插拔 **skill**（像素 / 杂志 / 信息图）改变编排策略——组件选择、文案语气、交互基因全不同
+- 用 **Playwright 真执行**验证产物，不是 LLM 猜对错
+- 四维质量审查（事实 / 覆盖 / 可读 / 美学），素材不足时**诚实交付**不编造
+- 通过 OpenAI 兼容网关（`/v1/responses` SSE）接入成熟前端（LobeChat），或使用自带 WebUI
+- WebUI 里：**思考流全程透明**（思考块 + 工具卡）、**成品 iframe 预览**、**作品画廊**回看 / 继续迭代
+- 所有决策落盘 DecisionLog（JSONL），随时回放"AI 是怎么想到这些的"
 
----
+## 💡 为什么是 Lumen
 
-## 真实运行
-
-输入**"恐龙为什么灭绝"**，AI 自主编排完整工作流，思考过程实时流式展示：
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/hfujw/lumen/master/screenshots/01-composer.webp" width="900" alt="创作区：输入主题，AI 实时展示思考过程"><br>
-  <sub>创作区：输入主题，AI 实时展示思考过程</sub>
-</p>
-
-产物是一张带视觉层级的教育网页（杂志风格）：
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/hfujw/lumen/master/screenshots/02-preview.webp" width="900" alt="产物预览：AI 生成的教育网页"><br>
-  <sub>产物预览：AI 生成的教育网页，带时间线与对比卡片</sub>
-</p>
-
-每次生成都是一场可回放的决策：搜索、设计、渲染、审查，AI 的每一步思考都透明展示：
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/hfujw/lumen/master/screenshots/03-trace.webp" width="900" alt="思考回放：AI 决策过程全透明"><br>
-  <sub>思考回放：AI 决策过程全透明，可展开查看完整思考</sub>
-</p>
-
-> **零配置体验**：产物 HTML 已归档 [`examples/dinosaur-extinction.html`](examples/dinosaur-extinction.html)，浏览器直接打开即可查看。
+- **编排权交给 LLM**：流程不被人写死，每一步调哪个工具、审查不过退给谁，LLM 自己决定
+- **思考全透明**：决策 thought 实时流式推送，历史作品可回放完整决策链——不是黑箱
+- **能力可插拔**：Skill = 编排策略，给 LLM 装什么手艺，它就有什么手艺
+- **验证是真执行**：Playwright 无头浏览器真跑，不是 LLM 自评"我觉得不错"
+- **诚实是底线**：素材不足自动降级"资料有限"页面，不编造数字/年份/人名
+- **双前端**：成熟前端用轮子（LobeChat），深度闭环留自研（WebUI）
 
 ---
 
-## 架构
+## 真实运行（截图占位，待补充）
 
-LLM 是决策中心，不是流水线工人——**流程不被人写死**，每一步由 LLM 自主决定调哪个工具、要不要搜、审查不过退给谁。
+<!-- TODO: 以下截图占位，请用当前 WebUI 实际运行截图替换（建议 900px 宽） -->
+
+**① 创作区：输入主题，AI 实时展示思考过程**
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/hfujw/lumen/master/screenshots/architecture.svg" width="1000" alt="Lumen 系统架构图">
+  <img src="screenshots/PLACEHOLDER-composer.png" width="900" alt="创作区（占位，待截图）"><br>
+  <sub>⚠️ 截图占位：替换为 WebUI 创作区截图</sub>
 </p>
 
-### 编排核心（orchestrator）
+**② 思考流：决策过程透明展示（思考块 + 工具卡）**
 
-**async while 循环，不是状态图**。LLM 每步输出 `{thought, tool, params}`，orchestrator 执行工具、把结果反馈回上下文，再让 LLM 决定下一步。关键设计：
+<p align="center">
+  <img src="screenshots/PLACEHOLDER-thinking.png" width="900" alt="思考流（占位，待截图）"><br>
+  <sub>⚠️ 截图占位：替换为思考流截图</sub>
+</p>
 
-- **决策严谨性**：`_decide` 半截 JSON 容错重试 + prompt 前缀稳定（KV 缓存友好）+ 最近 2 步工具结果结构化回填——LLM 真正"看到"上一步再决策。
-- **流式思考**：LLM 边生成边把 thought 增量推给前端，决策卡片逐字"长出来"。
-- **零素材防呆**：素材为 0 且没搜过时，禁止直接 design，强制先 search。
-- **强制回退**：verify 不过 / 审查不过时，orchestrator 直接跳回正确节点，不让 LLM 自己纠结。
-- **断路器**：连续 3 次 LLM 失败熔断 30 秒，防级联故障。
+**③ 产物预览 + 作品画廊**
 
-### 四个 Agent（各自内部有决策循环）
-
-| Agent | 职责 | 内部机制 |
-|-------|------|---------|
-| **ResearcherAgent** | 素材检索 | 搜索无结果时 LLM 自动换词重搜 + 向量兜底；过滤广告噪音；素材质量外置评估 |
-| **DesignerAgent** | 设计叙事 + 写文案 | 发散-收敛：多创意脑并行 → 大脑综合 → 批评家挑刺修正 |
-| **RenderAgent** | 生成 HTML | 自检循环 + 缓存 + 后端自动注入 skill 交互脚本 |
-| **VerifyAgent** | 审查产物 | Playwright 真执行（抓 JS 错误）+ 硬规则（HTML 完整性/来源覆盖率） |
-
-### 质量审查（四维对抗 judge）
-
-verify 通过后进入**四维质量审查**：事实 / 覆盖 / 可读 / 美学（另有教育适配维度）。审查是"挑刺模式"——不评分，只找具体缺陷，每条可指导修改；**只有事实/覆盖的严重问题才强制回退**，可读/美学问题带 issues 诚实交付。
-
-### OpenAI 兼容网关（/v1/responses）
-
-深度编排**服务端自治**，对外暴露 OpenAI 兼容的流式网关——成熟前端（LobeChat）可直接接入；自研 WebUI 通过结构化 SSE 事件展示思考块 + 工具卡片。**双前端，同一套深度闭环。**
-
-### Skill 系统
-
-Skill 不是皮肤，是**编排策略**：每个 skill 带设计偏好 / 文案语气 / 交互基因——注入 design/compose/render 的 prompt，让同一主题用不同 skill 产出结构迥异的页面。
-
-### 硬边界（LLM 不能突破）
-
-- 最多 20 步 · 搜索 ≤ 8 次
-- render 后必须 verify；verify 不过强制回退
-- 质量审查不通过 → 诚实交付当前版本，不硬编造
-- 每步思考实时流式推送
-- 预算护栏：真实 token 成本按费率表计入虚拟 ¥1/次上限
+<p align="center">
+  <img src="screenshots/PLACEHOLDER-artifact.png" width="900" alt="成品预览（占位，待截图）"><br>
+  <sub>⚠️ 截图占位：替换为成品预览 + 画廊截图</sub>
+</p>
 
 ---
 
-## 快速开始
+## 🚀 快速开始
 
 **前置**：Python 3.13 · Node.js 18+ · 一个 DeepSeek API Key（可选 Tavily 搜索 Key）
 
@@ -152,7 +114,56 @@ npm run dev   # http://127.0.0.1:5173
 
 ---
 
-## 项目结构
+## 🏗️ 架构
+
+LLM 是决策中心，不是流水线工人——**流程不被人写死**，每一步由 LLM 自主决定。
+
+<p align="center">
+  <img src="screenshots/architecture.svg" width="1000" alt="Lumen 系统架构图">
+</p>
+
+### 编排核心（orchestrator）
+
+**async while 循环，不是状态图**。LLM 每步输出 `{thought, tool, params}`，orchestrator 执行工具、把结果反馈回上下文，再让 LLM 决定下一步。关键设计：
+
+- **决策严谨性**：半截 JSON 容错重试 + prompt 前缀稳定（KV 缓存友好）+ 最近 2 步工具结果结构化回填
+- **流式思考**：thought 增量实时推给前端，决策卡片逐字"长出来"
+- **零素材防呆**：素材为 0 且没搜过时，禁止直接 design，强制先 search
+- **强制回退**：verify / 审查不过时，orchestrator 直接跳回正确节点
+- **断路器**：连续 3 次 LLM 失败熔断 30 秒，防级联故障
+
+### 四个 Agent（各自内部有决策循环）
+
+| Agent | 职责 | 内部机制 |
+|-------|------|---------|
+| **ResearcherAgent** | 素材检索 | 搜索无结果时 LLM 自动换词重搜 + 向量兜底；过滤广告噪音；素材质量外置评估 |
+| **DesignerAgent** | 设计叙事 + 写文案 | 发散-收敛：多创意脑并行 → 大脑综合 → 批评家挑刺修正 |
+| **RenderAgent** | 生成 HTML | 自检循环 + 缓存 + 自动注入 skill 交互脚本 |
+| **VerifyAgent** | 审查产物 | Playwright 真执行（抓 JS 错误）+ 硬规则（HTML 完整性/来源覆盖率） |
+
+### 质量审查（四维对抗 judge）
+
+verify 通过后进入**四维质量审查**：事实 / 覆盖 / 可读 / 美学（另有教育适配维度）。审查是"挑刺模式"——只找具体缺陷，每条可指导修改；**只有事实/覆盖的严重问题才强制回退**，可读/美学问题带 issues 诚实交付。
+
+### OpenAI 兼容网关（/v1/responses）
+
+深度编排**服务端自治**，对外暴露 OpenAI 兼容的流式网关——成熟前端（LobeChat）可直接接入；自研 WebUI 通过结构化 SSE 事件展示思考块 + 工具卡片。**双前端，同一套深度闭环。**
+
+### Skill 系统
+
+Skill 不是皮肤，是**编排策略**：每个 skill 带设计偏好 / 文案语气 / 交互基因——注入 design/compose/render 的 prompt，让同一主题用不同 skill 产出结构迥异的页面。
+
+### 硬边界（LLM 不能突破）
+
+- 最多 20 步 · 搜索 ≤ 8 次
+- render 后必须 verify；verify 不过强制回退
+- 质量审查不通过 → 诚实交付当前版本，不硬编造
+- 每步思考实时流式推送
+- 预算护栏：真实 token 成本按费率表计入虚拟 ¥1/次上限
+
+---
+
+## 📂 项目结构
 
 <details>
 <summary><b>项目结构（点击展开）</b></summary>
@@ -215,26 +226,8 @@ webui/                       WebUI 前端（React + Vite）
 - 可下载 / 安装 / 删除；系统人格内置不可删
 
 **工程**
-- 后端 231 测试全绿 · 前端 680 测试全绿 · tsc 0 错误
+- 后端 231 测试全绿 · 前端 587 测试全绿 · tsc 0 错误 · CI 双工作流
 - DecisionLog 全透明：每次生成的决策轨迹落盘 JSONL，可回放
-
----
-
-## Roadmap
-
-**当前（v0.2.0）**
-- [x] AI 自主编排多 Agent 工作流
-- [x] Skill 系统（像素 / 杂志 / 信息图）
-- [x] 思考流专属展示（思考块 + 工具卡）
-- [x] 成品 HTML 预览 + 作品画廊
-- [x] 双前端（LobeChat + WebUI）
-- [x] 前端填模型/搜索 Key（localStorage + Authorization）
-
-**下一版本**
-- [ ] 支持任意搜索服务选择（目前固定 Tavily / 自定义地址）
-- [ ] 迭代历史完整保留（refine 追加而非覆盖）
-- [ ] 教育游戏生成：基于现有编排架构扩展 Canvas 交互小游戏
-- [ ] i18n：多语言界面
 
 ---
 
@@ -249,3 +242,13 @@ webui/                       WebUI 前端（React + Vite）
 | 服务端自治 | 编排在服务端，对外 OpenAI 兼容网关——成熟前端可直接接入 |
 | 诚实模式 | 素材不足 → "资料有限"页面，不编造 |
 | 会话日志分开 | 每次生成一个文件，日志不再堆成一座山 |
+
+---
+
+## 🤝 贡献
+
+欢迎提交 issue 和 PR。代码风格：后端 `ruff`，前端 `eslint`。
+
+## 开源协议
+
+[MIT](LICENSE)
