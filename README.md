@@ -104,6 +104,18 @@ npm install
 npm run dev   # http://127.0.0.1:5173
 ```
 
+**（可选）桌面端（Tauri）**
+
+```bash
+cd lumen
+npm install          # 根目录，装 tauri CLI
+npm run tauri:dev    # 开发模式：桌面窗口加载 webui
+# 或打包
+npm run tauri:build  # 产物：src-tauri/target/release/lumen.exe
+```
+
+> 桌面端需要后端在 8001 运行（见步骤 1）。桌面端 API 请求自动指向 `http://127.0.0.1:8001`。
+
 ### 首次使用
 
 1. 打开应用 → **设置 → 模型**：填 DeepSeek API Key
