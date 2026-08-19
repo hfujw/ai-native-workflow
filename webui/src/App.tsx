@@ -54,6 +54,7 @@ import {
   runPairingAction,
 } from "@/lib/api";
 import { lumenSessionKey } from "@/lib/lumen-api";
+import { isTauri } from "@/lib/http";
 import {
   createRuntimeHost,
   toRuntimeSurface,
@@ -2120,8 +2121,13 @@ function Shell({
         className={cn(
           "relative h-full w-full overflow-hidden",
           showHostChrome && "host-window-shell",
+          // 桌面端无边框窗口：顶部留一条透明拖拽带（拖窗口用，无可见栏）
+          isTauri() && "pt-6",
         )}
       >
+        {isTauri() ? (
+          <div data-tauri-drag-region className="fixed inset-x-0 top-0 z-[200] h-6" />
+        ) : null}
         {showHostChrome ? (
           <HostChrome
             onToggleSidebar={showMainSidebar ? toggleHostSidebar : undefined}

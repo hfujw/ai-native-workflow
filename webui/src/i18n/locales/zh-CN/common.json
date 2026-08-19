@@ -1033,10 +1033,10 @@
     "loadingConversation": "正在加载话题…",
     "empty": {
       "greetings": {
-        "workOn": "我们要一起做点什么？",
-        "start": "今天从哪里开始？",
-        "build": "今天一起构建什么？",
-        "tackle": "我们要一起解决什么？"
+        "workOn": "想让我给你做一页什么？",
+        "start": "输入一个主题，我帮你做成一页",
+        "build": "今天想生成点什么？",
+        "tackle": "给我一个主题，我还你一页精品"
       },
       "quickActions": {
         "plan": {

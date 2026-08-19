@@ -1033,10 +1033,10 @@
     "loadingConversation": "Loading conversation…",
     "empty": {
       "greetings": {
-        "workOn": "What should we work on?",
-        "start": "Where should we start?",
-        "build": "What are we building today?",
-        "tackle": "What should we tackle together?"
+        "workOn": "What would you like me to make?",
+        "start": "Give me a topic — I'll turn it into a page",
+        "build": "What should we build today?",
+        "tackle": "Type a topic and watch it come to life"
       },
       "quickActions": {
         "plan": {
