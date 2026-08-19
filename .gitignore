@@ -26,8 +26,8 @@ _last_failed_game.html
 *.png
 *.jpg
 *.jpeg
-# 桌面图标例外：Tauri 构建需要完整 icons/（含 PNG）
-!desktop/src-tauri/icons/**
+# README 截图例外（screenshots/ 下的 PNG 是项目展示图，要进仓库）
+!screenshots/*.png
 
 # ── 工具状态（不提交）──
 .claude/

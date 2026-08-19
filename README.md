@@ -55,16 +55,17 @@ Lumen 是给 LLM 装可插拔 skill 的 AI 原生工作台。它可以：
 
 ---
 
-## 真实运行（截图占位，待补充）
-
-<!-- TODO: 以下截图占位，请用当前 WebUI 实际运行截图替换（建议 900px 宽） -->
+## 真实运行
 
 **① 创作区：输入主题，AI 实时展示思考过程**
 
 <p align="center">
-  <img src="screenshots/PLACEHOLDER-composer.png" width="900" alt="创作区（占位，待截图）"><br>
-  <sub>⚠️ 截图占位：替换为 WebUI 创作区截图</sub>
+  <img src="screenshots/01-composer.png" width="900" alt="创作区：输入主题，AI 实时展示思考过程"><br>
+  <sub>创作区：输入主题，AI 实时展示思考过程</sub>
 </p>
+
+<!-- 🖼️ 截图待补充：以下两张用当前 WebUI 实际运行截图替换（建议 900px 宽，存为
+     screenshots/PLACEHOLDER-thinking.png 和 PLACEHOLDER-artifact.png） -->
 
 **② 思考流：决策过程透明展示（思考块 + 工具卡）**
 
