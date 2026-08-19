@@ -2,7 +2,6 @@
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
 from app.observability.trace import get_trace
 from app.projects import (
