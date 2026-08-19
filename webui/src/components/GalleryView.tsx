@@ -28,7 +28,7 @@ export function GalleryView({
 
   return (
     <div className="h-full overflow-y-auto px-6 py-8 sm:px-10 lg:px-14">
-      <header className="mb-6 flex items-center gap-2.5">
+      <header data-tauri-drag-region className="mb-6 flex items-center gap-2.5">
         <GalleryVerticalEnd className="h-5 w-5 text-muted-foreground" aria-hidden />
         <h1 className="text-lg font-semibold tracking-[-0.01em]">
           {t("gallery.title", { defaultValue: "作品画廊" })}

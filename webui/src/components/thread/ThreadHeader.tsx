@@ -47,6 +47,7 @@ export function ThreadHeader({
   return (
     <div
       data-testid="thread-header"
+      data-tauri-drag-region
       className={cn(
         "relative z-30 flex items-center justify-between gap-3 px-3 py-2",
         minimal && "h-11",

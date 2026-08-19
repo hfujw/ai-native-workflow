@@ -55,7 +55,10 @@ export function LumenSettingsView({
 
   return (
     <div className="flex h-full min-h-0">
-      <aside className="flex w-56 shrink-0 flex-col gap-1 border-r bg-sidebar p-3">
+      <aside
+        data-tauri-drag-region
+        className="flex w-56 shrink-0 flex-col gap-1 border-r bg-sidebar p-3"
+      >
         <Button
           variant="ghost"
           size="sm"
