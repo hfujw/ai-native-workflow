@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+
+import { useWindowDrag } from "@/lib/desktop";
 import {
   ArrowLeft,
   KeyRound,
@@ -52,10 +54,13 @@ export function LumenSettingsView({
 }) {
   const { t } = useTranslation();
   const [section, setSection] = useState<Section>("overview");
+  const asideRef = useRef<HTMLElement>(null);
+  useWindowDrag(asideRef);
 
   return (
     <div className="flex h-full min-h-0">
       <aside
+        ref={asideRef}
         data-tauri-drag-region
         className="flex w-56 shrink-0 flex-col gap-1 border-r bg-sidebar p-3"
       >

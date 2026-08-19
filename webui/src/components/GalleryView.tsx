@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Calendar, GalleryVerticalEnd } from "lucide-react";
 
+import { useWindowDrag } from "@/lib/desktop";
 import type { ChatSummary } from "@/lib/types";
 import { fmtDateTime } from "@/lib/format";
 
@@ -16,6 +17,8 @@ export function GalleryView({
   onSelect: (key: string) => void;
 }) {
   const { t } = useTranslation();
+  const headerRef = useRef<HTMLElement>(null);
+  useWindowDrag(headerRef);
   const sorted = useMemo(
     () => [...sessions].sort(
       (a, b) => (
@@ -28,7 +31,7 @@ export function GalleryView({
 
   return (
     <div className="h-full overflow-y-auto px-6 py-8 sm:px-10 lg:px-14">
-      <header data-tauri-drag-region className="mb-6 flex items-center gap-2.5">
+      <header ref={headerRef} data-tauri-drag-region className="mb-6 flex items-center gap-2.5">
         <GalleryVerticalEnd className="h-5 w-5 text-muted-foreground" aria-hidden />
         <h1 className="text-lg font-semibold tracking-[-0.01em]">
           {t("gallery.title", { defaultValue: "作品画廊" })}

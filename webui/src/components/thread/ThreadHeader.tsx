@@ -1,6 +1,8 @@
 import { Menu, MessageCircleDashed, Moon, Sun } from "lucide-react";
-import { type ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 import { useTranslation } from "react-i18next";
+
+import { useWindowDrag } from "@/lib/desktop";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -43,9 +45,12 @@ export function ThreadHeader({
   onTemporaryChatEnabledChange,
 }: ThreadHeaderProps) {
   const { t } = useTranslation();
+  const rootRef = useRef<HTMLDivElement>(null);
+  useWindowDrag(rootRef);
 
   return (
     <div
+      ref={rootRef}
       data-testid="thread-header"
       data-tauri-drag-region
       className={cn(
