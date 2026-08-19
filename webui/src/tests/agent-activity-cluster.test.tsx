@@ -2056,8 +2056,14 @@ describe("AgentActivityCluster", () => {
     for (const step of steps) {
       expect(step).toHaveClass("grid-cols-[1.125rem_minmax(0,1fr)]");
       const line = step.children[1]?.firstElementChild;
-      expect(line).toHaveClass("overflow-hidden");
-      expect(line).toHaveClass("whitespace-nowrap");
+      // reasoning 步骤换行显示全文（透明性优先）；其余步骤保持单行截断
+      if (line?.classList.contains("whitespace-normal")) {
+        expect(line).not.toHaveClass("whitespace-nowrap");
+        expect(line).not.toHaveClass("truncate");
+      } else {
+        expect(line).toHaveClass("overflow-hidden");
+        expect(line).toHaveClass("whitespace-nowrap");
+      }
       expect(step.querySelector("br")).not.toBeInTheDocument();
       expect(step.querySelector('[data-testid="activity-evidence-preview"]')).not.toBeInTheDocument();
     }

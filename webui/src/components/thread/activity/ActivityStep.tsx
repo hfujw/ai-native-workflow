@@ -18,6 +18,8 @@ export interface ActivityStepProps {
   labelClassName?: string;
   markerClassName?: string;
   style?: CSSProperties;
+  /** 换行显示完整 label（reasoning 思考全文用），默认单行截断。 */
+  wrapLabel?: boolean;
 }
 
 export function ActivityStep({
@@ -32,6 +34,7 @@ export function ActivityStep({
   labelClassName,
   markerClassName,
   style,
+  wrapLabel = false,
 }: ActivityStepProps) {
   return (
     <div
@@ -68,12 +71,16 @@ export function ActivityStep({
         <div
           data-testid="activity-line"
           title={typeof label === "string" ? label : undefined}
-          className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap"
+          className={cn(
+            "flex min-w-0 items-center gap-1.5",
+            wrapLabel ? "whitespace-normal" : "overflow-hidden whitespace-nowrap",
+          )}
         >
           <StreamingLabelSheen
             active={active}
             className={cn(
-              "min-w-0 flex-1 truncate font-medium",
+              "min-w-0 flex-1 font-medium",
+              wrapLabel ? "" : "truncate",
               tone === "error" ? "text-destructive/78" : "text-muted-foreground/85",
               labelClassName,
             )}

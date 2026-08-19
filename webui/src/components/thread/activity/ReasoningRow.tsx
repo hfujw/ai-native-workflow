@@ -30,6 +30,8 @@ export function ReasoningRow({
       labelClassName="italic text-muted-foreground/78"
       contentClassName="overflow-hidden"
       className={className}
+      // 思考全文换行显示（不再单行截断）——"看完整思考"是透明性的核心
+      wrapLabel
     />
   );
 }
