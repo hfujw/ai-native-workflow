@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: desktop
+        working-directory: webui
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,8 +16,9 @@ jobs:
           # Node 20 下 vitest 启动 jsdom worker 必崩，锁 22
           node-version: 22
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: webui/package-lock.json
       - run: npm ci
       - run: npm test
-      - run: npx tsc --noEmit
+      # 类型检查用 build 配置（排除 tests，与产物一致）——dev 配置含测试文件，非 CI 关口
+      - run: npx tsc -p tsconfig.build.json --noEmit
       - run: npm run build
