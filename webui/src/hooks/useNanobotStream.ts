@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useClient } from "@/providers/ClientProvider";
 import { hasPendingAgentActivity } from "@/lib/activity-timeline";
 import { getLumenKey, getLumenSearchService } from "@/lib/lumen-key";
-import type { StreamError } from "@/lib/nanobot-client";
+import type { StreamError } from "@/lib/client-types";
 import {
   finalizeStreamedTurn,
   findActiveAssistantPlaceholderIndex,

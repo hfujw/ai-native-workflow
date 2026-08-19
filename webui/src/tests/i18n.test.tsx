@@ -6,7 +6,6 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThreadComposer } from "@/components/thread/ThreadComposer";
 import { resources } from "@/i18n";
 import {
@@ -423,30 +422,7 @@ describe("webui i18n", () => {
     expect(resolveInitialLocale()).toBe("zh-CN");
   });
 
-  it("switches UI copy and document locale through the language switcher", async () => {
-    const user = userEvent.setup();
-
-    render(
-      <>
-        <LanguageSwitcher />
-        <ThreadComposer onSend={vi.fn()} />
-      </>,
-    );
-
-    expect(
-      screen.getByPlaceholderText("Type your message…"),
-    ).toBeInTheDocument();
-    expect(document.documentElement.lang).toBe("en");
-
-    await user.click(screen.getByRole("button", { name: "Change language" }));
-    await user.click(screen.getByRole("menuitemradio", { name: /简体中文/i }));
-
-    await waitFor(() => {
-      expect(document.documentElement.lang).toBe("zh-CN");
-    });
-    expect(localStorage.getItem("nanobot.locale")).toBe("zh-CN");
-    expect(screen.getByPlaceholderText("输入消息…")).toBeInTheDocument();
-  });
+  // 语言切换器组件已随 nanobot 设置删除；本地化核心（locale 解析/资源）仍由上方用例覆盖
 
   it("updates the composer aria label when the language changes", async () => {
     render(<ThreadComposer onSend={vi.fn()} />);

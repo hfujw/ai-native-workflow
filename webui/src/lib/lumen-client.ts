@@ -5,7 +5,7 @@ import type {
   SidebarStatePayload,
   WorkspaceScopePayload,
 } from "./types";
-import type { CanonicalRunSnapshot, StreamError } from "./nanobot-client";
+import type { CanonicalRunSnapshot, StreamError } from "./client-types";
 
 /**
  * LumenClient —— 深度后端的极简客户端（task 13 方案 3）。
