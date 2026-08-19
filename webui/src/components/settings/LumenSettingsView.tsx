@@ -23,6 +23,7 @@ import {
   setLumenKey,
   setLumenSearchService,
   TAVILY_DEFAULT,
+  type LumenSearchService,
 } from "@/lib/lumen-key";
 import type { SkillSummary } from "@/lib/types";
 
@@ -157,14 +158,37 @@ function OverviewSection() {
 function ModelsSection() {
   const { t } = useTranslation();
   const [key, setKey] = useState(() => getLumenKey());
+  const [searchService, setSearchService] = useState<LumenSearchService | null>(
+    () => getLumenSearchService(),
+  );
+  const [searchProvider, setSearchProvider] = useState(
+    () => getLumenSearchService()?.name ?? TAVILY_DEFAULT.name,
+  );
   const [searchKey, setSearchKey] = useState(() => getLumenSearchService()?.api_key ?? "");
+  const [searchBaseUrl, setSearchBaseUrl] = useState(
+    () => getLumenSearchService()?.base_url ?? TAVILY_DEFAULT.base_url,
+  );
   const [saved, setSaved] = useState(false);
   const save = () => {
     setLumenKey(key);
-    // 现在固定 Tavily；后续支持任意搜索服务时，这里扩展 provider 选择即可
-    setLumenSearchService({ ...TAVILY_DEFAULT, api_key: searchKey });
+    const isCustom = searchProvider === "自定义";
+    setLumenSearchService({
+      name: isCustom ? "自定义" : TAVILY_DEFAULT.name,
+      api_key: searchKey,
+      base_url: isCustom ? searchBaseUrl : TAVILY_DEFAULT.base_url,
+    });
+    setSearchService(getLumenSearchService());
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2000);
+  };
+  const clear = () => {
+    setKey("");
+    setLumenKey("");
+    setSearchKey("");
+    setSearchBaseUrl(TAVILY_DEFAULT.base_url);
+    setSearchProvider(TAVILY_DEFAULT.name);
+    setLumenSearchService({ ...TAVILY_DEFAULT, api_key: "" });
+    setSearchService(null);
   };
   return (
     <>
@@ -182,25 +206,50 @@ function ModelsSection() {
             autoComplete="off"
             className="mt-2"
           />
+
+          <label className="mt-5 block text-sm font-medium text-foreground">
+            {t("lumen.models.searchService", { defaultValue: "网页搜索服务" })}
+          </label>
+          <select
+            value={searchProvider}
+            onChange={(e) => setSearchProvider(e.target.value)}
+            className="mt-2 h-9 w-full rounded-lg border bg-background px-3 text-sm"
+          >
+            <option value={TAVILY_DEFAULT.name}>Tavily</option>
+            <option value="自定义">{t("lumen.models.customSearch", { defaultValue: "自定义（自填地址）" })}</option>
+          </select>
+          {searchProvider === "自定义" ? (
+            <Input
+              type="text"
+              value={searchBaseUrl}
+              onChange={(e) => setSearchBaseUrl(e.target.value)}
+              placeholder="https://api.search.example.com"
+              autoComplete="off"
+              className="mt-2"
+            />
+          ) : null}
+          <Input
+            type="password"
+            value={searchKey}
+            onChange={(e) => setSearchKey(e.target.value)}
+            placeholder={searchProvider === TAVILY_DEFAULT.name ? "tvly-..." : "搜索服务 API Key"}
+            autoComplete="off"
+            className="mt-2"
+          />
+
           <p className="mt-2 text-xs text-muted-foreground">
-            {t("lumen.models.hint", {
-              defaultValue: "Key 存本地浏览器（localStorage），生成请求带 Authorization 头发给后端。不填则回落 backend/.env。",
+            {t("lumen.models.searchHint", {
+              defaultValue: "前端填了优先（搜真实网页）；不填 = 不联网，只搜本地知识库，素材较少。",
             })}
           </p>
-          <div className="mt-3 flex items-center gap-2">
+
+          <div className="mt-4 flex items-center gap-2">
             <Button size="sm" onClick={save}>
               <KeyRound className="mr-1.5 h-3.5 w-3.5" />
               {t("lumen.models.save", { defaultValue: "保存" })}
             </Button>
-            {key ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setKey("");
-                  setLumenKey("");
-                }}
-              >
+            {(key || searchKey) ? (
+              <Button size="sm" variant="ghost" onClick={clear}>
                 {t("lumen.models.clear", { defaultValue: "清除" })}
               </Button>
             ) : null}
@@ -211,27 +260,9 @@ function ModelsSection() {
             ) : null}
           </div>
         </div>
-        <div className="rounded-2xl border bg-card p-4">
-          <label className="block text-sm font-medium text-foreground">
-            {t("lumen.models.searchKey", { defaultValue: "网页搜索 Key（Tavily）" })}
-          </label>
-          <Input
-            type="password"
-            value={searchKey}
-            onChange={(e) => setSearchKey(e.target.value)}
-            placeholder="tvly-..."
-            autoComplete="off"
-            className="mt-2"
-          />
-          <p className="mt-2 text-xs text-muted-foreground">
-            {t("lumen.models.searchHint", {
-              defaultValue: "前端填了就优先（搜真实网页）；不填 = 不联网，只搜本地知识库，素材较少。后续将支持任意搜索服务。",
-            })}
-          </p>
-        </div>
         <div className="rounded-2xl border bg-card p-4 text-sm text-muted-foreground">
           {t("lumen.models.modelInfo", {
-            defaultValue: `当前固定使用 ${MODEL}（DeepSeek 官方名，normalize_model 会统一变体）。`,
+            defaultValue: `LLM 固定 ${MODEL}；搜索服务 ${searchService ? searchService.name : "未配置（只搜本地知识库）"}。`,
           })}
         </div>
       </div>
