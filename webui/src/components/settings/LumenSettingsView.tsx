@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useWindowDrag } from "@/lib/desktop";
@@ -7,18 +7,12 @@ import {
   KeyRound,
   Moon,
   Sun,
-  Trash2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import {
-  deleteLumenSkill,
-  fetchLumenSkills,
-  installLumenSkill,
-  listSessions,
-} from "@/lib/lumen-api";
+import { listSessions } from "@/lib/lumen-api";
 import {
   getLumenKey,
   getLumenSearchService,
@@ -27,22 +21,20 @@ import {
   TAVILY_DEFAULT,
   type LumenSearchService,
 } from "@/lib/lumen-key";
-import type { SkillSummary } from "@/lib/types";
-
 const MODEL = "deepseek-v4-flash";
 
-type Section = "overview" | "models" | "skills" | "appearance";
+type Section = "overview" | "models" | "appearance";
 
 const SECTIONS: { key: Section; label: string }[] = [
   { key: "overview", label: "概览" },
   { key: "models", label: "模型" },
-  { key: "skills", label: "技能" },
   { key: "appearance", label: "外观" },
 ];
 
 /** Lumen 原生设置视图（task：前端都接上后端）。
  * 不依赖 nanobot SettingsPayload——只接深度后端真实能力：
- * 概览（项目数/模型/key）、模型（前端填 DeepSeek key）、技能（/api/skills）、外观（主题）。 */
+ * 概览（项目数/模型/key）、模型（前端填 DeepSeek key）、外观（主题）。
+ * 技能已搬到独立 SkillsView（侧边栏"技能"入口），不在这里。 */
 export function LumenSettingsView({
   theme,
   onToggleTheme,
@@ -93,7 +85,6 @@ export function LumenSettingsView({
         <div className="max-w-2xl">
           {section === "overview" ? <OverviewSection /> : null}
           {section === "models" ? <ModelsSection /> : null}
-          {section === "skills" ? <SkillsSection /> : null}
           {section === "appearance" ? (
             <AppearanceSection theme={theme} onToggleTheme={onToggleTheme} />
           ) : null}
@@ -274,131 +265,6 @@ function ModelsSection() {
           })}
         </div>
       </div>
-    </>
-  );
-}
-
-function SkillsSection() {
-  const { t } = useTranslation();
-  const [skills, setSkills] = useState<SkillSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [installOpen, setInstallOpen] = useState(false);
-  const [installName, setInstallName] = useState("");
-  const [installMd, setInstallMd] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(() => {
-    fetchLumenSkills()
-      .then((next) => {
-        setSkills(next);
-        setError(null);
-      })
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false));
-  }, []);
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  const doInstall = async () => {
-    setError(null);
-    try {
-      await installLumenSkill(installName, installMd);
-      setInstallName("");
-      setInstallMd("");
-      setInstallOpen(false);
-      refresh();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-  const doDelete = async (name: string) => {
-    setError(null);
-    try {
-      await deleteLumenSkill(name);
-      refresh();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  return (
-    <>
-      <SectionTitle>{t("settings.nav.skills", { defaultValue: "技能" })}</SectionTitle>
-      <div className="mb-4 flex items-center justify-between">
-        <p className="text-[13px] text-muted-foreground">
-          {t("lumen.skills.hint", {
-            defaultValue: "风格 / 工具 skill——给 LLM 装什么手艺，它就有什么手艺。",
-          })}
-        </p>
-        <Button size="sm" variant="outline" onClick={() => setInstallOpen((v) => !v)}>
-          {t("lumen.skills.install", { defaultValue: "安装 skill" })}
-        </Button>
-      </div>
-      {installOpen ? (
-        <div className="mb-4 space-y-3 rounded-2xl border bg-card p-4">
-          <Input
-            value={installName}
-            onChange={(e) => setInstallName(e.target.value)}
-            placeholder={t("lumen.skills.name", { defaultValue: "skill 名（如 信息图）" })}
-          />
-          <textarea
-            value={installMd}
-            onChange={(e) => setInstallMd(e.target.value)}
-            placeholder={t("lumen.skills.markdown", {
-              defaultValue: "skill 的 markdown 定义（frontmatter: name/type/description + 正文）",
-            })}
-            className="h-28 w-full rounded-lg border bg-background px-3 py-2 text-sm"
-          />
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={doInstall}>
-              {t("lumen.skills.confirmInstall", { defaultValue: "确认安装" })}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setInstallOpen(false)}>
-              {t("common.cancel", { defaultValue: "取消" })}
-            </Button>
-          </div>
-        </div>
-      ) : null}
-      {error ? (
-        <p className="mb-4 text-sm text-destructive">{error}</p>
-      ) : null}
-      {loading ? (
-        <p className="text-sm text-muted-foreground">{t("gallery.loading", { defaultValue: "加载中…" })}</p>
-      ) : skills.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {t("lumen.skills.empty", { defaultValue: "还没有 skill。" })}
-        </p>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {skills.map((skill) => (
-            <div key={skill.name} className="flex items-start justify-between gap-3 rounded-2xl border bg-card p-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">{skill.name}</span>
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                    {skill.source}
-                  </span>
-                </div>
-                <p className="mt-1 line-clamp-2 text-[13px] text-muted-foreground">
-                  {skill.description || "—"}
-                </p>
-              </div>
-              {skill.deletable ? (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-label={t("lumen.skills.delete", { defaultValue: "删除" })}
-                  onClick={() => doDelete(skill.name)}
-                  className="shrink-0 text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      )}
     </>
   );
 }

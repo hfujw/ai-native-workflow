@@ -107,6 +107,10 @@ const GalleryView = lazy(async () => {
   const module = await import("@/components/GalleryView");
   return { default: module.GalleryView };
 });
+const SkillsView = lazy(async () => {
+  const module = await import("@/components/SkillsView");
+  return { default: module.SkillsView };
+});
 const SessionSearchDialog = lazy(async () => {
   const module = await import("@/components/SessionSearchDialog");
   return { default: module.SessionSearchDialog };
@@ -2289,7 +2293,14 @@ function Shell({
                 </Suspense>
               </div>
             ) : null}
-            {view !== "chat" && view !== "gallery" && (
+            {view === "skills" ? (
+              <div className="absolute inset-0 flex flex-col">
+                <Suspense fallback={<SurfaceLoadingFallback />}>
+                  <SkillsView />
+                </Suspense>
+              </div>
+            ) : null}
+            {view !== "chat" && view !== "gallery" && view !== "skills" && (
               <div className="absolute inset-0 flex flex-col">
                 <Suspense fallback={<SurfaceLoadingFallback />}>
                   <SettingsView
