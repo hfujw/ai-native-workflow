@@ -33,8 +33,6 @@
     }
   },
   "include": [
-    "src",
-    "../nanobot/channels/*/webui/**/*.ts",
-    "../nanobot/channels/*/webui/**/*.tsx"
+    "src"
   ]
 }
