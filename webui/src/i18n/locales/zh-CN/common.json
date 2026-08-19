@@ -3,7 +3,7 @@
     "brand": "nanobot",
     "loading": {
       "connecting": "正在连接 nanobot…",
-      "boot": "正在加载 nanobot…"
+      "boot": "正在加载 Lumen…"
     },
     "error": {
       "title": "无法连接到 nanobot",
@@ -38,7 +38,7 @@
       "chat": "{{title}} · nanobot"
     },
     "meta": {
-      "description": "nanobot Web UI —— 与你的 nanobot 工作区对话。"
+      "description": "Lumen —— 给 LLM 装可插拔 skill 的 AI 原生工作台。"
     },
     "pairing": {
       "title": "配对聊天用户",

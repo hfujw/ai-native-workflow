@@ -3,7 +3,7 @@
     "brand": "nanobot",
     "loading": {
       "connecting": "Connecting to nanobot…",
-      "boot": "Loading nanobot…"
+      "boot": "Loading Lumen…"
     },
     "error": {
       "title": "Couldn't reach nanobot",
@@ -38,7 +38,7 @@
       "chat": "{{title}} · nanobot"
     },
     "meta": {
-      "description": "nanobot web UI — chat with your nanobot workspace."
+      "description": "Lumen — AI-native workspace with pluggable skills."
     },
     "pairing": {
       "title": "Pair a chat user",
