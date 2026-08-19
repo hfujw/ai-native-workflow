@@ -54,14 +54,3 @@ def test_params_cap_upper_bounds():
     assert ctx["search_max"] == 20
     assert ctx["llm_steps"] == 100
 
-
-def test_generate_api_accepts_params_and_model():
-    """REST /api/generate 能接收 params + model 且不炸（空主题仍 400）。"""
-    from fastapi.testclient import TestClient
-    from app.main import app
-
-    client = TestClient(app)
-    r = client.post("/api/generate", json={
-        "topic": "", "params": {"agentSteps": 5}, "model": "deepseek-Pro",
-    })
-    assert r.status_code == 400

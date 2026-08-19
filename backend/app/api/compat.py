@@ -147,6 +147,13 @@ async def responses(req: ResponsesRequest, authorization: str | None = Header(No
     query = _last_user_text(msgs)
     if not query:
         return JSONResponse(status_code=400, content={"error": "缺少用户消息"})
+    # 输入限长（安全护栏）——config.input_max_length
+    from app.config import settings
+    if len(query) > settings.input_max_length:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"输入过长（上限 {settings.input_max_length} 字符）"},
+        )
 
     # 会话级 Key：LobeChat 把服务商配置的 API Key 放 Authorization: Bearer
     # （架构延续：Key 不进后端配置，随会话传入；必须在 create_task 前 bind，

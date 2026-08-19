@@ -182,6 +182,19 @@ def test_responses_no_search_service_means_offline(monkeypatch):
     assert called["bound"] is False
 
 
+def test_responses_input_length_limit(monkeypatch):
+    """输入超过 config.input_max_length → 400（安全护栏生效）。"""
+    from app.config import settings
+
+    long_text = "长" * (settings.input_max_length + 10)
+    r = client.post(
+        "/v1/responses",
+        json={"input": [{"role": "user", "content": long_text}], "model": "deepseek-v4-flash"},
+    )
+    assert r.status_code == 400
+    assert "输入过长" in r.text
+
+
 def test_responses_no_user_message_400(monkeypatch):
     """空 input → 400。"""
 

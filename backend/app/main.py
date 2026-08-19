@@ -55,8 +55,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import compat, generate, history, meta, skills, webui, workspace
-from app.api.ws import ws_manager
+from app.api import compat, history, meta, skills, webui
 from app.config import settings as _settings
 
 
@@ -65,8 +64,6 @@ async def lifespan(app: FastAPI):
     """启动校验 + 优雅关闭。"""
     logger.info("服务启动中...")
     yield
-    logger.info("正在关闭，等待飞行中请求完成...")
-    await ws_manager.shutdown(timeout=5.0)
     logger.info("服务已关闭")
 
 
@@ -83,10 +80,8 @@ app.add_middleware(
 
 # 路由
 app.include_router(meta.router)
-app.include_router(generate.router)
 app.include_router(history.router)
 app.include_router(skills.router)
-app.include_router(workspace.router)
 # OpenAI 兼容网关（LobeChat 前端接入）
 app.include_router(compat.router)
 # WebUI 端点（nanobot WebUI 前端接入：bootstrap mock + 成品查看）

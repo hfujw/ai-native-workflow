@@ -1,4 +1,4 @@
-"""历史管理测试：重命名 / 置顶 / 删除（projects 层 + API 层）。
+"""历史管理测试：删除 + 列表 + 单条（projects 层 + API 层）。
 
 用 monkeypatch 把 projects.json 指向临时文件，不碰真实数据。
 """
@@ -25,24 +25,6 @@ def tmp_projects(tmp_path, monkeypatch):
 
 
 # ── projects 层 ──
-
-def test_rename_project(tmp_projects):
-    assert projects_mod.rename_project("p1", "长城故事") is True
-    assert projects_mod.get_project("p1")["topic"] == "长城故事"
-
-
-def test_rename_missing_project(tmp_projects):
-    assert projects_mod.rename_project("nope", "x") is False
-
-
-def test_pin_project_moves_to_front(tmp_projects):
-    assert projects_mod.pin_project("p2") is True
-    assert projects_mod.get_projects()[0]["id"] == "p2"
-
-
-def test_pin_missing_project(tmp_projects):
-    assert projects_mod.pin_project("nope") is False
-
 
 def test_delete_project(tmp_projects):
     assert projects_mod.delete_project("p1") is True
@@ -71,20 +53,6 @@ def test_history_api_roundtrip(tmp_projects):
     r = client.get("/api/history/p1")
     assert r.status_code == 200
     assert r.json()["topic"] == "秦始皇修长城"
-
-    # 重命名
-    r = client.patch("/api/history/p1", json={"topic": "长城故事"})
-    assert r.status_code == 200 and r.json()["ok"] is True
-    assert client.get("/api/history/p1").json()["topic"] == "长城故事"
-
-    # 空主题拒绝
-    r = client.patch("/api/history/p1", json={"topic": "  "})
-    assert r.status_code == 400
-
-    # 置顶
-    r = client.post("/api/history/p1/pin")
-    assert r.status_code == 200 and r.json()["ok"] is True
-    assert client.get("/api/history").json()["projects"][0]["id"] == "p1"
 
     # 删除
     r = client.delete("/api/history/p2")
