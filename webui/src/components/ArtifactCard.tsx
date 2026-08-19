@@ -3,6 +3,7 @@ import { ExternalLink, Eye, EyeOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
+import { apiBase } from "@/lib/http";
 
 /** 成品卡（task 14）：assistant 消息里带 `✨ 成品已生成 [id]` 时渲染。
  * 展开 = 应用内 iframe 预览 /works/{id}（vite 代理到 8001），也可新窗口打开。 */
@@ -15,7 +16,7 @@ export function ArtifactCard({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const src = `/works/${artifactId}`;
+  const src = `${apiBase()}/works/${artifactId}`;
   return (
     <div className={cn("mt-2 overflow-hidden rounded-xl border bg-muted/25", className)}>
       <div className="flex items-center justify-between gap-3 px-3 py-2">

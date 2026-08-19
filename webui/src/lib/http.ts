@@ -1,5 +1,17 @@
 export const DEFAULT_HTTP_TIMEOUT_MS = 20_000;
 
+/** 桌面端（Tauri）下 API 请求要到深度后端 8001——打包后 webview 的 origin 是
+ * tauri://localhost，相对路径到不了 8001。浏览器 dev 返回空串走 vite proxy。 */
+export function apiBase(): string {
+  if (typeof window !== "undefined") {
+    const origin = window.location.origin;
+    if (origin.startsWith("tauri://") || origin.startsWith("http://tauri.localhost")) {
+      return "http://127.0.0.1:8001";
+    }
+  }
+  return "";
+}
+
 export async function fetchWithTimeout(
   input: RequestInfo | URL,
   init: RequestInit = {},

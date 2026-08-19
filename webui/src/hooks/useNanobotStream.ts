@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useClient } from "@/providers/ClientProvider";
 import { hasPendingAgentActivity } from "@/lib/activity-timeline";
 import { getLumenKey, getLumenSearchService } from "@/lib/lumen-key";
+import { apiBase } from "@/lib/http";
 import type { StreamError } from "@/lib/client-types";
 import {
   finalizeStreamedTurn,
@@ -703,7 +704,7 @@ export function useNanobotStream(
       let res: Response;
       try {
         const apiKey = getLumenKey();
-        res = await fetch("/v1/responses", {
+        res = await fetch(`${apiBase()}/v1/responses`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

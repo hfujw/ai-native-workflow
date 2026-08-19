@@ -8,7 +8,7 @@ import type {
   WebuiThreadPersistedPayload,
 } from "./types";
 import { ApiError } from "./api";
-import { fetchWithTimeout } from "./http";
+import { apiBase, fetchWithTimeout } from "./http";
 
 /**
  * Lumen 数据层（task 13 方案 3）——useSessions / useSessionHistory 的数据源。
@@ -19,6 +19,11 @@ import { fetchWithTimeout } from "./http";
  */
 
 const LUMEN_CHANNEL = "lumen";
+
+/** 显式传入的 base 优先，否则取 apiBase()（Tauri 桌面端 → 8001；浏览器 dev → 相对路径走 vite proxy）。 */
+function resolveBase(base: string): string {
+  return base || apiBase();
+}
 
 export function lumenSessionKey(projectId: string): string {
   return `${LUMEN_CHANNEL}:${projectId}`;
@@ -149,7 +154,7 @@ export function stripArtifactMarker(content: string): string {
 
 /** GET /api/history → 会话列表（新的在前）。 */
 export async function listSessions(token: string, base: string = ""): Promise<ChatSummary[]> {
-  const res = await fetchWithTimeout(`${base}/api/history`, {
+  const res = await fetchWithTimeout(`${resolveBase(base)}/api/history`, {
     headers: { Authorization: `Bearer ${token}` },
     credentials: "same-origin",
     cache: "no-store",
@@ -185,7 +190,7 @@ export async function fetchWebuiThread(
   } | string,
   base: string = "",
 ): Promise<WebuiThreadPersistedPayload | null> {
-  const resolvedBase = typeof optionsOrBase === "string" ? optionsOrBase : base;
+  const resolvedBase = typeof optionsOrBase === "string" ? optionsOrBase : resolveBase(base);
   const signal = typeof optionsOrBase === "object" ? optionsOrBase?.signal : undefined;
   const projectId = projectIdFromKey(key);
   const res = await fetchWithTimeout(
@@ -237,7 +242,7 @@ export async function deleteSession(
   const base = typeof optionsOrBase === "string" ? optionsOrBase : "";
   const projectId = projectIdFromKey(key);
   const res = await fetchWithTimeout(
-    `${base}/api/history/${encodeURIComponent(projectId)}`,
+    `${resolveBase(base)}/api/history/${encodeURIComponent(projectId)}`,
     { method: "DELETE", credentials: "same-origin" },
   );
   if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`);
@@ -264,7 +269,7 @@ interface LumenSkill {
 
 /** GET /api/skills → Lumen skill 列表（风格/工具）。 */
 export async function fetchLumenSkills(): Promise<SkillSummary[]> {
-  const res = await fetchWithTimeout("/api/skills", {
+  const res = await fetchWithTimeout(`${apiBase()}/api/skills`, {
     credentials: "same-origin",
     cache: "no-store",
   });
@@ -281,7 +286,7 @@ export async function fetchLumenSkills(): Promise<SkillSummary[]> {
 
 /** POST /api/skills/install——安装一个 skill（markdown 内容）。 */
 export async function installLumenSkill(id: string, markdown: string): Promise<SkillSummary> {
-  const res = await fetchWithTimeout("/api/skills/install", {
+  const res = await fetchWithTimeout(`${apiBase()}/api/skills/install`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id: id.trim(), markdown }),
@@ -302,7 +307,7 @@ export async function installLumenSkill(id: string, markdown: string): Promise<S
 
 /** DELETE /api/skills/{id}——删除一个 skill。 */
 export async function deleteLumenSkill(id: string): Promise<void> {
-  const res = await fetchWithTimeout(`/api/skills/${encodeURIComponent(id)}`, {
+  const res = await fetchWithTimeout(`${apiBase()}/api/skills/${encodeURIComponent(id)}`, {
     method: "DELETE",
     credentials: "same-origin",
   });
