@@ -796,21 +796,25 @@ export function StreamingLabelSheen({
   children,
   active,
   className,
+  wrap = false,
 }: {
   children: ReactNode;
   active: boolean;
   className?: string;
+  /** 换行显示全文（reasoning 思考用），默认单行截断。 */
+  wrap?: boolean;
 }) {
   const sheenText =
     typeof children === "string" || typeof children === "number"
       ? String(children)
       : undefined;
   return (
-    <span className={cn("block min-w-0 overflow-hidden py-px", className)}>
+    <span className={cn("block min-w-0 py-px", wrap ? "" : "overflow-hidden", className)}>
       <span
         data-sheen-text={active ? sheenText : undefined}
         className={cn(
-          "block w-fit max-w-full truncate font-medium leading-normal",
+          "block w-fit max-w-full font-medium leading-normal",
+          wrap ? "whitespace-normal" : "truncate",
           active ? "streaming-text-sheen" : "text-muted-foreground",
         )}
       >

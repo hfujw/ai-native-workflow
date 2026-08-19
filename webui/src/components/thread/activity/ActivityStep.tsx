@@ -78,9 +78,9 @@ export function ActivityStep({
         >
           <StreamingLabelSheen
             active={active}
+            wrap={wrapLabel}
             className={cn(
               "min-w-0 flex-1 font-medium",
-              wrapLabel ? "" : "truncate",
               tone === "error" ? "text-destructive/78" : "text-muted-foreground/85",
               labelClassName,
             )}
