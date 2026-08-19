@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:1420", "http://127.0.0.1:1420",  # tauri dev 窗口
-            "http://tauri.localhost",                          # tauri 打包后 webview 源
+            "http://tauri.localhost", "tauri://localhost",     # tauri 打包后 webview 源（跨平台）
         ],
         description="CORS 白名单（Tauri 桌面端访问本地后端用）",
     )

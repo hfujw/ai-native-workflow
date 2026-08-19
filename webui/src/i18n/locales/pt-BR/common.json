@@ -1,13 +1,13 @@
 {
   "app": {
-    "brand": "nanobot",
+    "brand": "Lumen",
     "loading": {
-      "connecting": "Conectando-se ao nanobot…",
+      "connecting": "Conectando-se ao Lumen…",
       "boot": "Carregando Lumen…"
     },
     "error": {
-      "title": "Não foi possível conectar-se com o nanobot",
-      "gatewayHint": "Verifique se o gateway está em execução (`nanobot gateway`) e se esta página está aberta na mesma máquina."
+      "title": "Não foi possível conectar-se com o Lumen",
+      "gatewayHint": "Verifique se o gateway está em execução (`Lumen gateway`) e se esta página está aberta na mesma máquina."
     },
     "auth": {
       "label": "Senha",
@@ -24,9 +24,9 @@
     },
     "system": {
       "section": "Sistema",
-      "restartHint": "Reinicie o nanobot para aplicar as alterações de tempo de execução.",
-      "restart": "Reiniciar nanobot",
-      "restarting": "Reiniciando nanobot...",
+      "restartHint": "Reinicie o Lumen para aplicar as alterações de tempo de execução.",
+      "restart": "Reiniciar Lumen",
+      "restarting": "Reiniciando Lumen...",
       "restartEngine": "Reiniciar motor",
       "restartingEngine": "Reiniciando motor..."
     },
@@ -34,8 +34,8 @@
       "completed": "Reinício concluído em {{seconds}}s."
     },
     "documentTitle": {
-      "base": "nanobot",
-      "chat": "{{title}} · nanobot"
+      "base": "Lumen",
+      "chat": "{{title}} · Lumen"
     },
     "meta": {
       "description": "Lumen — espaço de trabalho IA-nativo com skills plugáveis."
@@ -183,7 +183,7 @@
       "language": "Idioma",
       "provider": "Provedor",
       "model": "Modelo",
-      "restart": "Reiniciar nanobot",
+      "restart": "Reiniciar Lumen",
       "configPath": "Caminho da configuração",
       "activePreset": "Predefinição ativa",
       "gateway": "Gateway",
@@ -253,7 +253,7 @@
       "defaultImageSize": "Dica de tamanho enviada a provedores compatíveis.",
       "maxImagesPerTurn": "Limite superior para uma requisição de generate_image.",
       "timezone": "Usado para agendamentos e respostas sensíveis ao horário.",
-      "cliAppsCatalog": "Instale apenas os adaptadores CLI de aplicativos que o nanobot pode executar localmente; aplicativos nativos permanecem intactos.",
+      "cliAppsCatalog": "Instale apenas os adaptadores CLI de aplicativos que o Lumen pode executar localmente; aplicativos nativos permanecem intactos.",
       "cliAppsFilter": "Busque por aplicativo, categoria ou capacidade.",
       "localServiceAccess": "Permite que comandos shell com acesso completo alcancem serviços locais.",
       "webuiDefaultAccess": "Usado por chats web sem permissão específica de projeto.",
@@ -299,7 +299,7 @@
       "readyStatus": "Pronto",
       "readyTry": "Experimentar @{{name}}",
       "readyCopied": "Copiado",
-      "readyPrompt": "Peça ao nanobot para usar @{{name}} nesta tarefa.",
+      "readyPrompt": "Peça ao Lumen para usar @{{name}} nesta tarefa.",
       "openChat": "Abrir conversa",
       "unsupported": "Não compatível",
       "unavailable": "Indisponível",
@@ -343,7 +343,7 @@
       "saveCustom": "Salvar MCP",
       "configImport": "Importar mcp.json",
       "importConfig": "Importar",
-      "restartRequired": "Reinicie o nanobot para conectar as ferramentas MCP atualizadas.",
+      "restartRequired": "Reinicie o Lumen para conectar as ferramentas MCP atualizadas.",
       "toolsFound": "{{count}} ferramentas",
       "loading": "Carregando predefinições MCP...",
       "empty": "Nenhuma predefinição MCP corresponde a este filtro.",
@@ -368,14 +368,14 @@
       "preparingSignIn": "Preparando login seguro…",
       "openSignInToContinue": "Abra a página de login para continuar.",
       "finishSignInInBrowser": "Conclua o login na janela do navegador.",
-      "manualCallbackRequired": "Conclua o login e cole a URL de callback no nanobot.",
+      "manualCallbackRequired": "Conclua o login e cole a URL de callback no Lumen.",
       "manualCallbackHelp": "Depois de autorizar o acesso, a página localhost não será carregada. Copie a URL completa da barra de endereços e cole-a aqui.",
       "finishingConnection": "Finalizando conexão…",
       "activatingTools": "Ativando ferramentas…",
       "connected": "Conectado.",
       "connectionFailed": "Falha na conexão.",
       "connectionCancelled": "Conexão cancelada.",
-      "reloadFailed": "Login concluído, mas o nanobot não conseguiu conectar as ferramentas. Tente reiniciar o nanobot.",
+      "reloadFailed": "Login concluído, mas o Lumen não conseguiu conectar as ferramentas. Tente reiniciar o Lumen.",
       "oauthFailed": "Não foi possível conectar. Tente fazer login novamente.",
       "statusMissingDependency": "Precisa de dependência",
       "statusComingSoon": "Em breve",
@@ -422,11 +422,11 @@
       "loadError": "Não foi possível carregar as configurações",
       "unsaved": "Alterações não salvas.",
       "upToDate": "Atualizado.",
-      "savedRestart": "Salvo. Reinicie o nanobot para aplicar.",
+      "savedRestart": "Salvo. Reinicie o Lumen para aplicar.",
       "restartAfterSaving": "Salve as alterações e reinicie quando estiver pronto.",
       "savedRestartApply": "Salvo. Reinicie quando estiver pronto.",
       "imageProviderRestart": "Alterações do provedor de imagem salvas. Reinicie quando estiver pronto.",
-      "hostRestartAfterSaving": "Ao salvar, o nanobot reiniciará o motor.",
+      "hostRestartAfterSaving": "Ao salvar, o Lumen reiniciará o motor.",
       "hostRestartPending": "Salvo. O motor será reiniciado quando estiver pronto.",
       "hostApiUnavailable": "As ações do host só estão disponíveis dentro do app nativo.",
       "logsOpened": "Pasta de logs aberta.",
@@ -450,7 +450,7 @@
       "exporting": "Exportando..."
     },
     "byok": {
-      "description": "Traga suas próprias chaves de provedor. O nanobot lê esses valores da configuração atual e apenas provedores configurados podem ser usados nas predefinições de modelo.",
+      "description": "Traga suas próprias chaves de provedor. O Lumen lê esses valores da configuração atual e apenas provedores configurados podem ser usados nas predefinições de modelo.",
       "configured": "Configurado",
       "notConfigured": "Não configurado",
       "configuredSection": "Configurados",
@@ -597,12 +597,12 @@
     },
     "observability": {
       "title": "Observabilidade",
-      "configured": "Credenciais de tracing estão disponíveis para o nanobot.",
-      "environment": "Defina LANGFUSE_SECRET_KEY e LANGFUSE_PUBLIC_KEY e reinicie o nanobot.",
+      "configured": "Credenciais de tracing estão disponíveis para o Lumen.",
+      "environment": "Defina LANGFUSE_SECRET_KEY e LANGFUSE_PUBLIC_KEY e reinicie o Lumen.",
       "enable": "Habilitar suporte a tracing"
     },
     "apps": {
-      "description": "Adicione ferramentas ao nanobot e mencione-as com @ na conversa.",
+      "description": "Adicione ferramentas ao Lumen e mencione-as com @ na conversa.",
       "cliLabel": "Aplicativo",
       "mcpLabel": "MCP",
       "channelLabel": "Canal",
@@ -625,21 +625,21 @@
       "browseApps": "Explorar aplicativos",
       "browseIntegrations": "Explorar ferramentas MCP",
       "emptyIntegrationsHint": "Adicione um servidor MCP personalizado abaixo.",
-      "restartRequired": "Reinicie o nanobot para aplicar os aplicativos e ferramentas MCP atualizados."
+      "restartRequired": "Reinicie o Lumen para aplicar os aplicativos e ferramentas MCP atualizados."
     },
     "channels": {
-      "description": "Conecte aplicativos de chat, e-mail e WebUI ao nanobot.",
+      "description": "Conecte aplicativos de chat, e-mail e WebUI ao Lumen.",
       "caption": "{{enabled}} habilitados · {{total}} canais",
       "searchPlaceholder": "Buscar canais",
       "backToChannels": "Todos os canais",
       "catalog": "Canais",
       "loading": "Carregando canais...",
       "empty": "Nenhum canal corresponde a este filtro.",
-      "restartRequired": "Reinicie o nanobot para aplicar o suporte de canais atualizado.",
+      "restartRequired": "Reinicie o Lumen para aplicar o suporte de canais atualizado.",
       "requires": "Requer: {{requirements}}",
       "setUp": "Configurar",
       "setupGuide": "Guia de configuração",
-      "setupSummary": "Habilitar apenas ativa o suporte no nanobot. Adicione as credenciais da plataforma e reinicie o nanobot.",
+      "setupSummary": "Habilitar apenas ativa o suporte no Lumen. Adicione as credenciais da plataforma e reinicie o Lumen.",
       "configKeys": "Chaves de configuração",
       "enable": "Habilitar canal",
       "disable": "Desabilitar canal",
@@ -694,7 +694,7 @@
         "unsupported": "Configuração manual"
       }
     },
-    "nanobotFeatures": {
+    "LumenFeatures": {
       "enabled": "Habilitado",
       "enable": "Habilitar",
       "disable": "Desabilitar",
@@ -702,7 +702,7 @@
       "missingDependency": "Suporte ausente",
       "installSupport": "Instalar suporte",
       "installConfirmTitle": "Instalar suporte para {{name}}?",
-      "installConfirmDescription": "O nanobot adicionará o que {{name}} precisa e depois o ativará. Continuar?",
+      "installConfirmDescription": "O Lumen adicionará o que {{name}} precisa e depois o ativará. Continuar?",
       "installConfirmAction": "Instalar e habilitar",
       "websocketRequired": "Necessário para a WebUI",
       "channelDisabled": "Canal desabilitado",
@@ -846,7 +846,7 @@
       "signedInAs": "Conectado como {{account}}",
       "signInHelp": "Entre por este dispositivo; nenhuma chave de API é armazenada em config.",
       "remoteSignInHelp": "Selecione Entrar para abrir a xAI no seu computador e depois cole o código de autorização exibido após o login.",
-      "codexRemoteSignInHelp": "Entre por este navegador e cole no nanobot a URL completa de callback do localhost.",
+      "codexRemoteSignInHelp": "Entre por este navegador e cole no Lumen a URL completa de callback do localhost.",
       "signInRequired": "Login necessário",
       "signInBeforeSaving": "Entre neste provedor antes de salvar a predefinição.",
       "signedIn": "Conectado",
@@ -854,9 +854,9 @@
       "proxyLabel": "Proxy de rede",
       "proxySaveBeforeSignIn": "Salve as alterações do proxy antes de entrar.",
       "saveProxy": "Salvar proxy",
-      "localCodeHelp": "Conclua o login no navegador. O nanobot geralmente termina automaticamente; caso contrário, cole o código de autorização abaixo.",
+      "localCodeHelp": "Conclua o login no navegador. O Lumen geralmente termina automaticamente; caso contrário, cole o código de autorização abaixo.",
       "remoteCodeHelp": "Selecione Entrar para abrir a xAI no seu computador. Após o login, cole abaixo o código de autorização exibido pela xAI.",
-      "localCallbackHelp": "Conclua o login no navegador. O nanobot geralmente termina automaticamente; caso contrário, copie da barra de endereço a URL completa de callback do localhost e cole abaixo.",
+      "localCallbackHelp": "Conclua o login no navegador. O Lumen geralmente termina automaticamente; caso contrário, copie da barra de endereço a URL completa de callback do localhost e cole abaixo.",
       "remoteCallbackHelp": "Abra o ChatGPT neste navegador e conclua o login. Quando a página localhost não carregar, copie a URL completa da barra de endereço e cole abaixo.",
       "authorizationCode": "Código de autorização",
       "callbackUrl": "URL completa de callback",
@@ -899,7 +899,7 @@
       "deleteConfirmAction": "Excluir habilidade",
       "instructionsTitle": "Instruções da habilidade",
       "setupRequired": "Requer configuração",
-      "setupDescription": "Instale a dependência ausente na máquina que executa o nanobot e verifique novamente.",
+      "setupDescription": "Instale a dependência ausente na máquina que executa o Lumen e verifique novamente.",
       "copySetupCommand": "Copiar comando de configuração",
       "checkAgain": "Verificar novamente",
       "marketplaceSearchFailed": "Não foi possível pesquisar nos mercados de habilidades.",
@@ -1067,7 +1067,7 @@
       "imageQuickActions": {
         "icon": {
           "title": "Desenhar um ícone de aplicativo",
-          "prompt": "Gere um ícone de aplicativo 1:1 limpo para o nanobot: robô amigável, estilo vetorial simples, paleta suave em azul e branco, sem texto."
+          "prompt": "Gere um ícone de aplicativo 1:1 limpo para o Lumen: robô amigável, estilo vetorial simples, paleta suave em azul e branco, sem texto."
         },
         "sticker": {
           "title": "Criar um sticker",
@@ -1214,7 +1214,7 @@
             "description": "Cancela o turno ativo do agente nesta conversa."
           },
           "restart": {
-            "title": "Reiniciar nanobot",
+            "title": "Reiniciar Lumen",
             "description": "Reinicia o processo do bot no mesmo lugar."
           },
           "status": {
@@ -1389,7 +1389,7 @@
     "close": "Fechar pré-visualização de arquivo",
     "loading": "Carregando pré-visualização...",
     "failed": "Não foi possível pré-visualizar este arquivo.",
-    "routeMissing": "A pré-visualização de arquivo precisa do gateway mais recente. Reinicie o nanobot gateway e tente novamente.",
+    "routeMissing": "A pré-visualização de arquivo precisa do gateway mais recente. Reinicie o Lumen gateway e tente novamente.",
     "resize": "Redimensionar pré-visualização de arquivo",
     "truncated": "A pré-visualização foi truncada porque este arquivo é grande."
   },
