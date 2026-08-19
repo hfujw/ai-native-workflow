@@ -1,16 +1,26 @@
 export const DEFAULT_HTTP_TIMEOUT_MS = 20_000;
 
-/** 是否跑在 Tauri 桌面端（webview origin 是 tauri:// 或 http://tauri.localhost）。 */
+/** 是否跑在 Tauri 桌面端。
+ * 打包环境 origin 是 tauri://；tauri:dev 时 origin 是 5173，但 Tauri 注入了 __TAURI_INTERNALS__。 */
 export function isTauri(): boolean {
   if (typeof window === "undefined") return false;
   const origin = window.location.origin;
-  return origin.startsWith("tauri://") || origin.startsWith("http://tauri.localhost");
+  return (
+    origin.startsWith("tauri://")
+    || origin.startsWith("http://tauri.localhost")
+    || "__TAURI_INTERNALS__" in window
+  );
 }
 
-/** 桌面端（Tauri）下 API 请求要到深度后端 8001——打包后 webview 的 origin 是
- * tauri://localhost，相对路径到不了 8001。浏览器 dev 返回空串走 vite proxy。 */
+/** 桌面端打包环境（tauri:// origin）下 API 直连深度后端 8001；
+ * dev（5173）走 vite proxy（相对路径），避免 CORS。 */
 export function apiBase(): string {
-  return isTauri() ? "http://127.0.0.1:8001" : "";
+  if (typeof window === "undefined") return "";
+  const origin = window.location.origin;
+  if (origin.startsWith("tauri://") || origin.startsWith("http://tauri.localhost")) {
+    return "http://127.0.0.1:8001";
+  }
+  return "";
 }
 
 export async function fetchWithTimeout(
