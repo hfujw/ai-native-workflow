@@ -19,7 +19,6 @@ import {
   fetchMcpOAuthStatus,
   fetchMcpPresets,
   fetchMarketplaceSkillTrends,
-  fetchNanobotFeatures,
   fetchProviderModels,
   fetchSessionAutomations,
   fetchSettingsUsage,
@@ -36,8 +35,6 @@ import {
   loginProviderOAuth,
   logoutProviderOAuth,
   migrateModelConfigurations,
-  disableNanobotFeature,
-  enableNanobotFeature,
   runAutomationAction,
   runCliAppAction,
   runMcpPresetAction,
@@ -532,7 +529,7 @@ describe("webui API helpers", () => {
 
     await expect(fetchApiService("tok")).rejects.toMatchObject({
       status: 200,
-      message: "Gateway returned WebUI HTML instead of JSON. Restart nanobot gateway and try again.",
+      message: "Gateway returned WebUI HTML instead of JSON. Restart Lumen and try again.",
     });
   });
 
@@ -811,38 +808,6 @@ describe("webui API helpers", () => {
     );
   });
 
-  it("reads and toggles nanobot optional features", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        features: [],
-        enabled_count: 0,
-      }),
-    } as Response);
-
-    await expect(fetchNanobotFeatures("tok")).resolves.toMatchObject({ features: [] });
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/settings/nanobot-features",
-      expect.objectContaining({
-        headers: { Authorization: "Bearer tok" },
-      }),
-    );
-
-    await enableNanobotFeature(mutationTransport, "matrix");
-    expect(requestMutation).toHaveBeenLastCalledWith(
-      "settings.feature.enable",
-      { name: "matrix" },
-      150_000,
-    );
-
-    await disableNanobotFeature(mutationTransport, "matrix");
-    expect(requestMutation).toHaveBeenLastCalledWith(
-      "settings.feature.disable",
-      { name: "matrix" },
-      20_000,
-    );
-  });
-
   it("manages the API service capability", async () => {
     await fetchApiService("tok");
     expect(fetch).toHaveBeenCalledWith(
@@ -1092,7 +1057,7 @@ describe("webui API helpers", () => {
           },
           {
             command: "/restart",
-            title: "Restart nanobot",
+            title: "Restart Lumen",
             description: "Restart the bot process.",
             icon: "rotate-cw",
             lifecycle: "side_channel",
@@ -1129,7 +1094,7 @@ describe("webui API helpers", () => {
       },
       {
         command: "/restart",
-        title: "Restart nanobot",
+        title: "Restart Lumen",
         description: "Restart the bot process.",
         icon: "rotate-cw",
         argHint: "",

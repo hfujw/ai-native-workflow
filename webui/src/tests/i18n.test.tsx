@@ -144,14 +144,6 @@ const LOCALIZED_SETTINGS_COPY_KEYS = [
   "settings.skills.marketplaceInstall",
   "settings.skills.marketplaceNoTrend",
   "settings.skills.marketplaceTrendLabel",
-  "settings.nanobotFeatures.disable",
-  "settings.nanobotFeatures.ready",
-  "settings.nanobotFeatures.missingDependency",
-  "settings.nanobotFeatures.installConfirmTitle",
-  "settings.nanobotFeatures.installConfirmDescription",
-  "settings.nanobotFeatures.installConfirmAction",
-  "settings.nanobotFeatures.channelDisabled",
-  "settings.nanobotFeatures.notEnabled",
   "settings.sections.about",
   "settings.rows.theme",
   "settings.rows.language",
@@ -422,7 +414,7 @@ describe("webui i18n", () => {
     expect(resolveInitialLocale()).toBe("zh-CN");
   });
 
-  // 语言切换器组件已随 nanobot 设置删除；本地化核心（locale 解析/资源）仍由上方用例覆盖
+  // 语言切换器组件已随旧版设置面板删除；本地化核心（locale 解析/资源）仍由上方用例覆盖
 
   it("updates the composer aria label when the language changes", async () => {
     render(<ThreadComposer onSend={vi.fn()} />);

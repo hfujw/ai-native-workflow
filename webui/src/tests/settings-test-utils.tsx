@@ -188,7 +188,7 @@ export function installSettingsViewTestHooks() {
 
   afterEach(() => {
     cleanup();
-    localStorage.removeItem("nanobot-webui.settings-preferences");
+    localStorage.removeItem("lumen-webui.settings-preferences");
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });

@@ -14,7 +14,7 @@ import { apiBase, fetchWithTimeout } from "./http";
  * Lumen 数据层（task 13 方案 3）——useSessions / useSessionHistory 的数据源。
  *
  * 深度后端的"会话" = 一个生成主题（projects.json 里的 project）。
- * key 约定 `lumen:{project_id}`，与 nanobot 的 `websocket:{chat_id}` 同构，
+ * key 约定 `lumen:{project_id}`，与旧版的 `websocket:{chat_id}` 同构，
  * 这样 UI 层的 splitKey / ChatSummary.chatId 语义保持不变。
  */
 

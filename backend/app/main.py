@@ -84,5 +84,5 @@ app.include_router(history.router)
 app.include_router(skills.router)
 # OpenAI 兼容网关（LobeChat 前端接入）
 app.include_router(compat.router)
-# WebUI 端点（nanobot WebUI 前端接入：bootstrap mock + 成品查看）
+# WebUI 端点（WebUI 前端接入：bootstrap mock + 成品查看）
 app.include_router(webui.router)

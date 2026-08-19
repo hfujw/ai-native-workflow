@@ -12,7 +12,6 @@ import type {
   McpPresetsPayload,
   McpOAuthFlowPayload,
   MarketplaceProvider,
-  NanobotFeaturesPayload,
   ModelConfigurationCreate,
   ModelConfigurationUpdate,
   NetworkSafetySettingsUpdate,
@@ -119,7 +118,7 @@ async function request<T>(
     throw new ApiError(
       res.status,
       isHtml
-        ? "Gateway returned WebUI HTML instead of JSON. Restart nanobot gateway and try again."
+        ? "Gateway returned WebUI HTML instead of JSON. Restart Lumen and try again."
         : "Gateway returned a non-JSON response.",
     );
   }
@@ -511,18 +510,6 @@ export async function fetchInstalledCliApps(
   }
 }
 
-export async function fetchNanobotFeatures(
-  token: string,
-  base: string = "",
-): Promise<NanobotFeaturesPayload> {
-  return request<NanobotFeaturesPayload>(
-    `${base}/api/settings/nanobot-features`,
-    token,
-    undefined,
-    API_READ_TIMEOUT_MS,
-  );
-}
-
 export async function fetchApiService(token: string, base: string = ""): Promise<ApiServicePayload> {
   return request<ApiServicePayload>(`${base}/api/settings/api-service`, token);
 }
@@ -548,31 +535,6 @@ export async function stopApiService(
   transport: WebUIMutationTransport,
 ): Promise<ApiServicePayload> {
   return mutation<ApiServicePayload>(transport, "settings.api_service.stop");
-}
-
-export async function enableNanobotFeature(
-  transport: WebUIMutationTransport,
-  name: string,
-  options: { instanceId?: string } = {},
-): Promise<NanobotFeaturesPayload> {
-  return mutation<NanobotFeaturesPayload>(
-    transport,
-    "settings.feature.enable",
-    { name, ...(options.instanceId ? { instance_id: options.instanceId } : {}) },
-    PACKAGE_MUTATION_TIMEOUT_MS,
-  );
-}
-
-export async function disableNanobotFeature(
-  transport: WebUIMutationTransport,
-  name: string,
-  options: { instanceId?: string } = {},
-): Promise<NanobotFeaturesPayload> {
-  return mutation<NanobotFeaturesPayload>(
-    transport,
-    "settings.feature.disable",
-    { name, ...(options.instanceId ? { instance_id: options.instanceId } : {}) },
-  );
 }
 
 export async function fetchPairingRequests(

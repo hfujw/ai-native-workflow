@@ -50,10 +50,10 @@ describe("generic tool activity semantics", () => {
 
   it("groups searches over collected sources without exposing absolute paths", () => {
     const first = parseGenericToolTrace(
-      'grep({"pattern":"July","path":"/Users/test/.nanobot/tool-results/session/call_first.txt"})',
+      'grep({"pattern":"July","path":"/Users/test/.lumen/tool-results/session/call_first.txt"})',
     )!;
     const second = parseGenericToolTrace(
-      'grep({"pattern":"OpenAI","path":"/Users/test/.nanobot/tool-results/session/call_second.txt"})',
+      'grep({"pattern":"OpenAI","path":"/Users/test/.lumen/tool-results/session/call_second.txt"})',
     )!;
     const presentation = describeGenericToolRun([
       { trace: first, status: "done" },

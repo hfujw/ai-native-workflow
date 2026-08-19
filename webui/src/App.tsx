@@ -77,11 +77,11 @@ type BootState =
       runtimeSurface: RuntimeSurface;
     };
 
-const SIDEBAR_STORAGE_KEY = "nanobot-webui.sidebar";
-const SESSION_UPDATES_STORAGE_KEY = "nanobot-webui.sidebar.session-updates.v1";
-const LEGACY_COMPLETED_RUNS_STORAGE_KEY = "nanobot-webui.sidebar.completed-runs.v1";
-const RESTART_STARTED_KEY = "nanobot-webui.restartStartedAt";
-const RESTART_ROUTE_KEY = "nanobot-webui.restartRoute";
+const SIDEBAR_STORAGE_KEY = "lumen-webui.sidebar";
+const SESSION_UPDATES_STORAGE_KEY = "lumen-webui.sidebar.session-updates.v1";
+const LEGACY_COMPLETED_RUNS_STORAGE_KEY = "lumen-webui.sidebar.completed-runs.v1";
+const RESTART_STARTED_KEY = "lumen-webui.restartStartedAt";
+const RESTART_ROUTE_KEY = "lumen-webui.restartRoute";
 const RESTART_ROUTE_TTL_MS = 5 * 60 * 1000;
 const SIDEBAR_WIDTH = 272;
 const SIDEBAR_RAIL_WIDTH = 56;
@@ -820,7 +820,7 @@ export default function App() {
           if (secret) saveSecret(secret);
           const runtimeSurface = toRuntimeSurface(boot.runtime_surface);
           // task 13（Lumen）：深度后端不走 WS 消息流——用 LumenClient（无 socket），
-          // 消息流走 /v1/responses SSE（见 useNanobotStream.streamGenerate）。
+          // 消息流走 /v1/responses SSE（见 useLumenStream.streamGenerate）。
           const client = new LumenClient();
           bootstrapSecretRef.current = secret;
           client.connect();
@@ -1105,7 +1105,7 @@ function Shell({
   }, [client]);
 
   useEffect(() => {
-    // task 16（Lumen）：无 nanobot /api/settings——settingsSnapshot 恒 null，
+    // task 16（Lumen）：无旧版 /api/settings——settingsSnapshot 恒 null，
     // 模型徽章靠 bootstrap model_name 显示（消 404 噪音）
     setSettingsSnapshot(null);
   }, []);

@@ -1,6 +1,6 @@
-"""WebUI 端点 — nanobot WebUI 前端引导 + 成品查看。
+"""WebUI 端点 — WebUI 前端引导 + 成品查看。
 
-task 13（2026-08-19）：前端 webui/（nanobot 二创）接深度后端。
+task 13（2026-08-19）：前端 webui/（WebUI 二创）接深度后端。
 - /webui/bootstrap    最小 mock：让前端 boot 流程可用（深度后端不走 WS 消息流）
 - /works/{project_id} 成品 HTML 查看（compat.py 生成完成返回的链接指向这里）
 """

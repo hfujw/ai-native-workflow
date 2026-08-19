@@ -32,7 +32,7 @@ const SECTIONS: { key: Section; label: string }[] = [
 ];
 
 /** Lumen 原生设置视图（task：前端都接上后端）。
- * 不依赖 nanobot SettingsPayload——只接深度后端真实能力：
+ * 不依赖旧版 SettingsPayload——只接深度后端真实能力：
  * 概览（项目数/模型/key）、模型（前端填 DeepSeek key）、外观（主题）。
  * 技能已搬到独立 SkillsView（侧边栏"技能"入口），不在这里。 */
 export function LumenSettingsView({

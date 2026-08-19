@@ -40,8 +40,8 @@ Lumen 是给 LLM 装可插拔 skill 的 AI 原生工作台。它可以：
 - 用可插拔 **skill**（像素 / 杂志 / 信息图）改变编排策略——组件选择、文案语气、交互基因全不同
 - 用 **Playwright 真执行**验证产物，不是 LLM 猜对错
 - 四维质量审查（事实 / 覆盖 / 可读 / 美学），素材不足时**诚实交付**不编造
-- 通过 OpenAI 兼容网关（`/v1/responses` SSE）接入成熟前端（LobeChat），或使用自带 WebUI
-- WebUI 里：**思考流全程透明**（思考块 + 工具卡）、**成品 iframe 预览**、**作品画廊**回看 / 继续迭代
+- 通过 OpenAI 兼容网关（`/v1/responses` SSE）流式输出——思考过程实时推送
+- 自带 WebUI（**浏览器 + Tauri 桌面端**）：**思考流全程透明**（思考块 + 工具卡）、**成品全屏预览**、**作品画廊**回看 / 继续迭代
 - 所有决策落盘 DecisionLog（JSONL），随时回放"AI 是怎么想到这些的"
 
 ## 💡 为什么是 Lumen
@@ -51,7 +51,7 @@ Lumen 是给 LLM 装可插拔 skill 的 AI 原生工作台。它可以：
 - **能力可插拔**：Skill = 编排策略，给 LLM 装什么手艺，它就有什么手艺
 - **验证是真执行**：Playwright 无头浏览器真跑，不是 LLM 自评"我觉得不错"
 - **诚实是底线**：素材不足自动降级"资料有限"页面，不编造数字/年份/人名
-- **双前端**：成熟前端用轮子（LobeChat），深度闭环留自研（WebUI）
+- **浏览器 + 桌面端**：同一套 WebUI，既能浏览器（5173）打开，也能打包成 Tauri 桌面应用
 
 ---
 
@@ -141,7 +141,7 @@ verify 通过后进入**四维质量审查**：事实 / 覆盖 / 可读 / 美学
 
 ### OpenAI 兼容网关（/v1/responses）
 
-深度编排**服务端自治**，对外暴露 OpenAI 兼容的流式网关——成熟前端（LobeChat）可直接接入；自研 WebUI 通过结构化 SSE 事件展示思考块 + 工具卡片。**双前端，同一套深度闭环。**
+深度编排**服务端自治**，对外暴露 OpenAI 兼容的流式网关（`/v1/responses` SSE）——自研 WebUI 通过结构化事件展示思考块 + 工具卡片；同一套闭环以浏览器网页和 Tauri 桌面端两种形态运行。
 
 ### Skill 系统
 
@@ -186,7 +186,7 @@ backend/app/
     └── eval_report.py       评测报告
 
 webui/                       WebUI 前端（React + Vite）
-├── src/hooks/useNanobotStream.ts    /v1/responses SSE + 思考块/工具卡
+├── src/hooks/useLumenStream.ts    /v1/responses SSE + 思考块/工具卡
 ├── src/lib/lumen-client.ts          深度后端客户端（LumenClient）
 ├── src/components/ArtifactCard.tsx  成品 iframe 预览
 └── src/components/GalleryView.tsx   作品画廊
@@ -212,7 +212,7 @@ webui/                       WebUI 前端（React + Vite）
 - 思考过程全透明：结构化 SSE → 思考块 + 工具卡，可展开看完整思考
 - 成品 HTML 预览：应用内 iframe 直接看成品
 - 作品画廊：所有生成作品卡片化，点击回看 / 继续迭代
-- 双前端：LobeChat（通用层用轮子）+ WebUI 二创（深度闭环展示）
+- 浏览器 + 桌面端：WebUI 同时以网页（Vite）和 Tauri 桌面应用形态运行
 
 **Skill 系统**
 - Skill 是编排策略：改变组件选择、文案语气、交互基因
@@ -233,7 +233,7 @@ webui/                       WebUI 前端（React + Vite）
 | 验证外置 | Playwright 真执行，不是 LLM 猜对错 |
 | Key 必须前端填 | 后端无默认 Key，随会话传入，本地可控、不落盘 |
 | 搜索是可选增强 | 前端填搜索服务 key 才联网；不填走本地知识库 |
-| 服务端自治 | 编排在服务端，对外 OpenAI 兼容网关——成熟前端可直接接入 |
+| 服务端自治 | 编排在服务端，对外 OpenAI 兼容网关——任意 OpenAI 兼容前端都能接入 |
 | 诚实模式 | 素材不足 → "资料有限"页面，不编造 |
 | 会话日志分开 | 每次生成一个文件，日志不再堆成一座山 |
 

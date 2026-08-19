@@ -209,7 +209,7 @@ function appendToolTraceRow(
   ];
 }
 
-export function useNanobotStream(
+export function useLumenStream(
   chatId: string | null,
   initialMessages: UIMessage[] = [],
   hasPendingToolCalls = false,
@@ -657,7 +657,7 @@ export function useNanobotStream(
     if (hasPendingToolCalls) setIsStreaming(true);
   }, [hasPendingToolCalls]);
 
-  /** task 13（Lumen）：SSE 流收尾（等价 nanobot 的 turn_end）——flush 残量、停转、
+  /** task 13（Lumen）：SSE 流收尾（等价后端的 turn_end）——flush 残量、停转、
    * 落 isStreaming=false、清 run 生命周期、通知外层刷新历史。
    */
   const finalizeSseTurn = useCallback(

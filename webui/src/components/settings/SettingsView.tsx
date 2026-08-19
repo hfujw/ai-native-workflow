@@ -23,8 +23,8 @@ interface SettingsViewProps {
 }
 
 /** 设置入口（Lumen 原生版，2026-08-19）。
- * nanobot 的 SettingsPage/useSettingsController 数据层已由 LumenSettingsView 取代
- * （概览/模型/技能/外观全部接深度后端，不依赖 nanobot SettingsPayload）。 */
+ * 旧版 SettingsPage 数据层已由 LumenSettingsView 取代
+ * （概览/模型/技能/外观全部接深度后端，不依赖旧版 SettingsPayload）。 */
 export function SettingsView({
   theme,
   onToggleTheme,

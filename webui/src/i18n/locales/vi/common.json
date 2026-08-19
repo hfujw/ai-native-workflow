@@ -281,7 +281,7 @@
       "exporting": "Đang xuất..."
     },
     "byok": {
-      "description": "Dùng khóa nhà cung cấp của riêng bạn. Nanobot đọc các giá trị này từ cấu hình hiện tại và chỉ nhà cung cấp đã cấu hình mới có thể dùng trong cấu hình mô hình đặt trước.",
+      "description": "Dùng khóa nhà cung cấp của riêng bạn. Lumen đọc các giá trị này từ cấu hình hiện tại và chỉ nhà cung cấp đã cấu hình mới có thể dùng trong cấu hình mô hình đặt trước.",
       "configured": "Đã cấu hình",
       "notConfigured": "Chưa cấu hình",
       "configuredSection": "Đã cấu hình",
@@ -1284,14 +1284,14 @@
         "label": "Ứng dụng",
         "cliGroup": "Ứng dụng CLI",
         "mcpGroup": "Dịch vụ MCP",
-        "sessionGroup": "Cuộc trò chuyện Nanobot",
+        "sessionGroup": "Cuộc trò chuyện Lumen",
         "cliBadge": "CLI",
         "mcpBadge": "MCP",
         "cliDescription": "Dùng @{{name}} như ứng dụng CLI cục bộ",
         "mcpDescription": "Dùng @{{name}} như máy chủ MCP",
         "cliTitle": "Ứng dụng CLI: {{name}}",
         "mcpTitle": "Máy chủ MCP: {{name}}",
-        "sessionBadge": "Cuộc trò chuyện Nanobot",
+        "sessionBadge": "Cuộc trò chuyện Lumen",
         "sessionDescription": "Tham chiếu @{{name}} như cuộc trò chuyện trước"
       },
       "workspace": {

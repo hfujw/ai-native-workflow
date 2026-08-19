@@ -179,7 +179,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
-  Reflect.deleteProperty(window, "nanobotHost");
+  Reflect.deleteProperty(window, "lumenHost");
   if (ORIGINAL_MEDIA_DEVICES) {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
@@ -1225,7 +1225,7 @@ describe("ThreadComposer", () => {
       access_mode: "full" as const,
       restrict_to_workspace: false,
     };
-    Object.defineProperty(window, "nanobotHost", {
+    Object.defineProperty(window, "lumenHost", {
       configurable: true,
       value: {
         getRuntimeInfo: vi.fn(),
@@ -1482,11 +1482,11 @@ describe("ThreadComposer", () => {
 
     expect(onStop).toHaveBeenCalledTimes(1);
     expect(input).toHaveValue("");
-    expect(window.localStorage.getItem("nanobot.webui.slashCommandRecents")).toBeNull();
+    expect(window.localStorage.getItem("lumen.webui.slashCommandRecents")).toBeNull();
   });
 
   it("orders recent slash commands first for the blank slash menu", () => {
-    window.localStorage.setItem("nanobot.webui.slashCommandRecents", JSON.stringify(["/history"]));
+    window.localStorage.setItem("lumen.webui.slashCommandRecents", JSON.stringify(["/history"]));
     render(
       <ThreadComposer
         onSend={vi.fn()}
@@ -1723,7 +1723,7 @@ describe("ThreadComposer", () => {
       target: { value: "参考 @收费", selectionStart: 6 },
     });
 
-    expect(screen.getByRole("group", { name: "Nanobot conversations" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Lumen conversations" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /@收费设计/i })).toBeInTheDocument();
     fireEvent.keyDown(input, { key: "Tab" });
 
@@ -1840,13 +1840,13 @@ describe("ThreadComposer", () => {
     const palette = screen.getByRole("listbox", { name: "Mentions" });
     expect(within(palette).getAllByRole("group").map((group) => (
       group.getAttribute("aria-label")
-    ))).toEqual(["CLI apps", "MCP services", "Nanobot conversations"]);
+    ))).toEqual(["CLI apps", "MCP services", "Lumen conversations"]);
     const options = screen.getAllByRole("option", { name: /Plan @Plan/i });
     expect(options.map((option) => option.textContent)).toEqual([
       expect.stringContaining("@Plan"),
       expect.stringContaining("@Plan-chat"),
     ]);
-    expect(screen.getByRole("group", { name: "Nanobot conversations" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Lumen conversations" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "CLI apps" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Blender @Blender-chat Reference/i }))
       .toBeInTheDocument();
@@ -3053,7 +3053,7 @@ describe("ThreadComposer", () => {
     expect(await screen.findByText("do not persist this")).toBeInTheDocument();
     expect(
       window.localStorage.getItem(
-        "nanobot.webui.composerQueuedGuidance.v1:temporary-private",
+        "lumen.webui.composerQueuedGuidance.v1:temporary-private",
       ),
     ).toBeNull();
 
@@ -3073,7 +3073,7 @@ describe("ThreadComposer", () => {
     });
     expect(
       window.localStorage.getItem(
-        "nanobot.webui.composerQueuedGuidance.v1:temporary-private",
+        "lumen.webui.composerQueuedGuidance.v1:temporary-private",
       ),
     ).toBeNull();
   });

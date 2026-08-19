@@ -10,14 +10,14 @@ import type { CanonicalRunSnapshot, StreamError } from "./client-types";
 /**
  * LumenClient —— 深度后端的极简客户端（task 13 方案 3）。
  *
- * nanobot 的 NanobotClient 走 WS 消息协议；深度后端不走 WS，消息流走
- * `/v1/responses` SSE（见 useNanobotStream）。但 UI 层（ThreadShell / App /
+ * 旧版 WS 客户端走 WS 消息协议；深度后端不走 WS，消息流走
+ * `/v1/responses` SSE（见 useLumenStream）。但 UI 层（ThreadShell / App /
  * useSidebarState）仍会直接调用一堆 `client.*` 方法（onSessionUpdate /
  * onRunStatus / canReconcileCanonicalCompletion …），所以这里提供一个
  * **接口不变**的替代实现：
  * - 事件订阅（onStatus / onSessionUpdate / onRunStatus / onError / onChat…）
  *   用本地事件发射器实现——有订阅、可退订，只是不会有 WS 帧来触发。
- * - run 生命周期由 useNanobotStream 通过 beginRun / endRun 驱动，供
+ * - run 生命周期由 useLumenStream 通过 beginRun / endRun 驱动，供
  *   ThreadShell 的 canonical 对账（getRunGeneration / hasUnsettledRun /
  *   canReconcileCanonicalCompletion）读取。
  * - WS 专属动作（sendMessage / sendSystemCommand / setWorkspaceScope /
@@ -256,7 +256,7 @@ export class LumenClient implements LumenClientContract {
    * 采纳条件是"没有未了结的本地 run 在飞"。一轮 SSE 进行中时
    * （beginRun 已调、endRun 未调），unsettledRunTurnIds 里有当前 turn →
    * 返回 false → ThreadShell 保留实时消息；endRun 之后全部清空 → 返回 true
-   * → 采纳落盘历史。语义与 NanobotClient 对齐，只是数据源换成本地 run map。
+   * → 采纳落盘历史。语义与旧版客户端对齐，只是数据源换成本地 run map。
    */
   canReconcileCanonicalCompletion(
     chatId: string,
@@ -358,7 +358,7 @@ export class LumenClient implements LumenClientContract {
     _payload?: Record<string, unknown>,
     _timeoutMs?: number,
   ): Promise<T> {
-    // 设置类 WS 变更（skill.install / provider.update …）是 nanobot 协议，
+    // 设置类 WS 变更（skill.install / provider.update …）是旧版 WS 协议，
     // Lumen 后端没有对应端点——明确拒绝，让设置页走失败分支而不是挂起。
     throw new Error("lumen_mutation_unsupported");
   }

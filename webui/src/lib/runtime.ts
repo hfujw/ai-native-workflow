@@ -23,7 +23,7 @@ export interface HostRuntimeInfo {
   engine_transport?: "unix_socket";
 }
 
-export interface NanobotHostApi {
+export interface LumenHostApi {
   getRuntimeInfo?(): Promise<HostRuntimeInfo>;
   restartEngine?(): Promise<void>;
   pickFolder?(): Promise<string | null>;
@@ -47,7 +47,7 @@ export type HostSocketEvent =
   | { code?: number; id: string; reason?: string; type: "close" };
 
 type HostSocketBridge = Required<Pick<
-  NanobotHostApi,
+  LumenHostApi,
   "closeSocket" | "onSocketEvent" | "openSocket" | "sendSocket"
 >>;
 
@@ -57,24 +57,24 @@ const HOST_WS_CLOSING = 2;
 const HOST_WS_CLOSED = 3;
 const LOOPBACK_HOST_PORT_PARAM = "nativeHostPort";
 const LOOPBACK_HOST_TOKEN_PARAM = "nativeHostToken";
-const LOOPBACK_HOST_STORAGE_KEY = "nanobot-webui.native-host";
+const LOOPBACK_HOST_STORAGE_KEY = "lumen-webui.native-host";
 
 interface LoopbackHostConfig {
   port: number;
   token: string;
 }
 
-let loopbackHostApi: NanobotHostApi | null = null;
+let loopbackHostApi: LumenHostApi | null = null;
 
 declare global {
   interface Window {
-    nanobotHost?: NanobotHostApi;
+    lumenHost?: LumenHostApi;
   }
 }
 
-function getHostApi(): NanobotHostApi | null {
+function getHostApi(): LumenHostApi | null {
   if (typeof window === "undefined") return null;
-  return window.nanobotHost ?? loopbackHostApi;
+  return window.lumenHost ?? loopbackHostApi;
 }
 
 /**
@@ -217,7 +217,7 @@ function validateLoopbackHostConfig(
   return { port, token };
 }
 
-function createLoopbackHostApi(config: LoopbackHostConfig): NanobotHostApi {
+function createLoopbackHostApi(config: LoopbackHostConfig): LumenHostApi {
   return {
     async pickFolder(): Promise<string | null> {
       let response: Response;
@@ -230,7 +230,7 @@ function createLoopbackHostApi(config: LoopbackHostConfig): NanobotHostApi {
           headers: { Authorization: `Bearer ${config.token}` },
         });
       } catch {
-        throw new Error("Native folder picker is unavailable. Reopen Nanobot and try again.");
+        throw new Error("Native folder picker is unavailable. Reopen Lumen and try again.");
       }
 
       const body = await response.json().catch(() => null) as {

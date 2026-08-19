@@ -281,7 +281,7 @@
       "exporting": "Exportation..."
     },
     "byok": {
-      "description": "Utilisez vos propres clés de fournisseur. Nanobot lit ces valeurs depuis la configuration actuelle et seuls les fournisseurs configurés peuvent être utilisés dans les préréglages de modèle.",
+      "description": "Utilisez vos propres clés de fournisseur. Lumen lit ces valeurs depuis la configuration actuelle et seuls les fournisseurs configurés peuvent être utilisés dans les préréglages de modèle.",
       "configured": "Configuré",
       "notConfigured": "Non configuré",
       "configuredSection": "Configurés",
@@ -1284,14 +1284,14 @@
         "label": "Applications",
         "cliGroup": "Applications CLI",
         "mcpGroup": "Services MCP",
-        "sessionGroup": "Conversations Nanobot",
+        "sessionGroup": "Conversations Lumen",
         "cliBadge": "CLI",
         "mcpBadge": "MCP",
         "cliDescription": "Utiliser @{{name}} comme application CLI locale",
         "mcpDescription": "Utiliser @{{name}} comme serveur MCP",
         "cliTitle": "Application CLI : {{name}}",
         "mcpTitle": "Serveur MCP : {{name}}",
-        "sessionBadge": "Conversation Nanobot",
+        "sessionBadge": "Conversation Lumen",
         "sessionDescription": "Référencer @{{name}} comme discussion précédente"
       },
       "workspace": {

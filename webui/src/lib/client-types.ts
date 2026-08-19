@@ -1,5 +1,5 @@
-/** 客户端共享类型/工具（task：清理 nanobot-client 死 WS 类后迁出）。
- * NanobotClient（WS 客户端）已被 LumenClient 取代，只剩这些类型还被引用。 */
+/** 客户端共享类型/工具（task：清理旧版 WS 客户端死类后迁出）。
+ * 旧版 WS 客户端已被 LumenClient 取代，只剩这些类型还被引用。 */
 
 /** 系统命令 turn 的前缀（isSystemCommandTurnId 判断用）。 */
 const SYSTEM_COMMAND_TURN_PREFIX = "webui-system:";

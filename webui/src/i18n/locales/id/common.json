@@ -281,7 +281,7 @@
       "exporting": "Mengekspor..."
     },
     "byok": {
-      "description": "Gunakan kunci penyedia Anda sendiri. Nanobot membaca nilai ini dari konfigurasi saat ini dan hanya penyedia yang sudah dikonfigurasi yang dapat digunakan dalam prasetel model.",
+      "description": "Gunakan kunci penyedia Anda sendiri. Lumen membaca nilai ini dari konfigurasi saat ini dan hanya penyedia yang sudah dikonfigurasi yang dapat digunakan dalam prasetel model.",
       "configured": "Terkonfigurasi",
       "notConfigured": "Belum dikonfigurasi",
       "configuredSection": "Terkonfigurasi",
@@ -1284,14 +1284,14 @@
         "label": "Aplikasi",
         "cliGroup": "Aplikasi CLI",
         "mcpGroup": "Layanan MCP",
-        "sessionGroup": "Percakapan Nanobot",
+        "sessionGroup": "Percakapan Lumen",
         "cliBadge": "CLI",
         "mcpBadge": "MCP",
         "cliDescription": "Gunakan @{{name}} sebagai aplikasi CLI lokal",
         "mcpDescription": "Gunakan @{{name}} sebagai server MCP",
         "cliTitle": "Aplikasi CLI: {{name}}",
         "mcpTitle": "Server MCP: {{name}}",
-        "sessionBadge": "Percakapan Nanobot",
+        "sessionBadge": "Percakapan Lumen",
         "sessionDescription": "Referensikan @{{name}} sebagai chat sebelumnya"
       },
       "workspace": {

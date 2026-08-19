@@ -281,7 +281,7 @@
       "exporting": "正在匯出…"
     },
     "byok": {
-      "description": "使用自備的供應商金鑰。Nanobot 會從目前的設定檔讀取這些值，只有已設定的供應商可用於模型預設。",
+      "description": "使用自備的供應商金鑰。Lumen 會從目前的設定檔讀取這些值，只有已設定的供應商可用於模型預設。",
       "configured": "已設定",
       "notConfigured": "未設定",
       "configuredSection": "已設定",
@@ -1284,14 +1284,14 @@
         "label": "應用程式",
         "cliGroup": "CLI 應用程式",
         "mcpGroup": "MCP 伺服器",
-        "sessionGroup": "Nanobot 對話",
+        "sessionGroup": "Lumen 對話",
         "cliBadge": "CLI",
         "mcpBadge": "MCP",
         "cliDescription": "將 @{{name}} 作為本機 CLI 應用程式使用",
         "mcpDescription": "將 @{{name}} 作為 MCP 伺服器使用",
         "cliTitle": "CLI 應用程式：{{name}}",
         "mcpTitle": "MCP 伺服器：{{name}}",
-        "sessionBadge": "Nanobot 對話",
+        "sessionBadge": "Lumen 對話",
         "sessionDescription": "引用先前的對話 @{{name}}"
       },
       "workspace": {

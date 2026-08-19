@@ -1,120 +1,53 @@
-# nanobot WebUI Source
+# Lumen WebUI
 
-This directory contains the React/TypeScript source for the nanobot WebUI. If
-you installed `nanobot-ai` from PyPI and only want to use the bundled browser UI,
-read the user guide in [`docs/webui.md`](../docs/webui.md). You do not need
-Node.js, Bun, Vite, or anything in this directory unless you are changing the
-frontend.
+This is the Lumen workspace's WebUI — a React 18 + Vite + TypeScript + Tailwind frontend
+(task 13/14). It talks to the Lumen backend (FastAPI, port 8001) over `/v1/responses` SSE
+and the `/api` REST surface, and renders the deep-loop output: **thinking blocks + tool
+cards**, **finished-artifact previews**, and the **work gallery**.
 
-For the project overview, install guide, and general docs map, see the root [`README.md`](../README.md) and [`docs/README.md`](../docs/README.md).
+> Project overview, architecture, and run instructions: root [`README.md`](../README.md).
+> Frontend integration notes: [`docs/TASK13_接后端规划.md`](../docs/TASK13_接后端规划.md).
 
-## Pick a Path
-
-| Goal | Start with | Opens at |
-|---|---|---|
-| Use the bundled browser UI | [`docs/webui.md`](../docs/webui.md) | `http://127.0.0.1:8765` |
-| Use the WebUI from another device | [`docs/webui.md#lan-access`](../docs/webui.md#lan-access) | `http://<your-ip>:8765` |
-| Change WebUI source code | [Develop the WebUI (Vite HMR)](#develop-the-webui-vite-hmr) | `http://127.0.0.1:5173` |
-| Debug setup failures | [`docs/troubleshooting.md#webui-problems`](../docs/troubleshooting.md#webui-problems) | Diagnosis order and common fixes |
-
-The source app is built with Vite + React 18 + TypeScript + Tailwind 3 +
-shadcn/ui. It talks to the gateway over the WebSocket multiplex protocol and
-reads session metadata from the embedded REST surface on the same port.
-
-## Layout
-
-```text
-webui/                 source tree (this directory)
-nanobot/web/dist/      build output served by the gateway
-```
-
-## Develop the WebUI (Vite HMR)
-
-### 1. Install nanobot from source
-
-From the repository root:
-
-```bash
-python -m pip install -e .
-```
-
-> Editable installs intentionally **skip** the WebUI bundle step — Vite HMR is faster than rebuilding `dist/` on every change.
-
-### 2. Start the gateway and Vite
-
-From the repository root:
-
-```bash
-nanobot webui --dev
-```
-
-The command safely prepares the local WebSocket channel, starts both the gateway and Vite,
-and opens `http://127.0.0.1:5173`. Vite proxies to the configured WebSocket channel and applies
-frontend changes with HMR. Press Ctrl+C in that terminal to stop both processes.
-
-Use `--no-open` to skip opening a browser. `--dev` is foreground-only and cannot be combined
-with `--background`.
-
-## Manual development setup
-
-The two-terminal workflow remains available when you want to manage each process separately.
-
-### 1. Enable the WebSocket channel
-
-In `~/.nanobot/config.json`, merge:
-
-```json
-{ "channels": { "websocket": { "enabled": true } } }
-```
-
-### 2. Start the gateway
-
-In one terminal:
-
-```bash
-nanobot gateway
-```
-
-### 3. Start the WebUI dev server
-
-In another terminal:
+## Run (dev)
 
 ```bash
 cd webui
-bun install            # npm install also works
-bun run dev
+npm install
+npm run dev          # http://127.0.0.1:5173
 ```
 
-Then open `http://127.0.0.1:5173`.
+Vite proxies `/v1`, `/api`, `/webui`, `/works` to `http://127.0.0.1:8001` (the backend).
+Real generation needs a DeepSeek key: set `DEEPSEEK_API_KEY` in `backend/.env`, or enter it
+in the frontend **设置 → 模型** (stored in localStorage, sent as `Authorization`).
 
-By default the dev server proxies `/api`, `/webui`, `/auth`, and WebSocket traffic to `http://127.0.0.1:8765`.
+## How it connects
 
-If your gateway listens on a non-default port, point the dev server at it:
-
-```bash
-NANOBOT_API_URL=http://127.0.0.1:9000 bun run dev
-```
-
-## Build for packaged runtime
-
-You usually do not need to run this by hand: `python -m build` invokes the WebUI build automatically when packaging the wheel.
-
-If you want to preview the production bundle locally without rebuilding the wheel:
-
-```bash
-cd webui
-bun run build          # writes to ../nanobot/web/dist
-```
-
-The gateway picks up the new bundle on the next restart.
+- `src/hooks/useLumenStream.ts` — the message-stream hook: `send` → POST `/v1/responses`
+  (SSE). Structured events (`lumen.reasoning.delta` → thinking block, `lumen.tool` →
+  tool card) feed the thread-projection pipeline.
+- `src/lib/lumen-client.ts` — **LumenClient**: event emitter + run lifecycle
+  (beginRun / endRun / canReconcileCanonicalCompletion), the client shim that replaced
+  the old WS client.
+- `src/lib/lumen-api.ts` — maps `/api/history` for the chat list / gallery.
+- `src/lib/lumen-key.ts` — DeepSeek key + search-service credentials in localStorage.
+- `src/components/ArtifactCard.tsx` — finished-HTML preview (`/works/{id}` iframe).
+- `src/components/GalleryView.tsx` — work gallery (click a card to re-open the chat).
 
 ## Test
 
 ```bash
 cd webui
-bun run test
+npx vitest run
+```
+
+## Build
+
+```bash
+cd webui
+npm run build        # → dist/
 ```
 
 ## Acknowledgements
 
-- [`agent-chat-ui`](https://github.com/langchain-ai/agent-chat-ui) for UI and interaction inspiration across the chat surface.
+- [`agent-chat-ui`](https://github.com/langchain-ai/agent-chat-ui) for UI and interaction
+  inspiration across the chat surface.

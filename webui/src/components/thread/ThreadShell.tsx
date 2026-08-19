@@ -11,7 +11,7 @@ import type { ModelPresetOption } from "@/components/thread/ModelPresetBadge";
 import { ThreadHeader } from "@/components/thread/ThreadHeader";
 import { StreamErrorNotice } from "@/components/thread/StreamErrorNotice";
 import { ThreadViewport, type ThreadViewportHandle } from "@/components/thread/ThreadViewport";
-import { useNanobotStream, type SendAttachment, type SendOptions } from "@/hooks/useNanobotStream";
+import { useLumenStream, type SendAttachment, type SendOptions } from "@/hooks/useLumenStream";
 import { useSessionHistory } from "@/hooks/useSessions";
 import {
   ApiError,
@@ -716,7 +716,7 @@ export function ThreadShell({
     setMessages,
     streamError,
     dismissStreamError,
-  } = useNanobotStream(chatId, initial, hasPendingToolCalls, handleTurnEnd);
+  } = useLumenStream(chatId, initial, hasPendingToolCalls, handleTurnEnd);
 
   useLayoutEffect(() => {
     if (currentUiMessagesRef.current === messages) return;
@@ -895,7 +895,7 @@ export function ThreadShell({
     [workspaceScope],
   );
 
-  // task 16（Lumen）：无 nanobot /api/settings——模型徽章靠 bootstrap model_name
+  // task 16（Lumen）：无旧版 /api/settings——模型徽章靠 bootstrap model_name
   // （deepseek-v4-flash）显示，不再拉取设置（消 404 噪音）。
   const refreshModelSettings = useCallback(async () => {
     setSettings(settingsSnapshot ?? null);
@@ -1200,7 +1200,7 @@ export function ThreadShell({
     }
   }, [chatId, displayMessages]);
 
-  // Persist thread to in-memory cache after paint so ``useNanobotStream``'s chat switch
+  // Persist thread to in-memory cache after paint so ``useLumenStream``'s chat switch
   // ``useEffect`` reset has flushed; ``skipLayoutCacheRef`` drops the first run that still
   // sees the *previous* chat's ``messages`` (avoids stale rows leaking across sessions).
   useEffect(() => {
