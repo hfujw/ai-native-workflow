@@ -229,7 +229,9 @@ async def responses(req: ResponsesRequest, authorization: str | None = Header(No
         # ── 流式转发思考文本 ──
         try:
             while True:
-                item = await asyncio.wait_for(queue.get(), timeout=90)
+                # 单步 LLM 调用（尤其 render 生成整页 HTML）可长达几分钟——
+                # 90s 队列超时会把正常长生成误判中断。对齐 LLM 调用上限 600s。
+                item = await asyncio.wait_for(queue.get(), timeout=600)
                 if item is _END:
                     break
                 if isinstance(item, dict):
